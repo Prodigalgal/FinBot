@@ -843,7 +843,7 @@ function AIBindingsPanel({
       if (!current) {
         return current;
       }
-      const currentBinding = current.task_bindings[taskId] || { enabled: true, site_id: '', protocol: 'chat', model: '', fallback_site_ids: [] };
+      const currentBinding = current.task_bindings[taskId] || { enabled: true, site_id: '', protocol: 'chat', model: '', reasoning_effort: 'high', fallback_site_ids: [] };
       return {
         ...current,
         task_bindings: {
@@ -856,7 +856,7 @@ function AIBindingsPanel({
   return (
     <Stack spacing={2}>
       {aiSnapshot.tasks.map((task) => {
-        const binding = aiForm.task_bindings[task.task_id] || { enabled: true, site_id: '', protocol: 'chat', model: '', fallback_site_ids: [] };
+        const binding = aiForm.task_bindings[task.task_id] || { enabled: true, site_id: '', protocol: 'chat', model: '', reasoning_effort: 'high', fallback_site_ids: [] };
         const selectedSite = aiForm.sites.find((site) => site.site_id === binding.site_id);
         const models = binding.protocol === 'responses' ? selectedSite?.responses_models || [] : selectedSite?.chat_models || [];
         return (
@@ -882,6 +882,17 @@ function AIBindingsPanel({
                 <SimpleConfigField label="模型" helper="可直接输入，也可从站点模型中选择">
                   <TextField fullWidth value={binding.model || ''} onChange={(event) => updateBinding(task.task_id, { model: event.target.value })} sx={configInputSx} select={models.length > 0}>
                     {models.map((model) => <MenuItem key={model} value={model}>{model}</MenuItem>)}
+                  </TextField>
+                </SimpleConfigField>
+                <SimpleConfigField label="思考等级" helper="显式传递给模型；关闭时不请求深度思考">
+                  <TextField select fullWidth value={binding.reasoning_effort || 'provider_default'} onChange={(event) => updateBinding(task.task_id, { reasoning_effort: event.target.value as AITaskBinding['reasoning_effort'] })} sx={configInputSx}>
+                    <MenuItem value="provider_default">厂商默认</MenuItem>
+                    <MenuItem value="none">关闭</MenuItem>
+                    <MenuItem value="minimal">极低</MenuItem>
+                    <MenuItem value="low">低</MenuItem>
+                    <MenuItem value="medium">中</MenuItem>
+                    <MenuItem value="high">高</MenuItem>
+                    <MenuItem value="xhigh">极高</MenuItem>
                   </TextField>
                 </SimpleConfigField>
                 <SimpleConfigField label="备用站点" helper="多个站点用逗号分隔，主站点失败后依次尝试">

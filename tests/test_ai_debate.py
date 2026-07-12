@@ -167,7 +167,7 @@ class AIDebateTests(unittest.TestCase):
             store.init_schema()
             ai_store = AISitesConfigStore(root)
             provider = OpenAICompatibleProvider(
-                name="deepseek",
+                name="mimo",
                 api_key="unit-test-key",
                 base_url="https://ai.example.test/v1",
                 chat_model="fake-chat",
@@ -176,7 +176,7 @@ class AIDebateTests(unittest.TestCase):
             client = FakeDebateClient()
             runner = AIDebateCouncilRunner(
                 store=store,
-                providers={"deepseek": provider},
+                providers={"mimo": provider},
                 ai_store=ai_store,
                 client=client,
             )
@@ -227,7 +227,7 @@ class AIDebateTests(unittest.TestCase):
             store = SQLiteStore(root / "finbot.sqlite3")
             store.init_schema()
             provider = OpenAICompatibleProvider(
-                name="deepseek",
+                name="mimo",
                 api_key="unit-test-key",
                 base_url="https://ai.example.test/v1",
                 chat_model="fake-chat",
@@ -235,7 +235,7 @@ class AIDebateTests(unittest.TestCase):
             )
             runner = AIDebateCouncilRunner(
                 store=store,
-                providers={"deepseek": provider},
+                providers={"mimo": provider},
                 ai_store=AISitesConfigStore(root),
                 client=(client := FakeDebateClient()),
             )
@@ -266,7 +266,7 @@ class AIDebateTests(unittest.TestCase):
             store = SQLiteStore(root / "finbot.sqlite3")
             store.init_schema()
             provider = OpenAICompatibleProvider(
-                name="deepseek",
+                name="mimo",
                 api_key="unit-test-key",
                 base_url="https://ai.example.test/v1",
                 chat_model="fake-chat",
@@ -274,7 +274,7 @@ class AIDebateTests(unittest.TestCase):
             )
             runner = AIDebateCouncilRunner(
                 store=store,
-                providers={"deepseek": provider},
+                providers={"mimo": provider},
                 ai_store=AISitesConfigStore(root),
                 client=FakeDebateClient(),
             )
@@ -301,7 +301,7 @@ class AIDebateTests(unittest.TestCase):
             store = SQLiteStore(root / "finbot.sqlite3")
             store.init_schema()
             provider = OpenAICompatibleProvider(
-                name="deepseek",
+                name="mimo",
                 api_key="unit-test-key",
                 base_url="https://ai.example.test/v1",
                 chat_model="fake-chat",
@@ -309,7 +309,7 @@ class AIDebateTests(unittest.TestCase):
             )
             runner = AIDebateCouncilRunner(
                 store=store,
-                providers={"deepseek": provider},
+                providers={"mimo": provider},
                 ai_store=AISitesConfigStore(root),
                 client=FakeDebateClient(),
             )

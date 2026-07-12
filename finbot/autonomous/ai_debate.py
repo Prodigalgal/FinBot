@@ -736,6 +736,10 @@ class AIDebateCouncilRunner:
         else:
             selected_model = (variant or {}).get("model") or model or binding.model
         selected_fallbacks = fallback_site_ids or binding.fallback_site_ids
+        variant_reasoning_effort = (variant or {}).get("reasoning_effort")
+        selected_reasoning_effort = variant_reasoning_effort or (
+            reasoning_effort if reasoning_effort != "provider_default" else binding.reasoning_effort
+        )
         providers = dict(self.providers)
         if selected_site_id and selected_model and selected_site_id in providers:
             provider = providers[selected_site_id]
@@ -774,7 +778,7 @@ class AIDebateCouncilRunner:
                 user_prompt_template=(variant or {}).get("user_prompt_template") or user_prompt_template or prompt.user_prompt_template,
             ),
             "providers": ordered_providers,
-            "reasoning_effort": reasoning_effort,
+            "reasoning_effort": selected_reasoning_effort,
             "max_prompt_chars": 22000,
             "experiment_id": (variant or {}).get("experiment_id"),
             "variant_id": (variant or {}).get("variant_id"),

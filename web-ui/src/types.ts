@@ -948,6 +948,7 @@ export interface AITaskBinding {
   site_id?: string | null;
   protocol: string;
   model?: string | null;
+  reasoning_effort?: CouncilReasoningEffort;
   fallback_site_ids: string[];
 }
 
@@ -983,6 +984,7 @@ export interface AIExperimentVariant {
   site_id?: string | null;
   protocol?: string | null;
   model?: string | null;
+  reasoning_effort?: CouncilReasoningEffort;
   system_prompt_append?: string | null;
   user_prompt_template?: string | null;
 }

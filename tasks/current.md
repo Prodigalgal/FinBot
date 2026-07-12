@@ -1002,3 +1002,43 @@ npm run build
 遗留风险：
 
 - Bybit Demo 账户读取需更换为当前可访问 Bybit 的代理出口；代码与 UI 已正确处理该 adapter 的独立失败。
+
+## MiMo2API 账户池替换官方渠道
+
+状态：已完成（2026-07-12）
+
+目标：
+
+- 将 FinBot 的 MiMo 官方 API 入口替换为集群内已部署的 MiMo2API 账户池。
+- 所有 AI 任务、委员会角色和主席统一使用 `mimo-v2.5-pro`，并显式开启思考。
+
+范围：
+
+- 扩展 AI task binding 的 `reasoning_effort` 契约及前端配置控件。
+- 修正 MiMo2API Chat 请求字段，贯通信息压缩、辩论与建议合成。
+- 更新代码默认配置、私有启动配置、Kubernetes Secret 和在线 PVC。
+
+非目标：
+
+- 不删除 DeepSeek/Sub2API 站点定义，不修改交易所、采集代理或模拟交易配置。
+- 不把任何 API key、账户 token 或管理员凭据提交到 Git。
+
+验收标准：
+
+- 在线配置中只有 MiMo 站点启用；全部任务绑定、角色和主席均为 `chat + mimo-v2.5-pro`，思考等级非关闭状态且无备用站点。
+- MiMo2API `/v1/models` 与最小 Chat 请求成功，真实请求携带思考开关。
+- Python 测试、前端构建、CI 镜像发布、Argo CD 同步和在线调用验证通过。
+
+实现结果：
+
+- MiMo 站点默认改为 `https://mimo2api.mnnu.eu.org/v1`；DeepSeek 和 Sub2API 保留但默认禁用。
+- AI 配置升级为 v6，task binding 与 A/B variant 均支持 `provider_default/none/minimal/low/medium/high/xhigh`。
+- 所有默认任务、内置委员会角色和主席统一使用 `chat + mimo-v2.5-pro`，无静默备用站点。
+- MiMo2API Chat 使用 `reasoning_effort`；DeepSeek Chat、通用 Chat 与 Responses 分别使用各自兼容字段。
+
+验证：
+
+- `python -m unittest discover -s tests -v`：`200/200` 通过。
+- `python -m compileall -q finbot`、`python scripts/secret_scan.py`：通过。
+- `npm run build`：通过，仅保留既有 MUI vendor chunk 大小提示。
+- MiMo2API 真实最小调用返回 `200`、模型 `mimo-v2.5-pro`，账户池当前包含 11 个账户。

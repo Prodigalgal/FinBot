@@ -612,12 +612,14 @@ class ResearchPipelineRunner:
         providers = load_provider_configs(keys_file=Path(config.ai_keys_file), project_root=Path.cwd())
         protocol = config.ai_protocol
         provider_order = config.ai_provider_order
+        reasoning_effort = "provider_default"
         prompt = None
         if ai_store.exists():
             binding = ai_store.task_binding(AI_TASK_ID_COMPRESSION)
             prompt = ai_store.prompt(AI_TASK_ID_COMPRESSION)
             if binding.enabled:
                 protocol = binding.protocol
+                reasoning_effort = binding.reasoning_effort
                 provider_order = binding.provider_order() or provider_order
                 if binding.site_id and binding.model and binding.site_id in providers:
                     provider = providers[binding.site_id]
@@ -631,6 +633,7 @@ class ResearchPipelineRunner:
             AICompressionRunConfig(
                 pipeline_run_id=run_id,
                 protocol=protocol,
+                reasoning_effort=reasoning_effort,
                 provider_order=provider_order,
                 limit_documents=config.ai_limit_documents,
                 limit_events=config.ai_limit_events,

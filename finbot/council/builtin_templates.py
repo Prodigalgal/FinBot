@@ -322,10 +322,9 @@ def _role(
     order: int,
     reasoning_effort: str,
     *,
-    site_id: str = "deepseek",
+    site_id: str = "mimo",
 ) -> dict[str, Any]:
-    model = "mimo-v2.5-pro" if site_id == "mimo" else "deepseek-v4-flash"
-    fallback = "deepseek" if site_id == "mimo" else "mimo"
+    site_id = "mimo"
     return {
         "role_id": role_id,
         "display_name": display_name,
@@ -335,23 +334,22 @@ def _role(
         "order": order,
         "site_id": site_id,
         "protocol": "chat",
-        "model": model,
+        "model": "mimo-v2.5-pro",
         "reasoning_effort": reasoning_effort,
-        "fallback_site_ids": [fallback],
+        "fallback_site_ids": [],
         "system_prompt": f"你是{display_name}。{objective}只输出可审计的结构化结论，不展示隐藏推理过程。",
     }
 
 
-def _chair(role_id: str, display_name: str, reasoning_effort: str, *, site_id: str = "deepseek") -> dict[str, Any]:
-    model = "mimo-v2.5-pro" if site_id == "mimo" else "deepseek-v4-flash"
+def _chair(role_id: str, display_name: str, reasoning_effort: str, *, site_id: str = "mimo") -> dict[str, Any]:
     return {
         "role_id": role_id,
         "display_name": display_name,
-        "site_id": site_id,
+        "site_id": "mimo",
         "protocol": "chat",
-        "model": model,
+        "model": "mimo-v2.5-pro",
         "reasoning_effort": reasoning_effort,
-        "fallback_site_ids": ["deepseek" if site_id == "mimo" else "mimo"],
+        "fallback_site_ids": [],
         "system_prompt": "综合可追溯证据、主要分歧和风险门禁，输出面向人工复核的简体中文结论。",
     }
 

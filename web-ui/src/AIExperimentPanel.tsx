@@ -182,6 +182,15 @@ function VariantEditor({
         <TextField label="模型" value={variant.model || ''} onChange={(event) => onChange({ model: event.target.value })} select={models.length > 0} sx={inputSx}>
           {models.map((model) => <MenuItem key={model} value={model}>{model}</MenuItem>)}
         </TextField>
+        <TextField select label="思考等级" value={variant.reasoning_effort || 'provider_default'} onChange={(event) => onChange({ reasoning_effort: event.target.value as AIExperimentVariant['reasoning_effort'] })} sx={inputSx}>
+          <MenuItem value="provider_default">继承环节</MenuItem>
+          <MenuItem value="none">关闭</MenuItem>
+          <MenuItem value="minimal">极低</MenuItem>
+          <MenuItem value="low">低</MenuItem>
+          <MenuItem value="medium">中</MenuItem>
+          <MenuItem value="high">高</MenuItem>
+          <MenuItem value="xhigh">极高</MenuItem>
+        </TextField>
         <TextField label="Prompt 附加指令" value={variant.system_prompt_append || ''} onChange={(event) => onChange({ system_prompt_append: event.target.value })} multiline minRows={2} sx={{ gridColumn: { md: 'span 2' }, ...inputSx }} />
       </Box>
     </Box>
@@ -203,7 +212,8 @@ function defaultExperiment(
 }
 
 function defaultVariant(variantId: string, aiForm: AIConfigForm, index: number): AIExperimentVariant {
-  const site = aiForm.sites[index % Math.max(1, aiForm.sites.length)];
+  const sites = aiForm.sites.filter((site) => site.enabled);
+  const site = sites[index % Math.max(1, sites.length)];
   return {
     variant_id: variantId,
     display_name: index === 0 ? '对照组' : '实验组',
@@ -211,6 +221,7 @@ function defaultVariant(variantId: string, aiForm: AIConfigForm, index: number):
     site_id: site?.site_id || null,
     protocol: 'chat',
     model: site?.default_chat_model || null,
+    reasoning_effort: 'high',
     system_prompt_append: null,
     user_prompt_template: null,
   };

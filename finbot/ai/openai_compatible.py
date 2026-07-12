@@ -147,7 +147,10 @@ class OpenAICompatibleClient:
             ],
             "temperature": 0.1,
         }
-        if provider.name in {"deepseek", "mimo"}:
+        if provider.name == "mimo":
+            if reasoning_effort not in {"provider_default", "none", "minimal"}:
+                payload["reasoning_effort"] = reasoning_effort
+        elif provider.name == "deepseek":
             payload["thinking"] = {
                 "type": "disabled" if reasoning_effort in {"provider_default", "none", "minimal"} else "enabled"
             }
@@ -276,7 +279,7 @@ def load_provider_configs(
         "mimo": OpenAICompatibleProvider(
             name="mimo",
             api_key=value("MIMO_API_KEY"),
-            base_url=value("MIMO_BASE_URL", "https://api.xiaomimimo.com/v1"),
+            base_url=value("MIMO_BASE_URL", "https://mimo2api.mnnu.eu.org/v1"),
             chat_model=value("MIMO_CHAT_MODEL", "mimo-v2.5-pro"),
             responses_model=value("MIMO_RESPONSES_MODEL", "mimo-v2.5-pro"),
             timeout_seconds=timeout,

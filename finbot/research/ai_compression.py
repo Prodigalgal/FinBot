@@ -26,6 +26,7 @@ COMPRESSION_SYSTEM_PROMPT = DEFAULT_COMPRESSION_SYSTEM_PROMPT
 class AICompressionRunConfig:
     pipeline_run_id: str | None = None
     protocol: str = "chat"
+    reasoning_effort: str = "provider_default"
     provider_order: tuple[str, ...] = ("deepseek", "mimo")
     limit_documents: int = 5
     limit_events: int = 3
@@ -66,6 +67,7 @@ class AICompressionRunner:
         report: dict[str, Any] = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "protocol": config.protocol,
+            "reasoning_effort": config.reasoning_effort,
             "dry_run": config.dry_run,
             "provider_status": statuses,
             "candidate_counts": {
@@ -122,6 +124,7 @@ class AICompressionRunner:
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     require_json=True,
+                    reasoning_effort=config.reasoning_effort,
                 )
                 summary = _parse_summary_json(completion)
                 record = _compression_record(

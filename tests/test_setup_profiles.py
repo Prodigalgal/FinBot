@@ -69,7 +69,7 @@ class SetupProfileTests(unittest.TestCase):
         self.assertEqual(readiness["required_failure_count"], 0)
         self.assertEqual(readiness["warning_count"], 0)
         pricing_check = next(item for item in readiness["checks"] if item["check_id"] == "ai_pricing")
-        self.assertEqual(pricing_check["detail"], "3/3 个启用站点型号费率匹配")
+        self.assertEqual(pricing_check["detail"], "1/1 个启用站点型号费率匹配")
 
 
 if __name__ == "__main__":

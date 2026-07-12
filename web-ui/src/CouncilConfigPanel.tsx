@@ -253,6 +253,7 @@ function CouncilRoleEditor({
           <TextField label="模型" value={role.model || ''} onChange={(event) => onChange({ model: event.target.value })} select={models.length > 0} sx={inputSx}>
             {models.map((model) => <MenuItem key={model} value={model}>{model}</MenuItem>)}
           </TextField>
+          <ReasoningEffortField value={role.reasoning_effort} onChange={(reasoning_effort) => onChange({ reasoning_effort })} />
           <TextField label="备用站点" value={(role.fallback_site_ids || []).join(',')} onChange={(event) => onChange({ fallback_site_ids: splitCsv(event.target.value) })} sx={inputSx} />
           <TextField label="职责目标" value={role.objective} onChange={(event) => onChange({ objective: event.target.value })} multiline minRows={3} sx={{ gridColumn: { md: 'span 2' }, ...inputSx }} />
           <TextField label="系统提示词" value={role.system_prompt || ''} onChange={(event) => onChange({ system_prompt: event.target.value })} multiline minRows={3} sx={{ gridColumn: { md: 'span 2' }, ...inputSx }} />
@@ -291,6 +292,7 @@ function CouncilChairEditor({
           <TextField label="模型" value={chair.model || ''} onChange={(event) => onChange({ model: event.target.value })} select={models.length > 0} sx={inputSx}>
             {models.map((model) => <MenuItem key={model} value={model}>{model}</MenuItem>)}
           </TextField>
+          <ReasoningEffortField value={chair.reasoning_effort} onChange={(reasoning_effort) => onChange({ reasoning_effort })} />
           <TextField label="备用站点" value={(chair.fallback_site_ids || []).join(',')} onChange={(event) => onChange({ fallback_site_ids: splitCsv(event.target.value) })} sx={inputSx} />
           <TextField label="系统提示词" value={chair.system_prompt || ''} onChange={(event) => onChange({ system_prompt: event.target.value })} multiline minRows={6} sx={{ gridColumn: '1 / -1', ...inputSx }} />
           <TextField label="用户提示词模板" value={chair.user_prompt_template || ''} onChange={(event) => onChange({ user_prompt_template: event.target.value })} multiline minRows={2} sx={{ gridColumn: '1 / -1', ...inputSx }} />
@@ -317,7 +319,8 @@ function defaultRole(roleId: string, index: number, siteId?: string): CouncilRol
     order: (index + 1) * 10,
     site_id: siteId || null,
     protocol: 'chat',
-    model: null,
+    model: siteId === 'mimo' ? 'mimo-v2.5-pro' : null,
+    reasoning_effort: 'high',
     fallback_site_ids: [],
     system_prompt: '不得虚构事实；必须列出证据、反证和失效条件。',
     user_prompt_template: '{payload_json}',
@@ -340,7 +343,8 @@ function defaultTemplate(templateId: string, siteId?: string): CouncilTemplateCo
       display_name: '主席仲裁员',
       site_id: siteId || null,
       protocol: 'chat',
-      model: null,
+      model: siteId === 'mimo' ? 'mimo-v2.5-pro' : null,
+      reasoning_effort: 'high',
       fallback_site_ids: [],
       system_prompt: '综合分歧并输出可审计结论，严格执行 advisory-only 策略。',
       user_prompt_template: '{payload_json}',
@@ -363,6 +367,26 @@ function defaultTemplate(templateId: string, siteId?: string): CouncilTemplateCo
     quorum_ratio: 0.5,
     max_roles: 12,
   };
+}
+
+function ReasoningEffortField({
+  value,
+  onChange,
+}: {
+  value?: CouncilRoleConfig['reasoning_effort'];
+  onChange: (value: NonNullable<CouncilRoleConfig['reasoning_effort']>) => void;
+}) {
+  return (
+    <TextField select label="思考等级" value={value || 'provider_default'} onChange={(event) => onChange(event.target.value as NonNullable<CouncilRoleConfig['reasoning_effort']>)} sx={inputSx}>
+      <MenuItem value="provider_default">厂商默认</MenuItem>
+      <MenuItem value="none">关闭</MenuItem>
+      <MenuItem value="minimal">极低</MenuItem>
+      <MenuItem value="low">低</MenuItem>
+      <MenuItem value="medium">中</MenuItem>
+      <MenuItem value="high">高</MenuItem>
+      <MenuItem value="xhigh">极高</MenuItem>
+    </TextField>
+  );
 }
 
 function splitCsv(value: string): string[] {

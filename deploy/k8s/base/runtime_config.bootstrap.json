@@ -31,6 +31,8 @@
     "paper_execution.max_orders_per_adapter": 1,
     "paper_execution.max_notional_usdt": 100.0,
     "paper_execution.min_confidence": 0.7,
+    "ai.provider_order": ["mimo"],
+    "ai.protocol": "chat",
     "ai.keys_file": "/var/lib/finbot/config/ai-provider-keys.env",
     "worker.embedded_scheduler": false,
     "worker.poll_seconds": 2.0,

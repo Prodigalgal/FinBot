@@ -9,12 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from finbot.council.models import CouncilTemplate
+from finbot.council.models import CouncilTemplate, SUPPORTED_REASONING_EFFORTS
 from finbot.council.builtin_templates import builtin_council_templates
 from finbot.config.env_file import read_env_file
 
 
-AI_SITES_CONFIG_VERSION = 5
+AI_SITES_CONFIG_VERSION = 6
 AI_SITES_CONFIG_FILENAME = "ai_sites.json"
 AI_TASK_ID_COMPRESSION = "ai_compression"
 AI_TASK_ID_DEBATE = "ai_debate"
@@ -187,10 +187,11 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
             "objective": "寻找支持方向性机会的证据，同时指出成立条件和可证伪条件。",
             "enabled": True,
             "order": 10,
-            "site_id": "deepseek",
+            "site_id": "mimo",
             "protocol": "chat",
-            "model": "deepseek-v4-flash",
-            "fallback_site_ids": ["mimo"],
+            "model": "mimo-v2.5-pro",
+            "reasoning_effort": "high",
+            "fallback_site_ids": [],
             "system_prompt": "优先寻找支持机会的证据，但必须主动列出反证、证据缺口和失效条件。",
             "user_prompt_template": "{payload_json}",
         },
@@ -204,7 +205,8 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
             "site_id": "mimo",
             "protocol": "chat",
             "model": "mimo-v2.5-pro",
-            "fallback_site_ids": ["deepseek"],
+            "reasoning_effort": "high",
+            "fallback_site_ids": [],
             "system_prompt": "优先寻找反证、拥挤风险和错误映射，不得为了反对而虚构事实。",
             "user_prompt_template": "{payload_json}",
         },
@@ -215,10 +217,11 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
             "objective": "聚焦多周期趋势、动量、波动、成交量、价差和关键价位。",
             "enabled": True,
             "order": 30,
-            "site_id": "deepseek",
+            "site_id": "mimo",
             "protocol": "chat",
-            "model": "deepseek-v4-flash",
-            "fallback_site_ids": ["mimo"],
+            "model": "mimo-v2.5-pro",
+            "reasoning_effort": "high",
+            "fallback_site_ids": [],
             "system_prompt": "只使用输入的确定性行情指标，明确区分短周期和长周期结论。",
             "user_prompt_template": "{payload_json}",
         },
@@ -232,7 +235,8 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
             "site_id": "mimo",
             "protocol": "chat",
             "model": "mimo-v2.5-pro",
-            "fallback_site_ids": ["deepseek"],
+            "reasoning_effort": "high",
+            "fallback_site_ids": [],
             "system_prompt": "优先识别不可交易、证据不足和风险收益不成立的候选。",
             "user_prompt_template": "{payload_json}",
         },
@@ -263,10 +267,11 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
     "chair": {
         "role_id": "chair_arbiter",
         "display_name": "主席仲裁员",
-        "site_id": "deepseek",
+        "site_id": "mimo",
         "protocol": "chat",
-        "model": "deepseek-v4-flash",
-        "fallback_site_ids": ["mimo"],
+        "model": "mimo-v2.5-pro",
+        "reasoning_effort": "high",
+        "fallback_site_ids": [],
         "system_prompt": DEFAULT_TRADE_SYNTHESIS_SYSTEM_PROMPT,
         "user_prompt_template": "{payload_json}",
     },
@@ -388,6 +393,7 @@ class AITaskBinding:
     site_id: str | None
     protocol: str
     model: str | None
+    reasoning_effort: str
     fallback_site_ids: tuple[str, ...]
 
     def provider_order(self) -> tuple[str, ...]:
@@ -448,7 +454,7 @@ class AISitesConfigStore:
                 {
                     "site_id": "deepseek",
                     "display_name": "DeepSeek",
-                    "enabled": True,
+                    "enabled": False,
                     "base_url": "https://api.deepseek.com",
                     "api_key": None,
                     "chat_models": ["deepseek-v4-flash"],
@@ -460,9 +466,9 @@ class AISitesConfigStore:
                 },
                 {
                     "site_id": "mimo",
-                    "display_name": "MiMo",
+                    "display_name": "MiMo2API 账户池",
                     "enabled": True,
-                    "base_url": "https://api.xiaomimimo.com/v1",
+                    "base_url": "https://mimo2api.mnnu.eu.org/v1",
                     "api_key": None,
                     "chat_models": ["mimo-v2.5-pro"],
                     "responses_models": ["mimo-v2.5-pro"],
@@ -474,7 +480,7 @@ class AISitesConfigStore:
                 {
                     "site_id": "sub2api",
                     "display_name": "GPT 5.6 Luna（开发网关）",
-                    "enabled": True,
+                    "enabled": False,
                     "base_url": "http://168.138.40.52:8181/v1",
                     "api_key": None,
                     "chat_models": [],
@@ -488,24 +494,27 @@ class AISitesConfigStore:
             "task_bindings": {
                 AI_TASK_ID_COMPRESSION: {
                     "enabled": True,
-                    "site_id": "deepseek",
+                    "site_id": "mimo",
                     "protocol": "chat",
-                    "model": "deepseek-v4-flash",
-                    "fallback_site_ids": ["mimo"],
+                    "model": "mimo-v2.5-pro",
+                    "reasoning_effort": "high",
+                    "fallback_site_ids": [],
                 },
                 AI_TASK_ID_DEBATE: {
                     "enabled": True,
-                    "site_id": "deepseek",
+                    "site_id": "mimo",
                     "protocol": "chat",
-                    "model": "deepseek-v4-flash",
-                    "fallback_site_ids": ["mimo"],
+                    "model": "mimo-v2.5-pro",
+                    "reasoning_effort": "high",
+                    "fallback_site_ids": [],
                 },
                 AI_TASK_ID_TRADE_SYNTHESIS: {
                     "enabled": True,
-                    "site_id": "deepseek",
+                    "site_id": "mimo",
                     "protocol": "chat",
-                    "model": "deepseek-v4-flash",
-                    "fallback_site_ids": ["mimo"],
+                    "model": "mimo-v2.5-pro",
+                    "reasoning_effort": "high",
+                    "fallback_site_ids": [],
                 }
             },
             "prompts": {
@@ -593,6 +602,7 @@ class AISitesConfigStore:
             site_id=_optional_str(binding.get("site_id")),
             protocol=str(binding.get("protocol") or "chat"),
             model=_optional_str(binding.get("model")),
+            reasoning_effort=str(binding.get("reasoning_effort") or "provider_default"),
             fallback_site_ids=tuple(_string_list(binding.get("fallback_site_ids"))),
         )
 
@@ -875,11 +885,15 @@ def _normalize_binding(task_id: str, binding: dict[str, Any]) -> dict[str, Any]:
     protocol = str(binding.get("protocol") or "chat").strip()
     if protocol not in {"chat", "responses"}:
         raise ValueError(f"AI 环节协议不支持：{protocol}")
+    reasoning_effort = str(binding.get("reasoning_effort") or "provider_default").strip()
+    if reasoning_effort not in SUPPORTED_REASONING_EFFORTS:
+        raise ValueError(f"AI 环节思考等级不支持：{reasoning_effort}")
     return {
         "enabled": _bool_value(binding.get("enabled"), default=True),
         "site_id": _optional_str(binding.get("site_id")),
         "protocol": protocol,
         "model": _optional_str(binding.get("model")),
+        "reasoning_effort": reasoning_effort,
         "fallback_site_ids": _string_list(binding.get("fallback_site_ids")),
     }
 
@@ -945,6 +959,9 @@ def _normalize_experiments(value: Any) -> list[dict[str, Any]]:
             protocol = _optional_str(variant.get("protocol"))
             if protocol and protocol not in {"chat", "responses"}:
                 raise ValueError(f"AI variant protocol 不支持：{protocol}")
+            reasoning_effort = str(variant.get("reasoning_effort") or "provider_default").strip()
+            if reasoning_effort not in SUPPORTED_REASONING_EFFORTS:
+                raise ValueError(f"AI variant 思考等级不支持：{reasoning_effort}")
             variants.append(
                 {
                     "variant_id": variant_id,
@@ -953,6 +970,7 @@ def _normalize_experiments(value: Any) -> list[dict[str, Any]]:
                     "site_id": _optional_str(variant.get("site_id")),
                     "protocol": protocol,
                     "model": _optional_str(variant.get("model")),
+                    "reasoning_effort": reasoning_effort,
                     "system_prompt_append": _optional_str(variant.get("system_prompt_append")),
                     "user_prompt_template": _optional_str(variant.get("user_prompt_template")),
                 }
