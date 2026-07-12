@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
-from finbot.execution.models import OmsOrder, OmsOrderEvent, OrderSide, OrderStatus
+from finbot.execution.models import OmsExitPlan, OmsOrder, OmsOrderEvent, OrderSide, OrderStatus, TERMINAL_STATUSES
 from finbot.execution.repository import OmsRepository
 
 
@@ -176,6 +176,95 @@ class OmsService:
             metadata={**previous.metadata, "replace_reason": "cancel_replace"},
         )
 
+    def plan_exit_orders(
+        self,
+        parent_order_id: str,
+        *,
+        idempotency_key: str,
+        stop_loss_price: float,
+        take_profit_price: float,
+        quantity: float | None = None,
+    ) -> OmsExitPlan:
+        _validate_idempotency_key(idempotency_key)
+        parent = self.repository.get(parent_order_id)
+        if parent is None:
+            raise KeyError(f"OMS order {parent_order_id} not found")
+        if parent.reduce_only:
+            raise ValueError("退出计划的父订单不能是 reduce-only 订单")
+        if parent.status not in {OrderStatus.FILLED, OrderStatus.RECONCILED} or parent.filled_quantity <= 0:
+            raise ValueError("只有已成交的入场订单可以创建退出计划")
+        exit_quantity = parent.filled_quantity if quantity is None else float(quantity)
+        if exit_quantity <= 0 or exit_quantity > parent.filled_quantity:
+            raise ValueError("退出数量必须大于 0 且不超过父订单已成交数量")
+        entry_price = parent.average_fill_price
+        if entry_price is None or entry_price <= 0:
+            raise ValueError("父订单缺少有效成交均价")
+        _validate_exit_prices(parent.side, entry_price, stop_loss_price, take_profit_price)
+        exit_side = OrderSide.SELL if parent.side is OrderSide.BUY else OrderSide.BUY
+        oco_group_id = _id("oms-oco", f"{parent.order_id}:{idempotency_key}")
+        common_metadata = {
+            "oco_group_id": oco_group_id,
+            "entry_side": parent.side.value,
+            "entry_price": entry_price,
+        }
+        stop_loss = self.plan_order(
+            idempotency_key=f"{idempotency_key}:stop-loss",
+            client_order_id=f"{parent.client_order_id}:stop-loss",
+            venue=parent.venue,
+            environment=parent.environment,
+            symbol=parent.symbol,
+            side=exit_side,
+            requested_quantity=exit_quantity,
+            reduce_only=True,
+            parent_order_id=parent.order_id,
+            metadata={**common_metadata, "exit_kind": "stop_loss", "trigger_price": float(stop_loss_price)},
+        )
+        take_profit = self.plan_order(
+            idempotency_key=f"{idempotency_key}:take-profit",
+            client_order_id=f"{parent.client_order_id}:take-profit",
+            venue=parent.venue,
+            environment=parent.environment,
+            symbol=parent.symbol,
+            side=exit_side,
+            requested_quantity=exit_quantity,
+            reduce_only=True,
+            parent_order_id=parent.order_id,
+            metadata={**common_metadata, "exit_kind": "take_profit", "trigger_price": float(take_profit_price)},
+        )
+        return OmsExitPlan(parent.order_id, oco_group_id, stop_loss, take_profit)
+
+    def fill_exit_order(
+        self,
+        order_id: str,
+        *,
+        idempotency_key: str,
+        average_fill_price: float,
+    ) -> OmsOrder:
+        order = self.repository.get(order_id)
+        if order is None:
+            raise KeyError(f"OMS order {order_id} not found")
+        if not order.reduce_only or not order.parent_order_id or not order.metadata.get("oco_group_id"):
+            raise ValueError("只有 OCO reduce-only 退出订单可以使用 fill_exit_order")
+        filled = self.transition(
+            order_id,
+            to_status=OrderStatus.FILLED,
+            idempotency_key=idempotency_key,
+            average_fill_price=average_fill_price,
+            reason="exit_triggered",
+        )
+        for sibling in self.repository.list_child_orders(order.parent_order_id):
+            if (
+                sibling.order_id != order_id
+                and sibling.metadata.get("oco_group_id") == order.metadata.get("oco_group_id")
+                and sibling.status not in TERMINAL_STATUSES
+            ):
+                self.cancel(
+                    sibling.order_id,
+                    idempotency_key=f"{idempotency_key}:cancel-sibling:{sibling.order_id}",
+                    reason="oco_sibling_filled",
+                )
+        return filled
+
 
 def _event(
     order: OmsOrder,
@@ -217,3 +306,19 @@ def _timestamp(value: datetime | None) -> str:
 def _validate_idempotency_key(value: str) -> None:
     if not value or len(value) > 200:
         raise ValueError("idempotency_key 必须为 1 到 200 个字符")
+
+
+def _validate_exit_prices(
+    entry_side: OrderSide,
+    entry_price: float,
+    stop_loss_price: float,
+    take_profit_price: float,
+) -> None:
+    stop_loss = float(stop_loss_price)
+    take_profit = float(take_profit_price)
+    if min(stop_loss, take_profit) <= 0:
+        raise ValueError("止损价和止盈价必须大于 0")
+    if entry_side is OrderSide.BUY and not stop_loss < entry_price < take_profit:
+        raise ValueError("BUY 入场要求 stop_loss < entry_price < take_profit")
+    if entry_side is OrderSide.SELL and not take_profit < entry_price < stop_loss:
+        raise ValueError("SELL 入场要求 take_profit < entry_price < stop_loss")

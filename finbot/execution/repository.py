@@ -95,6 +95,14 @@ class OmsRepository:
             ).fetchall()
         return [_event(row) for row in rows]
 
+    def list_child_orders(self, parent_order_id: str) -> list[OmsOrder]:
+        with self.store.connect() as connection:
+            rows = connection.execute(
+                "select * from oms_orders where parent_order_id = ? order by created_at, order_id",
+                (parent_order_id,),
+            ).fetchall()
+        return [_order(row) for row in rows]
+
     def create(self, order: OmsOrder, event: OmsOrderEvent) -> OmsOrder:
         with self.store.connect() as connection:
             existing = connection.execute(

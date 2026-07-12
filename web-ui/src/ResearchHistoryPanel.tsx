@@ -27,7 +27,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
 import { DecisionList } from './OperationsPanels';
 import { autonomousStepText, decisionReadinessText, durationText, shortId, triggerTypeText } from './humanReadable';
-import type { ResearchHistoryComparison, ResearchHistoryList, ResearchHistoryRunDetail, ResearchHistoryRunSummary } from './types';
+import type { ResearchHistoryComparison, ResearchHistoryList, ResearchHistoryRunDetail, ResearchHistoryRunSummary, ResearchTimelineEvent } from './types';
 import { formatTime, statusColor, statusText } from './utils';
 
 type HistoryView = 'detail' | 'compare';
@@ -232,6 +232,18 @@ function RunDetail({ detail, submitting, canResume, onReplay, onResume }: { deta
         <Button variant="outlined" startIcon={<RestoreIcon />} disabled={submitting || !canResume} onClick={onResume}>从失败处续跑</Button>
       </Stack>
 
+      {detail.timeline.length > 0 && (
+        <>
+          <Divider />
+          <Box data-testid="research-run-timeline">
+            <Typography variant="subtitle1" sx={{ mb: 0.75 }}>全链路时间线</Typography>
+            <Stack spacing={0}>
+              {detail.timeline.map((event) => <TimelineRow key={event.event_id} event={event} />)}
+            </Stack>
+          </Box>
+        </>
+      )}
+
       <Divider />
       <Box>
         <Typography variant="subtitle1" sx={{ mb: 0.75 }}>步骤</Typography>
@@ -254,6 +266,38 @@ function RunDetail({ detail, submitting, canResume, onReplay, onResume }: { deta
       </Box>
     </Stack>
   );
+}
+
+function TimelineRow({ event }: { event: ResearchTimelineEvent }) {
+  return (
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '135px 110px minmax(0, 1fr)' }, gap: { xs: 0.4, sm: 1 }, py: 1, pl: 1.5, borderLeft: '2px solid', borderColor: 'divider', minWidth: 0 }}>
+      <Typography variant="caption" color="text.secondary">{formatTime(event.timestamp)}</Typography>
+      <Chip size="small" variant="outlined" label={timelineStageText(event.stage)} sx={{ justifySelf: 'start' }} />
+      <Box sx={{ minWidth: 0 }}>
+        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>{event.title}</Typography>
+          <Chip size="small" color={statusColor(event.status)} label={statusText(event.status)} />
+        </Stack>
+        {event.detail && <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{event.detail}</Typography>}
+      </Box>
+    </Box>
+  );
+}
+
+function timelineStageText(stage: string): string {
+  const labels: Record<string, string> = {
+    research: '研究',
+    collection: '采集处理',
+    recommendation: '建议',
+    review: '复核',
+    risk: '风险',
+    governance: 'AI 治理',
+    evaluation: '结果评估',
+    execution: '模拟执行',
+    order: '订单',
+    position: '持仓',
+  };
+  return labels[stage] || stage;
 }
 
 function ComparisonView({ comparison }: { comparison: ResearchHistoryComparison }) {

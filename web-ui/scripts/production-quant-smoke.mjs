@@ -26,10 +26,18 @@ page.on('pageerror', (error) => browserProblems.push({ type: 'pageerror', text: 
 
 try {
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
-  await page.getByLabel('用户名', { exact: true }).fill(username);
-  await page.getByLabel('密码', { exact: true }).fill(password);
+  await page.getByTestId('auth-math-question').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => /\d+\s+[+\-x]\s+\d+\s+=\s+\?/.test(
+    document.querySelector('[data-testid="auth-math-question"]')?.textContent || '',
+  ));
+  await page.screenshot({ path: path.join(outputDir, 'auth-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: path.join(outputDir, 'auth-mobile.png'), fullPage: true });
+  await page.setViewportSize({ width: 1536, height: 1024 });
+  await page.locator('input[autocomplete="username"]').fill(username);
+  await page.locator('input[autocomplete="current-password"]').fill(password);
   const mathQuestion = await page.getByTestId('auth-math-question').textContent();
-  await page.getByLabel('验证码答案', { exact: true }).fill(String(solveMathQuestion(mathQuestion || '')));
+  await page.locator('input[inputmode="numeric"]').fill(String(solveMathQuestion(mathQuestion || '')));
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByTestId('nav-quant').waitFor({ state: 'visible', timeout: 15_000 });
   await page.getByTestId('nav-quant').click();

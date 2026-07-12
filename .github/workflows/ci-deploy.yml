@@ -47,6 +47,43 @@ jobs:
           npx tsc -b --clean
           npm run build
           npm audit --audit-level=high
+      - name: Install browser runtime
+        working-directory: web-ui
+        run: npx playwright install --with-deps chromium
+      - name: Single-admin auth and quant component smoke
+        env:
+          FINBOT_URL: http://127.0.0.1:8790
+          FINBOT_AUTH_ENABLED: "true"
+          FINBOT_ADMIN_USERNAME: admin
+          FINBOT_ADMIN_PASSWORD: ci-test-passphrase
+          FINBOT_SESSION_SECRET: ci-session-secret-with-at-least-32-characters
+          FINBOT_AUTH_COOKIE_SECURE: "false"
+          FINBOT_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:8790
+          FINBOT_AUTH_POW_DIFFICULTY_BITS: "16"
+        run: |
+          mkdir -p tmp/ci-auth-smoke
+          python -m finbot.cli.serve_web \
+            --data-dir tmp/ci-auth-smoke/data \
+            --host 127.0.0.1 \
+            --port 8790 \
+            --frontend-dist web-ui/dist > tmp/ci-auth-smoke/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8790/health/ready >/dev/null; then break; fi
+            if [ "$attempt" = 60 ]; then cat tmp/ci-auth-smoke/server.log; exit 1; fi
+            sleep 1
+          done
+          npm --prefix web-ui run smoke:production-quant
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: finbot-browser-smoke
+          path: |
+            output/playwright/
+            tmp/ci-auth-smoke/server.log
+          if-no-files-found: ignore
+          retention-days: 14
 
   build-and-update-gitops:
     needs: verify

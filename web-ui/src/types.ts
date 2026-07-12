@@ -660,7 +660,22 @@ export interface ResearchHistoryRunDetail extends ResearchHistoryRunSummary {
   ai_governance: AIGovernanceReport | Record<string, unknown>;
   evaluations: RecommendationEvaluationReport[];
   paper_executions: Array<Record<string, unknown>>;
+  oms_orders: Array<Record<string, unknown>>;
+  shadow_positions: ShadowPosition[];
+  timeline: ResearchTimelineEvent[];
   replays: Array<Record<string, unknown>>;
+}
+
+export interface ResearchTimelineEvent {
+  event_id: string;
+  timestamp: string;
+  stage: string;
+  event_type: string;
+  status: string;
+  title: string;
+  detail?: string | null;
+  entity_type: string;
+  entity_id?: string | null;
 }
 
 export interface ResearchHistoryList {

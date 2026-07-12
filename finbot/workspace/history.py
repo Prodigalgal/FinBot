@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from finbot.autonomous.worker import AutonomousRequestQueue
+from finbot.execution import OmsRepository
 from finbot.storage.sqlite_store import SQLiteStore
 
 
@@ -80,19 +81,51 @@ class ResearchHistoryService:
             if item["loop_run_id"] == loop_run_id
         ]
         paper_executions = [_paper_execution_payload(item) for item in self.store.list_paper_executions(loop_run_id=loop_run_id)]
+        oms_repository = OmsRepository(self.store)
+        oms_orders = []
+        for order in oms_repository.list_orders(limit=500):
+            if str(order.metadata.get("loop_run_id") or "") != loop_run_id:
+                continue
+            oms_orders.append(
+                {
+                    **order.to_dict(),
+                    "events": [event.to_dict() for event in oms_repository.list_events(order.order_id)],
+                }
+            )
+        shadow_positions = [
+            _shadow_position_payload(item)
+            for item in self.store.list_shadow_positions(limit=2000)
+            if str(item["loop_run_id"]) == loop_run_id
+        ]
         replays = [_replay_payload(item) for item in self.store.list_run_replays(loop_run_id)]
+        decisions_with_reviews = [
+            {**decision, "review": reviews.get(str(decision["decision_id"]), {"status": "pending", "version": 0})}
+            for decision in decisions
+        ]
+        timeline = _build_timeline(
+            summary=summary,
+            steps=steps,
+            pipeline=pipeline,
+            decisions=decisions_with_reviews,
+            risk=risk,
+            governance=governance,
+            evaluations=evaluations,
+            paper_executions=paper_executions,
+            oms_orders=oms_orders,
+            shadow_positions=shadow_positions,
+        )
         return {
             **summary,
             "steps": steps,
             "research_pipeline": pipeline,
-            "decisions": [
-                {**decision, "review": reviews.get(str(decision["decision_id"]), {"status": "pending", "version": 0})}
-                for decision in decisions
-            ],
+            "decisions": decisions_with_reviews,
             "portfolio_risk": risk,
             "ai_governance": governance,
             "evaluations": evaluations,
             "paper_executions": paper_executions,
+            "oms_orders": oms_orders,
+            "shadow_positions": shadow_positions,
+            "timeline": timeline,
             "replays": replays,
         }
 
@@ -241,6 +274,8 @@ def _loop_step_payload(row: Any) -> dict[str, Any]:
         "step_name": row["step_name"],
         "status": row["status"],
         "attempt": row["attempt"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
         "duration_ms": row["duration_ms"],
         "error": row["error"],
     }
@@ -252,6 +287,8 @@ def _pipeline_step_payload(row: Any) -> dict[str, Any]:
         "step_name": row["step_name"],
         "status": row["status"],
         "attempt": row["attempt"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
         "duration_ms": row["duration_ms"],
         "error": row["error"],
     }
@@ -304,6 +341,90 @@ def _replay_payload(row: Any) -> dict[str, Any]:
     payload = dict(row)
     payload["config"] = _loads(payload.pop("config_json", "{}"), {})
     return payload
+
+
+def _shadow_position_payload(row: Any) -> dict[str, Any]:
+    payload = dict(row)
+    payload["metadata"] = _loads(payload.pop("metadata_json", "{}"), {})
+    return payload
+
+
+def _build_timeline(
+    *,
+    summary: dict[str, Any],
+    steps: list[dict[str, Any]],
+    pipeline: dict[str, Any] | None,
+    decisions: list[dict[str, Any]],
+    risk: dict[str, Any],
+    governance: dict[str, Any],
+    evaluations: list[dict[str, Any]],
+    paper_executions: list[dict[str, Any]],
+    oms_orders: list[dict[str, Any]],
+    shadow_positions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    _append_timeline(events, summary.get("started_at"), "research", "run_started", summary.get("run_status"), "研究运行开始", summary.get("trigger_type"), "loop_run", summary.get("loop_run_id"))
+    for step in steps:
+        _append_timeline(events, step.get("finished_at") or step.get("started_at"), "research", "loop_step", step.get("status"), f"研究步骤：{step.get('step_name')}", step.get("error"), "loop_step", step.get("step_id"))
+    for step in (pipeline or {}).get("steps", []):
+        _append_timeline(events, step.get("finished_at") or step.get("started_at"), "collection", "pipeline_step", step.get("status"), f"采集处理：{step.get('step_name')}", step.get("error"), "pipeline_step", step.get("step_id"))
+    for decision in decisions:
+        _append_timeline(events, decision.get("created_at"), "recommendation", "decision", decision.get("status"), f"{decision.get('symbol') or decision.get('normalized_symbol')} · {decision.get('action')}", f"置信度 {decision.get('confidence')}", "decision", decision.get("decision_id"))
+        review = decision.get("review") or {}
+        if review.get("updated_at"):
+            _append_timeline(events, review.get("updated_at"), "review", "decision_review", review.get("status"), "人工复核", review.get("note"), "decision", decision.get("decision_id"))
+    _append_report_event(events, risk, "risk", "portfolio_risk", "组合风险评估")
+    _append_report_event(events, governance, "governance", "ai_governance", "AI 治理评估")
+    for evaluation in evaluations:
+        _append_timeline(events, _first_value(evaluation, "evaluated_at", "created_at", "generated_at"), "evaluation", "recommendation_evaluation", evaluation.get("status"), "建议结果评估", None, "evaluation", evaluation.get("evaluation_run_id"))
+    for execution in paper_executions:
+        _append_timeline(events, _first_value(execution, "updated_at", "created_at"), "execution", "paper_execution", execution.get("status"), f"模拟执行 · {execution.get('adapter_id')}", execution.get("error"), "paper_execution", execution.get("execution_id"))
+    for order in oms_orders:
+        for event in order.get("events", []):
+            _append_timeline(events, event.get("occurred_at"), "order", "oms_order_event", event.get("to_status"), f"订单 · {event.get('event_type')}", event.get("reason"), "oms_order", order.get("order_id"))
+    for position in shadow_positions:
+        _append_timeline(events, position.get("opened_at"), "position", "position_opened", position.get("status"), f"影子持仓开启 · {position.get('symbol')}", position.get("side"), "shadow_position", position.get("position_id"))
+        if position.get("closed_at"):
+            _append_timeline(events, position.get("closed_at"), "position", "position_closed", position.get("status"), f"影子持仓关闭 · {position.get('symbol')}", None, "shadow_position", position.get("position_id"))
+    _append_timeline(events, summary.get("finished_at"), "research", "run_finished", summary.get("run_status"), "研究运行结束", summary.get("error"), "loop_run", summary.get("loop_run_id"))
+    return sorted(events, key=lambda item: (str(item["timestamp"]), str(item["event_id"])))
+
+
+def _append_report_event(events: list[dict[str, Any]], report: dict[str, Any], stage: str, event_type: str, title: str) -> None:
+    _append_timeline(events, _first_value(report, "generated_at", "created_at", "updated_at"), stage, event_type, report.get("status"), title, None, event_type, report.get("report_id"))
+
+
+def _append_timeline(
+    events: list[dict[str, Any]],
+    timestamp: Any,
+    stage: str,
+    event_type: str,
+    status: Any,
+    title: str,
+    detail: Any,
+    entity_type: str,
+    entity_id: Any,
+) -> None:
+    if not timestamp:
+        return
+    event_id = _stable_id("timeline", event_type, entity_id, timestamp)
+    events.append(
+        {
+            "event_id": event_id,
+            "timestamp": str(timestamp),
+            "stage": stage,
+            "event_type": event_type,
+            "status": str(status or "unknown"),
+            "title": title,
+            "detail": str(detail) if detail is not None and detail != "" else None,
+            "entity_type": entity_type,
+            "entity_id": str(entity_id) if entity_id is not None else None,
+        }
+    )
+
+
+def _first_value(payload: dict[str, Any], *keys: str) -> Any:
+    return next((payload.get(key) for key in keys if payload.get(key)), None)
 
 
 def _decision_key(item: dict[str, Any]) -> str:

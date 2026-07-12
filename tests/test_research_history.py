@@ -18,11 +18,19 @@ class ResearchHistoryTests(unittest.TestCase):
             service = ResearchHistoryService(store)
 
             history = service.list_runs()
+            detail = service.get_run("loop-a")
             comparison = service.compare_runs("loop-a", "loop-b")
             replay = service.replay_run("loop-a")
 
         self.assertEqual(history["count"], 2)
         self.assertEqual(history["items"][0]["loop_run_id"], "loop-b")
+        self.assertTrue({"run_started", "decision", "run_finished"}.issubset({item["event_type"] for item in detail["timeline"]}))
+        self.assertEqual(
+            [item["timestamp"] for item in detail["timeline"]],
+            sorted(item["timestamp"] for item in detail["timeline"]),
+        )
+        self.assertEqual(detail["oms_orders"], [])
+        self.assertEqual(detail["shadow_positions"], [])
         self.assertTrue(any(item["changed"] for item in comparison["decision_changes"]))
         self.assertEqual(replay["request"]["trigger_type"], "replay")
         self.assertEqual(replay["replay"]["source_loop_run_id"], "loop-a")
