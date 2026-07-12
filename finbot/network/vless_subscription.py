@@ -44,6 +44,7 @@ class VlessNode:
 class VlessSubscription:
     source: str
     nodes: tuple[VlessNode, ...]
+    invalid_node_count: int = 0
 
     def summary(self) -> dict[str, Any]:
         ports: dict[str, int] = {}
@@ -56,6 +57,7 @@ class VlessSubscription:
         return {
             "source": self.source,
             "node_count": len(self.nodes),
+            "invalid_node_count": self.invalid_node_count,
             "ports": ports,
             "transports": transports,
             "securities": securities,
@@ -65,12 +67,20 @@ class VlessSubscription:
 
 def load_vless_subscription(url: str | None = None, file: str | None = None, timeout_seconds: float = 20.0) -> VlessSubscription:
     if url:
+        _validate_subscription_url(url)
         request = urllib.request.Request(url, headers={"User-Agent": "FinBot proxy subscription loader"})
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            raw = response.read().decode("utf-8", errors="replace")
+        opener = urllib.request.build_opener(_SecureRedirectHandler())
+        with opener.open(request, timeout=timeout_seconds) as response:
+            _validate_subscription_url(response.geturl())
+            payload = response.read(5_000_001)
+        if len(payload) > 5_000_000:
+            raise ValueError("VLESS subscription exceeds 5 MB limit")
+        raw = payload.decode("utf-8", errors="replace")
         return parse_vless_subscription(raw, source=_redact_url(url))
     if file:
         path = Path(file)
+        if path.stat().st_size > 5_000_000:
+            raise ValueError("VLESS subscription exceeds 5 MB limit")
         raw = path.read_text(encoding="utf-8")
         return parse_vless_subscription(raw, source=str(path))
     return VlessSubscription(source="empty", nodes=())
@@ -78,13 +88,35 @@ def load_vless_subscription(url: str | None = None, file: str | None = None, tim
 
 def parse_vless_subscription(raw: str, source: str = "inline") -> VlessSubscription:
     decoded = _decode_subscription(raw)
-    nodes = []
+    nodes: list[VlessNode] = []
+    seen: set[tuple[object, ...]] = set()
+    invalid_node_count = 0
     for line in decoded.splitlines():
         clean = line.strip()
         if not clean or not clean.startswith("vless://"):
             continue
-        nodes.append(parse_vless_link(clean))
-    return VlessSubscription(source=source, nodes=tuple(nodes))
+        try:
+            node = parse_vless_link(clean)
+        except (TypeError, ValueError):
+            invalid_node_count += 1
+            continue
+        identity = (
+            node.uuid,
+            node.address,
+            node.port,
+            node.security,
+            node.transport,
+            node.host,
+            node.sni,
+            node.path,
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        nodes.append(node)
+        if len(nodes) > 10_000:
+            raise ValueError("VLESS subscription exceeds 10000 unique nodes")
+    return VlessSubscription(source=source, nodes=tuple(nodes), invalid_node_count=invalid_node_count)
 
 
 def prioritize_vless_nodes(
@@ -110,7 +142,11 @@ def prioritize_vless_nodes(
             ),
         )
     )
-    return VlessSubscription(source=subscription.source, nodes=ordered_nodes)
+    return VlessSubscription(
+        source=subscription.source,
+        nodes=ordered_nodes,
+        invalid_node_count=subscription.invalid_node_count,
+    )
 
 
 def parse_vless_link(link: str) -> VlessNode:
@@ -171,3 +207,18 @@ def _redact_url(url: str) -> str:
         query_items.append(f"{key}=<redacted>" if key.lower() in {"token", "uuid", "key"} else item)
     query = "&".join(query_items)
     return parsed._replace(query=query).geturl()
+
+
+def _validate_subscription_url(url: str) -> None:
+    parsed = urlsplit(url)
+    if parsed.scheme == "https" and parsed.hostname:
+        return
+    if parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost", "::1"}:
+        return
+    raise ValueError("VLESS subscription URL must use HTTPS")
+
+
+class _SecureRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _validate_subscription_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)

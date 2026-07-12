@@ -560,24 +560,27 @@ class ResearchPipelineRunner:
 
         results: list[AdapterResult] = []
         followups_executed = 0
-        while queue:
-            source, job, is_followup = queue.popleft()
-            self.store.upsert_fetch_job(job, status="running", detail="pipeline ingestion running")
-            result = await dispatcher.dispatch_job(source, job, force_disabled=config.force_disabled)
-            results.append(result)
-            if result.evidence:
-                self.store.insert_evidence(result.evidence)
-            self.store.insert_fetch_run(job, result)
-            self.store.upsert_health(result)
+        try:
+            while queue:
+                source, job, is_followup = queue.popleft()
+                self.store.upsert_fetch_job(job, status="running", detail="pipeline ingestion running")
+                result = await dispatcher.dispatch_job(source, job, force_disabled=config.force_disabled)
+                results.append(result)
+                if result.evidence:
+                    self.store.insert_evidence(result.evidence)
+                self.store.insert_fetch_run(job, result)
+                self.store.upsert_health(result)
 
-            if is_followup:
-                continue
-            for next_job in result.discovered_jobs[: config.max_ingestion_followups_per_result]:
-                if followups_executed >= config.max_ingestion_followup_jobs:
-                    break
-                next_source = source_map.get(next_job.source_id, source)
-                queue.append((next_source, next_job, True))
-                followups_executed += 1
+                if is_followup:
+                    continue
+                for next_job in result.discovered_jobs[: config.max_ingestion_followups_per_result]:
+                    if followups_executed >= config.max_ingestion_followup_jobs:
+                        break
+                    next_source = source_map.get(next_job.source_id, source)
+                    queue.append((next_source, next_job, True))
+                    followups_executed += 1
+        finally:
+            dispatcher.close()
 
         return {
             "total_runs": len(results),
@@ -710,18 +713,21 @@ class ResearchPipelineRunner:
             timeout_seconds=config.timeout_seconds,
         )
         dry_run = config.followups_dry_run or not config.run_followups
-        return await runner.run(
-            max_jobs=config.followup_max_jobs,
-            max_discovered_jobs=config.followup_max_discovered_jobs,
-            max_discovered_per_result=config.followup_max_discovered_per_result,
-            dry_run=dry_run,
-            force_disabled=config.force_disabled,
-            rebuild_after_run=config.rebuild_after_followups and not dry_run,
-            rebuild_time_window=config.phase3_time_window,
-            rebuild_limit_events=config.max_events,
-            include_watch_only=config.include_watch_only,
-            pipeline_run_id=run_id,
-        )
+        try:
+            return await runner.run(
+                max_jobs=config.followup_max_jobs,
+                max_discovered_jobs=config.followup_max_discovered_jobs,
+                max_discovered_per_result=config.followup_max_discovered_per_result,
+                dry_run=dry_run,
+                force_disabled=config.force_disabled,
+                rebuild_after_run=config.rebuild_after_followups and not dry_run,
+                rebuild_time_window=config.phase3_time_window,
+                rebuild_limit_events=config.max_events,
+                include_watch_only=config.include_watch_only,
+                pipeline_run_id=run_id,
+            )
+        finally:
+            runner.close()
 
     async def _step_build_phase4_brief(self, config: ResearchPipelineConfig, run_id: str) -> dict[str, Any]:
         return ResearchBriefBuilder(self.store).build(

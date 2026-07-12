@@ -216,7 +216,7 @@ class PublicExchangeMarketDataClient:
         raise RuntimeError(f"{provider} market data request has no available host: {url}")
 
     async def _get_json_routed(self, provider: str, url: str, weight: int = 1) -> Any:
-        route_decisions = self.proxy_router.candidate_decisions(f"exchange:{provider}", url, attempts=1)
+        route_decisions = self.proxy_router.candidate_decisions(f"exchange:{provider}", url)
         last_error: Exception | None = None
         for index, proxy_decision in enumerate(route_decisions):
             if not proxy_decision.ok:
@@ -230,6 +230,11 @@ class PublicExchangeMarketDataClient:
                 if _should_try_next_route(exc, proxy_decision, route_decisions[index + 1 :]):
                     continue
                 raise
+            except httpx.HTTPError as exc:
+                last_error = exc
+                if any(decision.ok for decision in route_decisions[index + 1 :]):
+                    continue
+                raise
         if last_error:
             raise last_error
         raise RuntimeError(f"{provider} market data request has no available proxy route: {url}")
@@ -237,6 +242,7 @@ class PublicExchangeMarketDataClient:
     async def _get_json_with_decision(self, provider: str, url: str, weight: int, proxy_decision: ProxyRouteDecision) -> Any:
         attempts = self.max_retries + 1
         last_error: Exception | None = None
+        route_name = f"exchange:{provider}"
         for attempt in range(1, attempts + 1):
             wait_seconds = await self._limiter.acquire(provider, weight)
             try:
@@ -258,11 +264,14 @@ class PublicExchangeMarketDataClient:
                         self._limiter.cool_down(provider)
                     raise provider_block
                 if response.status_code in RETRYABLE_STATUS_CODES and attempt < attempts:
+                    self.proxy_router.report_failure(route_name, proxy_decision.proxy, f"http-{response.status_code}")
                     await self._sleep_before_retry(attempt)
                     continue
                 response.raise_for_status()
+                self.proxy_router.report_success(route_name, proxy_decision.proxy)
                 return response.json() if response.text else {}
             except httpx.HTTPError as exc:
+                self.proxy_router.report_failure(route_name, proxy_decision.proxy, type(exc).__name__)
                 last_error = exc
                 if isinstance(exc, RETRYABLE_REQUEST_ERRORS):
                     self._request_observations.append(_request_error_observation(provider, url, weight, wait_seconds, exc, attempt, proxy_decision))
@@ -676,7 +685,7 @@ def _should_try_next_route(
         return False
     if exc.category not in {"provider-geo-blocked", "provider-access-blocked"}:
         return False
-    return any(decision.ok and decision.proxy is None for decision in remaining_decisions)
+    return any(decision.ok for decision in remaining_decisions)
 
 
 def _compact_error_text(value: str) -> str:

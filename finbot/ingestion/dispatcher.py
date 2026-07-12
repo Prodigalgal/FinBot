@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from finbot.config.settings import Settings
 from finbot.config.topic_watchlist import TopicWatchlists
+from finbot.ingestion.adapters.base import BaseAdapter
 from finbot.ingestion.adapters.email_subscription import EmailSubscriptionAdapter
 from finbot.ingestion.adapters.exchange_public_api import ExchangePublicAPIAdapter
 from finbot.ingestion.adapters.firecrawl import FirecrawlAdapter
@@ -19,6 +20,8 @@ class Dispatcher:
         self.evidence_store = evidence_store
         self.topic_watchlists = topic_watchlists
         self.timeout_seconds = timeout_seconds
+        self._adapters: dict[str, BaseAdapter] = {}
+        self._closed = False
 
     async def dispatch(self, source: SourceConfig, force_disabled: bool = False) -> AdapterResult:
         if not source.enabled and not force_disabled:
@@ -48,25 +51,64 @@ class Dispatcher:
             max_scrape_targets=source.max_scrape_targets,
         )
 
-    def _adapter_for(self, source: SourceConfig, job: FetchJob | None = None):
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        adapters = list(self._adapters.values())
+        self._adapters.clear()
+        errors: list[Exception] = []
+        for adapter in adapters:
+            close = getattr(adapter, "close", None)
+            if not callable(close):
+                continue
+            try:
+                close()
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            raise RuntimeError(f"Failed to close {len(errors)} ingestion adapter(s)") from errors[0]
+
+    def __enter__(self) -> "Dispatcher":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def _adapter_for(self, source: SourceConfig, job: FetchJob | None = None) -> BaseAdapter | None:
+        if self._closed:
+            raise RuntimeError("Dispatcher is closed")
         kwargs = {
             "settings": self.settings,
             "evidence_store": self.evidence_store,
             "timeout_seconds": self.timeout_seconds,
         }
         effective_mode = job.job_type if job and job.job_type in {"firecrawl_scrape", "firecrawl_search", "firecrawl_search_then_scrape"} else source.mode
+        adapter_key = "firecrawl" if effective_mode in {"firecrawl_scrape", "firecrawl_search", "firecrawl_search_then_scrape"} else effective_mode
+        cached = self._adapters.get(adapter_key)
+        if cached is not None:
+            return cached
         if effective_mode == "exchange_public_api":
-            return ExchangePublicAPIAdapter(**kwargs)
-        if effective_mode == "structured_api":
-            return StructuredAPIAdapter(**kwargs)
-        if effective_mode in {"rss", "rss_then_firecrawl_scrape"}:
-            return RSSAdapter(**kwargs)
-        if effective_mode in {"firecrawl_scrape", "firecrawl_search", "firecrawl_search_then_scrape"}:
-            return FirecrawlAdapter(**kwargs, topic_watchlists=self.topic_watchlists)
-        if effective_mode == "provider_api":
-            return ProviderAPIAdapter(**kwargs)
-        if effective_mode == "email_subscription_then_firecrawl_scrape":
-            return EmailSubscriptionAdapter(**kwargs)
-        if effective_mode == "social_fetch":
-            return SocialAdapter(**kwargs)
-        return None
+            adapter = ExchangePublicAPIAdapter(**kwargs)
+        elif effective_mode == "structured_api":
+            adapter = StructuredAPIAdapter(**kwargs)
+        elif effective_mode in {"rss", "rss_then_firecrawl_scrape"}:
+            adapter = RSSAdapter(**kwargs)
+        elif effective_mode in {"firecrawl_scrape", "firecrawl_search", "firecrawl_search_then_scrape"}:
+            adapter = FirecrawlAdapter(**kwargs, topic_watchlists=self.topic_watchlists)
+        elif effective_mode == "provider_api":
+            adapter = ProviderAPIAdapter(**kwargs)
+        elif effective_mode == "email_subscription_then_firecrawl_scrape":
+            adapter = EmailSubscriptionAdapter(**kwargs)
+        elif effective_mode == "social_fetch":
+            adapter = SocialAdapter(**kwargs)
+        else:
+            return None
+        self._adapters[adapter_key] = adapter
+        return adapter

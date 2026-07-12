@@ -168,20 +168,26 @@ class FirecrawlAdapter(BaseAdapter):
                 async with httpx.AsyncClient(**kwargs) as client:
                     response = await client.post(endpoint, json=body)
                 if response.status_code in {407, 429, 502, 503, 504} and self.proxy_router.has_proxy("firecrawl"):
+                    self.proxy_router.report_failure("firecrawl", proxy, f"http-{response.status_code}")
                     last_error = RuntimeError(f"proxy candidate returned HTTP {response.status_code}: {proxy_decision.proxy_redacted}")
                     continue
+                self.proxy_router.report_success("firecrawl", proxy)
                 return response, proxy_decision
             except Exception as exc:
                 if proxy and proxy.lower().startswith("socks"):
                     try:
                         response = await self._post_firecrawl_with_curl(endpoint, body, headers, proxy)
                         if response.status_code in {407, 429, 502, 503, 504} and self.proxy_router.has_proxy("firecrawl"):
+                            self.proxy_router.report_failure("firecrawl", proxy, f"curl-http-{response.status_code}")
                             last_error = RuntimeError(f"curl proxy candidate returned HTTP {response.status_code}: {proxy_decision.proxy_redacted}")
                             continue
+                        self.proxy_router.report_success("firecrawl", proxy)
                         return response, proxy_decision
                     except Exception as curl_exc:
+                        self.proxy_router.report_failure("firecrawl", proxy, type(curl_exc).__name__)
                         last_error = curl_exc
                         continue
+                self.proxy_router.report_failure("firecrawl", proxy, type(exc).__name__)
                 last_error = exc
                 continue
         raise RuntimeError(f"all Firecrawl proxy candidates failed: {last_error!r}")

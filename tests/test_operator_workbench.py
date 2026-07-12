@@ -361,7 +361,7 @@ class OperatorWorkbenchTests(unittest.TestCase):
         self.assertIn("not allowed", decision.reason or "")
         self.assertIn("<redacted>", decision.proxy_redacted)
 
-    def test_firecrawl_route_rejects_ipv4_proxy_pool(self) -> None:
+    def test_firecrawl_route_accepts_ipv4_and_rejects_ipv6_pool(self) -> None:
         router = ProxyRouter.from_pools(
             firecrawl_pool=ProxyPool(["http://proxy.example:8080"], include_direct=False),
             firecrawl_proxy_ip_family="ipv4",
@@ -369,9 +369,16 @@ class OperatorWorkbenchTests(unittest.TestCase):
 
         decision = router.decide("firecrawl", "https://api.firecrawl.dev/v2/search")
 
-        self.assertFalse(decision.ok)
-        self.assertEqual(decision.status, "blocked-by-proxy")
-        self.assertIn("not allowed", decision.reason or "")
+        self.assertTrue(decision.ok)
+
+        ipv6_router = ProxyRouter.from_pools(
+            firecrawl_pool=ProxyPool(["http://proxy.example:8080"], include_direct=False),
+            firecrawl_proxy_ip_family="ipv6",
+        )
+        blocked = ipv6_router.decide("firecrawl", "https://api.firecrawl.dev/v2/search")
+        self.assertFalse(blocked.ok)
+        self.assertEqual(blocked.status, "blocked-by-proxy")
+        self.assertIn("not allowed", blocked.reason or "")
 
     def test_provider_geo_block_does_not_fallback_to_direct_by_default(self) -> None:
         BybitGeoBlockedThenDirectAsyncClient.calls = []
@@ -478,6 +485,17 @@ class OperatorWorkbenchTests(unittest.TestCase):
 
         self.assertEqual([node.name for node in prioritized.nodes], ["preferred", "first", "third"])
         self.assertEqual(prioritized.source, "inline")
+
+    def test_vless_subscription_skips_invalid_and_duplicate_nodes(self) -> None:
+        valid = "vless://00000000-0000-4000-8000-000000000001@104.16.0.1:443?security=tls&type=ws#first"
+        subscription = parse_vless_subscription(
+            "\n".join((valid, "vless://missing-host", valid)),
+            source="inline",
+        )
+
+        self.assertEqual(len(subscription.nodes), 1)
+        self.assertEqual(subscription.invalid_node_count, 1)
+        self.assertEqual(subscription.summary()["invalid_node_count"], 1)
 
 
 if __name__ == "__main__":

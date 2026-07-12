@@ -1,13 +1,13 @@
 # 当前任务
 
-## S2：Firecrawl IPv6 / Bybit IPv4 代理池隔离
+## S2：Firecrawl IPv4 订阅池与代理抽象加固
 
-- 目标：Firecrawl keyless 只通过 IPv6 出口代理池访问；Bybit 公共行情与 Demo 私有 API 只通过 IPv4 交易所代理池访问。
-- 范围：代理路由契约、K8S 双代理 Deployment/Service/NetworkPolicy、运行时默认配置、单元测试与生产连通性验证。
-- 非目标：不修改 Gate/Bybit API 凭据，不开放 direct fallback，不改变模拟下单开关，不引入第三方付费代理服务。
-- 影响文件：`finbot/config/`、`finbot/network/`、`deploy/k8s/`、`tests/`、`.env.example`。
-- 验收标准：Firecrawl IPv4 配置被路由层拒绝；Bybit IPv6 配置被拒绝；集群内 Firecrawl 出口显示 IPv6、Bybit 出口显示 IPv4，两个目标 API 均可达。
-- 测试方式：代理路由单测、全量 Python 测试、前端构建、Kustomize dry-run、ArgoCD 同步与 Pod 内 HTTP smoke。
+- 目标：Firecrawl keyless 使用独立 IPv4 VLESS 订阅池；Bybit 保持现有 IPv4 交易所代理；代理候选具备健康反馈、冷却和脱敏观测。
+- 范围：VLESS Subscription Source、sing-box Protocol Bridge、health-aware ProxyPool、ProxyRouter、Firecrawl/交易所 consumer、K8S Secret 与生产镜像。
+- 非目标：不把订阅 token 或节点 UUID 写入仓库，不开放 direct fallback，不修改 Gate/Bybit 凭据和模拟下单开关。
+- 影响文件：`finbot/config/`、`finbot/network/`、`finbot/ingestion/`、`finbot/market/`、`deploy/k8s/`、`Dockerfile`、`tests/`。
+- 验收标准：订阅可解析并去重；Linux 镜像包含校验过的 sing-box；坏节点进入指数冷却；Firecrawl keyless 真实请求通过订阅节点成功；Bybit 仍走独立 IPv4 出口。
+- 测试方式：代理/订阅/bridge 单测、全量 Python 测试、前端构建、镜像与 Kustomize dry-run、CI、ArgoCD、Pod 内出口与 API smoke。
 
 ## S2：全局标题与操作动线优化
 

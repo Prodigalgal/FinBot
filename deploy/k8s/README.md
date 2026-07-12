@@ -6,8 +6,9 @@
 - `replicas` 必须保持 `1`，更新策略必须保持 `Recreate`。在迁移 PostgreSQL 前，不允许横向扩 Pod。
 - `/app` 是只读镜像内容；`/var/lib/finbot` 保存 SQLite、报告、运行时配置和 AI Workflow 配置。
 - `paper_execution.submit_orders` 首次启动固定为 `false`；真实盘 host 与 Mainnet 私有 API 仍由代码硬禁止。
-- K8S 不在 FinBot Pod 内启动本地 VLESS bridge。Firecrawl keyless 固定通过 `finbot-firecrawl-proxy` 的 IPv6 出口；Gate/Bybit 固定通过 `finbot-egress-proxy` 的 IPv4 出口。两个代理都调度到带有 `infra.mnnu/location=sg` 标签的新加坡节点，FinBot Pod 本身不绑定节点。
-- 两个代理只接受同 namespace、标签为 `app.kubernetes.io/name=finbot` 的 Pod 访问，只开放 HTTPS `CONNECT:443`，不能作为通用集群出口。代理启动时会从双栈 PodIP 中选择并绑定指定地址族；缺少对应 PodIP 时直接启动失败，不允许静默降级。
+- Firecrawl keyless 从 Secret 读取 `FIRECRAWL_VLESS_SUBSCRIPTION_URL`，由应用内 sing-box bridge 将订阅节点转换为本地 HTTP 代理池；候选失败后进入指数冷却，禁止 direct fallback。订阅 URL、token、节点 UUID 和临时 sing-box 配置都不进入 GitOps。
+- Gate/Bybit 固定通过 `finbot-egress-proxy` 的 IPv4 出口。该代理调度到带有 `infra.mnnu/location=sg` 标签的新加坡节点，只接受同 namespace 的 FinBot Pod 访问，并且只开放 HTTPS `CONNECT:443`。
+- Firecrawl 与交易所使用独立 ProxyPool、路由策略和 bridge 生命周期；任一代理池不可用时只影响对应 provider，不允许跨池借道。
 
 ## 准备镜像
 
@@ -57,24 +58,22 @@ kubectl get nodes -l infra.mnnu/location=sg -o wide
 kubectl apply -k deploy/k8s/oracle
 kubectl -n finbot rollout status deployment/finbot --timeout=5m
 kubectl -n finbot rollout status deployment/finbot-egress-proxy --timeout=3m
-kubectl -n finbot rollout status deployment/finbot-firecrawl-proxy --timeout=3m
 kubectl -n finbot get pod,svc,pvc
 kubectl -n finbot get pod -l app.kubernetes.io/name=finbot-egress-proxy -o wide
 kubectl -n finbot logs deployment/finbot -c web --tail=100
 kubectl -n finbot logs deployment/finbot -c worker --tail=100
 kubectl -n finbot logs deployment/finbot-egress-proxy --tail=100
-kubectl -n finbot logs deployment/finbot-firecrawl-proxy --tail=100
 kubectl -n finbot port-forward service/finbot-web 8780:8780
 curl -fsS http://127.0.0.1:8780/health
 curl -fsS http://127.0.0.1:8780/api/v1/autonomous/status
 ```
 
-部署前确认目标节点标签和公网出口；当前基线要求该节点位于新加坡，Firecrawl 出口为 IPv6、交易所出口为 IPv4，且 Firecrawl/Bybit Demo 均可达：
+部署前确认交易所出口节点位于新加坡、Firecrawl 订阅已通过 Secret 注入，并分别执行订阅 bridge 与 Bybit smoke：
 
 ```bash
 kubectl get nodes -l infra.mnnu/location=sg -o wide
-kubectl -n finbot exec deployment/finbot -c worker -- python -c \
-  'import httpx; f="http://finbot-firecrawl-proxy:8888"; e="http://finbot-egress-proxy:8888"; print(httpx.get("https://api64.ipify.org", proxy=f, timeout=15).text); print(httpx.get("https://api64.ipify.org", proxy=e, timeout=15).text); print(httpx.get("https://api.firecrawl.dev", proxy=f, timeout=15).status_code); print(httpx.get("https://api-demo.bybit.com/v5/market/time", proxy=e, timeout=15).status_code)'
+kubectl -n finbot exec deployment/finbot -c worker -- \
+  python -m finbot.cli.proxy_diagnostics --data-dir /var/lib/finbot/data --smoke
 ```
 
 若固定出口节点不可用，代理 Pod 会保持 `Pending` 或失去 Ready，交易所请求会显式失败；不要临时绕到未验证地区的公网出口。`runtime_config.json` 首次生成后保存在 PVC 中，修改 bootstrap 不会覆盖已有配置，升级时需通过系统设置或受控迁移同步 `exchange.proxy_pool`。

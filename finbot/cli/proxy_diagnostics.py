@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 from pathlib import Path
+
+import httpx
 
 from finbot.config.settings import Settings
 from finbot.network.proxy_runtime import ProxyRuntime
@@ -45,35 +46,27 @@ def main() -> None:
             decision = runtime.router.decide(route, url)
             row = {"route": route, "url": url, "decision": decision.to_dict()}
             if args.smoke and decision.ok and decision.proxy:
-                row["smoke"] = _curl_smoke(decision.proxy, url)
+                row["smoke"] = _http_smoke(decision.proxy, url)
             payload["targets"].append(row)
         print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
     finally:
         runtime.close()
 
 
-def _curl_smoke(proxy: str, url: str) -> dict:
-    proc = subprocess.run(
-        [
-            "curl.exe",
-            "--proxy",
-            proxy,
-            "--connect-timeout",
-            "8",
-            "--max-time",
-            "20",
-            "-sS",
-            "-w",
-            "\nHTTP=%{http_code} TIME=%{time_total}\n",
-            url,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    return {
-        "returncode": proc.returncode,
-        "lines": (proc.stdout + proc.stderr).splitlines()[:6],
-    }
+def _http_smoke(proxy: str, url: str) -> dict:
+    try:
+        with httpx.Client(proxy=proxy, timeout=20, follow_redirects=False) as client:
+            response = client.get(url)
+        return {
+            "status": "reachable",
+            "http_status": response.status_code,
+            "http_version": response.http_version,
+        }
+    except httpx.HTTPError as exc:
+        return {
+            "status": "failed",
+            "error_type": type(exc).__name__,
+        }
 
 
 if __name__ == "__main__":

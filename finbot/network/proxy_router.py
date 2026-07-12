@@ -105,7 +105,7 @@ class ProxyRouter:
         cls,
         firecrawl_pool: ProxyPool | None = None,
         exchange_pool: ProxyPool | None = None,
-        firecrawl_proxy_ip_family: str = "ipv6",
+        firecrawl_proxy_ip_family: str = "ipv4",
         firecrawl_dns_mode: str = "remote",
         exchange_proxy_ip_family: str = "ipv4",
         exchange_dns_mode: str = "remote",
@@ -119,10 +119,10 @@ class ProxyRouter:
                         route="firecrawl",
                         require_proxy=True,
                         allow_direct=False,
-                        proxy_ip_family=_clean_family(firecrawl_proxy_ip_family, "ipv6"),
+                        proxy_ip_family=_clean_family(firecrawl_proxy_ip_family, "ipv4"),
                         dns_mode=_clean_dns_mode(firecrawl_dns_mode),
-                        allowed_ip_families=("ipv6",),
-                        description="Firecrawl keyless must use an IPv6 proxy pool and never fall back to direct.",
+                        allowed_ip_families=("ipv4", "dualstack"),
+                        description="Firecrawl keyless must use the configured IPv4-capable proxy pool and never fall back to direct.",
                     ),
                     pool=firecrawl_pool or ProxyPool([], include_direct=False),
                 ),
@@ -183,6 +183,12 @@ class ProxyRouter:
     def redacted(self, proxy: str | None, route: str = "firecrawl") -> str:
         return self._route_config(route).pool.redacted(proxy)
 
+    def report_success(self, route: str, proxy: str | None) -> None:
+        self._route_config(route).pool.report_success(proxy)
+
+    def report_failure(self, route: str, proxy: str | None, error_type: str) -> None:
+        self._route_config(route).pool.report_failure(proxy, error_type)
+
     def decide(self, route: str, target_url: str) -> ProxyRouteDecision:
         decisions = self.candidate_decisions(route, target_url, attempts=1)
         return decisions[0]
@@ -211,6 +217,7 @@ class ProxyRouter:
                 "policy": config.policy.to_dict(),
                 "proxy_pool_size": config.pool.size,
                 "proxies": [config.pool.redacted(proxy) for proxy in config.pool.proxies],
+                "health": config.pool.health_summary(),
                 "overrides": config.overrides or {},
             }
             for route, config in self._routes.items()

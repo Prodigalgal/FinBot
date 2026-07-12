@@ -42,7 +42,11 @@ class SingBoxBridgeManager:
             raise FileNotFoundError(f"sing-box binary not found: {binary}")
         self.config.work_dir.mkdir(parents=True, exist_ok=True)
         supported = [node for node in self.nodes if _supported(node)]
-        for index, node in enumerate(supported[: max(0, self.config.max_nodes)]):
+        target_count = max(0, self.config.max_nodes)
+        startup_candidate_limit = min(len(supported), max(target_count, target_count * 3))
+        for index, node in enumerate(supported[:startup_candidate_limit]):
+            if len(self._proxy_urls) >= target_count:
+                break
             port = _free_port(self.config.bind_host)
             protocol = "hysteria2" if isinstance(node, Hysteria2Node) else "vless"
             config_path = self.config.work_dir / f"sing-box-{protocol}-{index}-{port}.json"
@@ -52,6 +56,7 @@ class SingBoxBridgeManager:
                     json.dumps(_sing_box_config(node, self.config.bind_host, port), ensure_ascii=False, indent=2),
                     encoding="utf-8",
                 )
+                config_path.chmod(0o600)
                 self._check_config(binary, config_path)
                 process = self._start_process(binary, config_path)
                 _wait_port(self.config.bind_host, port, self.config.startup_timeout_seconds)

@@ -33,17 +33,20 @@ async def run() -> int:
         topics_path=args.topics,
         timeout_seconds=args.timeout_seconds,
     )
-    report = await runner.run(
-        max_jobs=args.max_jobs,
-        max_discovered_jobs=args.max_discovered_jobs,
-        max_discovered_per_result=args.max_discovered_per_result,
-        dry_run=args.dry_run,
-        force_disabled=args.force_disabled,
-        rebuild_after_run=args.rebuild_after_run,
-        rebuild_time_window=args.rebuild_time_window,
-        rebuild_limit_events=args.rebuild_limit_events,
-        include_watch_only=args.include_watch_only,
-    )
+    try:
+        report = await runner.run(
+            max_jobs=args.max_jobs,
+            max_discovered_jobs=args.max_discovered_jobs,
+            max_discovered_per_result=args.max_discovered_per_result,
+            dry_run=args.dry_run,
+            force_disabled=args.force_disabled,
+            rebuild_after_run=args.rebuild_after_run,
+            rebuild_time_window=args.rebuild_time_window,
+            rebuild_limit_events=args.rebuild_limit_events,
+            include_watch_only=args.include_watch_only,
+        )
+    finally:
+        runner.close()
     output = write_report(settings, "run-research-followups-report.json", report)
     print("Dry run:", report["dry_run"])
     if report["dry_run"]:

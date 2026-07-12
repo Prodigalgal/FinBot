@@ -62,25 +62,28 @@ async def run() -> int:
 
     results: list[AdapterResult] = []
     followups_executed = 0
-    while queue:
-        source, job, is_followup = queue.popleft()
-        store.upsert_fetch_job(job, status="running", detail="scheduled")
-        result = await dispatcher.dispatch_job(source, job, force_disabled=args.force_disabled)
-        results.append(result)
-        if result.evidence:
-            store.insert_evidence(result.evidence)
-        store.insert_fetch_run(job, result)
-        store.upsert_health(result)
-        print(f"{source.id:38} {job.job_type:28} {result.status:24} {result.detail}")
+    try:
+        while queue:
+            source, job, is_followup = queue.popleft()
+            store.upsert_fetch_job(job, status="running", detail="scheduled")
+            result = await dispatcher.dispatch_job(source, job, force_disabled=args.force_disabled)
+            results.append(result)
+            if result.evidence:
+                store.insert_evidence(result.evidence)
+            store.insert_fetch_run(job, result)
+            store.upsert_health(result)
+            print(f"{source.id:38} {job.job_type:28} {result.status:24} {result.detail}")
 
-        if is_followup:
-            continue
-        for next_job in result.discovered_jobs[: args.max_followups_per_result]:
-            if followups_executed >= args.max_followup_jobs:
-                break
-            next_source = source_map.get(next_job.source_id, source)
-            queue.append((next_source, next_job, True))
-            followups_executed += 1
+            if is_followup:
+                continue
+            for next_job in result.discovered_jobs[: args.max_followups_per_result]:
+                if followups_executed >= args.max_followup_jobs:
+                    break
+                next_source = source_map.get(next_job.source_id, source)
+                queue.append((next_source, next_job, True))
+                followups_executed += 1
+    finally:
+        dispatcher.close()
 
     counts = Counter(result.status for result in results)
     report = {

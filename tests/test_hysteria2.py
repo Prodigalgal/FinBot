@@ -79,6 +79,7 @@ class Hysteria2Tests(unittest.TestCase):
                 (
                     "hysteria2://first-secret@first.example:443",
                     "hysteria2://second-secret@second.example:443",
+                    "hysteria2://third-secret@third.example:443",
                 )
             )
         )
@@ -94,21 +95,23 @@ class Hysteria2Tests(unittest.TestCase):
             with patch.object(
                 manager,
                 "_check_config",
-                side_effect=(RuntimeError("first failed"), None),
+                side_effect=(RuntimeError("first failed"), None, None),
             ), patch.object(manager, "_start_process", return_value=fake_process), patch(
                 "finbot.network.sing_box_bridge._wait_port"
             ):
                 proxies = manager.start()
 
             config_paths = list((root / "runtime").glob("*.json"))
-            self.assertEqual(len(proxies), 1)
+            self.assertEqual(len(proxies), 2)
             self.assertEqual(manager.summary()["startup_error_count"], 1)
-            self.assertEqual(len(config_paths), 1)
-            self.assertIn("second-secret", config_paths[0].read_text(encoding="utf-8"))
+            self.assertEqual(len(config_paths), 2)
+            config_payload = "\n".join(path.read_text(encoding="utf-8") for path in config_paths)
+            self.assertIn("second-secret", config_payload)
+            self.assertIn("third-secret", config_payload)
 
             manager.close()
 
-            self.assertFalse(config_paths[0].exists())
+            self.assertTrue(all(not path.exists() for path in config_paths))
 
 
 if __name__ == "__main__":

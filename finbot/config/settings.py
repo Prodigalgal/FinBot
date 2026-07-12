@@ -65,11 +65,11 @@ class Settings:
             firecrawl_proxy_pool=os.getenv("FIRECRAWL_PROXY_POOL") or None,
             firecrawl_proxy_file=os.getenv("FIRECRAWL_PROXY_FILE") or str(root / "config" / "firecrawl_proxies.txt"),
             firecrawl_proxy_include_direct=os.getenv("FIRECRAWL_PROXY_INCLUDE_DIRECT", "0").strip().lower() not in {"0", "false", "no"},
-            firecrawl_proxy_ip_family=os.getenv("FIRECRAWL_PROXY_IP_FAMILY", "ipv6"),
+            firecrawl_proxy_ip_family=os.getenv("FIRECRAWL_PROXY_IP_FAMILY", "ipv4"),
             firecrawl_proxy_dns_mode=os.getenv("FIRECRAWL_PROXY_DNS_MODE", "remote"),
             firecrawl_vless_subscription_url=os.getenv("FIRECRAWL_VLESS_SUBSCRIPTION_URL") or None,
             firecrawl_vless_subscription_file=os.getenv("FIRECRAWL_VLESS_SUBSCRIPTION_FILE") or None,
-            firecrawl_vless_max_nodes=_env_int("FIRECRAWL_VLESS_MAX_NODES", 1),
+            firecrawl_vless_max_nodes=_env_int("FIRECRAWL_VLESS_MAX_NODES", 8),
             firecrawl_auth_mode=os.getenv("FIRECRAWL_AUTH_MODE", "bearer" if os.getenv("FIRECRAWL_API_KEY") else "keyless"),
             exchange_proxy=os.getenv("EXCHANGE_PROXY") or None,
             exchange_proxy_pool=os.getenv("EXCHANGE_PROXY_POOL") or None,
@@ -84,7 +84,7 @@ class Settings:
             exchange_vless_preferred_node_names=_env_list("EXCHANGE_VLESS_PREFERRED_NODE_NAMES"),
             exchange_hysteria2_urls=os.getenv("EXCHANGE_HYSTERIA2_URLS") or None,
             exchange_hysteria2_max_nodes=_env_int("EXCHANGE_HYSTERIA2_MAX_NODES", 4),
-            sing_box_path=os.getenv("SING_BOX_PATH") or r"D:\DevlopTools\sing-box\1.13.14\sing-box.exe",
+            sing_box_path=os.getenv("SING_BOX_PATH") or _default_sing_box_path(),
             proxy_runtime_dir=Path(os.getenv("PROXY_RUNTIME_DIR") or data / "runtime" / "proxy"),
             proxy_policy_file=os.getenv("PROXY_POLICY_FILE") or str(root / "config" / "proxy_policy.json"),
             fred_api_key=os.getenv("FRED_API_KEY") or None,
@@ -111,6 +111,12 @@ def _env_int(key: str, default: int) -> int:
         return int(raw_value)
     except ValueError:
         return default
+
+
+def _default_sing_box_path() -> str:
+    if os.name == "nt":
+        return r"D:\DevlopTools\sing-box\1.13.14\sing-box.exe"
+    return "/usr/local/bin/sing-box"
 
 
 def _env_list(key: str) -> tuple[str, ...]:

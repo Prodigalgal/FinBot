@@ -50,18 +50,21 @@ async def run() -> int:
     started_at = datetime.now(timezone.utc)
     results: list[AdapterResult] = []
 
-    for source in sources:
-        sqlite_store.upsert_source(source)
-        try:
-            result = await dispatcher.dispatch(source, force_disabled=args.force_disabled)
-        except Exception as exc:
-            result = AdapterResult(source_id=source.id, status="failed", detail=f"Unhandled source failure: {exc}", success=False)
-        result.metadata.setdefault("asset_scope", source.asset_scope)
-        results.append(result)
-        if result.evidence is not None:
-            sqlite_store.insert_evidence(result.evidence)
-        sqlite_store.upsert_health(result)
-        print(f"{source.id:38} {result.status:24} {result.detail}")
+    try:
+        for source in sources:
+            sqlite_store.upsert_source(source)
+            try:
+                result = await dispatcher.dispatch(source, force_disabled=args.force_disabled)
+            except Exception as exc:
+                result = AdapterResult(source_id=source.id, status="failed", detail=f"Unhandled source failure: {exc}", success=False)
+            result.metadata.setdefault("asset_scope", source.asset_scope)
+            results.append(result)
+            if result.evidence is not None:
+                sqlite_store.insert_evidence(result.evidence)
+            sqlite_store.upsert_health(result)
+            print(f"{source.id:38} {result.status:24} {result.detail}")
+    finally:
+        dispatcher.close()
 
     status_counts = Counter(result.status for result in results)
     required_keys: dict[str, list[str]] = defaultdict(list)

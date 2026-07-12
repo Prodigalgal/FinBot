@@ -28,12 +28,14 @@ configMapGenerator:
       - FINBOT_REQUIRE_PAPER_SUBMIT_DISABLED=true
       - FINBOT_LOG_FORMAT=json
       - FIRECRAWL_AUTH_MODE=keyless
-      - FIRECRAWL_PROXY_POOL=http://finbot-firecrawl-proxy:8888
-      - FIRECRAWL_PROXY_IP_FAMILY=ipv6
+      - FIRECRAWL_PROXY_IP_FAMILY=ipv4
       - FIRECRAWL_PROXY_DNS_MODE=remote
+      - FIRECRAWL_VLESS_MAX_NODES=8
       - EXCHANGE_PROXY_POOL=http://finbot-egress-proxy:8888
       - EXCHANGE_PROXY_IP_FAMILY=ipv4
       - EXCHANGE_PROXY_DNS_MODE=remote
+      - SING_BOX_PATH=/usr/local/bin/sing-box
+      - PROXY_RUNTIME_DIR=/tmp/finbot-proxy
   - name: finbot-runtime-bootstrap
     files:
       - runtime_config.json=runtime_config.bootstrap.json

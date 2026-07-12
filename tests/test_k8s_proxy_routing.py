@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class KubernetesProxyRoutingTests(unittest.TestCase):
-    def test_k8s_uses_separate_ip_family_bound_proxy_services(self) -> None:
+    def test_k8s_uses_local_firecrawl_bridge_and_separate_exchange_proxy(self) -> None:
         resources = list(
             yaml.safe_load_all(
                 (ROOT / "deploy" / "k8s" / "base" / "egress-proxy.yaml").read_text(encoding="utf-8")
@@ -29,21 +29,18 @@ class KubernetesProxyRoutingTests(unittest.TestCase):
 
         self.assertEqual(
             set(deployments),
-            {"finbot-egress-proxy", "finbot-firecrawl-proxy"},
+            {"finbot-egress-proxy"},
         )
         self.assertEqual(
             services,
-            {"finbot-egress-proxy", "finbot-firecrawl-proxy"},
+            {"finbot-egress-proxy"},
         )
 
         exchange_script = deployments["finbot-egress-proxy"]["spec"]["template"]["spec"]["containers"][0]["args"][0]
-        firecrawl_script = deployments["finbot-firecrawl-proxy"]["spec"]["template"]["spec"]["containers"][0]["args"][0]
         self.assertIn('*:*) ;;', exchange_script)
-        self.assertIn('*:*) bind_address="$address"', firecrawl_script)
         self.assertIn("Bind %s", exchange_script)
-        self.assertIn("Bind %s", firecrawl_script)
 
-    def test_k8s_routes_firecrawl_to_ipv6_and_exchange_to_ipv4(self) -> None:
+    def test_k8s_routes_firecrawl_and_exchange_through_separate_ipv4_pools(self) -> None:
         kustomization = yaml.safe_load(
             (ROOT / "deploy" / "k8s" / "base" / "kustomization.yaml").read_text(encoding="utf-8")
         )
@@ -54,10 +51,13 @@ class KubernetesProxyRoutingTests(unittest.TestCase):
         )
         values = dict(literal.split("=", 1) for literal in finbot_env["literals"])
 
-        self.assertEqual(values["FIRECRAWL_PROXY_POOL"], "http://finbot-firecrawl-proxy:8888")
-        self.assertEqual(values["FIRECRAWL_PROXY_IP_FAMILY"], "ipv6")
+        self.assertNotIn("FIRECRAWL_PROXY_POOL", values)
+        self.assertEqual(values["FIRECRAWL_PROXY_IP_FAMILY"], "ipv4")
+        self.assertEqual(values["FIRECRAWL_VLESS_MAX_NODES"], "8")
         self.assertEqual(values["EXCHANGE_PROXY_POOL"], "http://finbot-egress-proxy:8888")
         self.assertEqual(values["EXCHANGE_PROXY_IP_FAMILY"], "ipv4")
+        self.assertEqual(values["SING_BOX_PATH"], "/usr/local/bin/sing-box")
+        self.assertEqual(values["PROXY_RUNTIME_DIR"], "/tmp/finbot-proxy")
 
 
 if __name__ == "__main__":

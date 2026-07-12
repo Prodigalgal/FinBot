@@ -37,6 +37,15 @@ class ResearchFollowupRunner:
         self.source_map = {source.id: source for source in catalog.sources}
         self.dispatcher = Dispatcher(settings, EvidenceStore(settings.evidence_dir), topics, timeout_seconds=timeout_seconds)
 
+    def close(self) -> None:
+        self.dispatcher.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
     async def run(
         self,
         max_jobs: int = 10,
