@@ -1,0 +1,30 @@
+[project]
+name = "finbot"
+version = "0.1.0"
+description = "Financial research and advisory information platform"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "pydantic>=2",
+  "prometheus-client>=0.21",
+  "PyYAML>=6",
+  "uvicorn[standard]>=0.30",
+]
+
+[project.scripts]
+finbot-web = "finbot.cli.serve_web:main"
+finbot-worker = "finbot.cli.serve_worker:main"
+
+[project.optional-dependencies]
+providers = [
+  "ccxt>=4",
+  "yfinance>=0.2",
+  "openbb>=4",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["finbot", "finbot.*"]

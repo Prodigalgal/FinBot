@@ -1,0 +1,95 @@
+name: FinBot CI and ArgoCD deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finbot-production
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: speedproxy/finbot
+  IMAGE_TAG: sha-${{ github.sha }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend
+        run: python -m pip install .
+      - name: Secret scan
+        run: python scripts/secret_scan.py
+      - name: Backend tests
+        run: |
+          python -m compileall finbot
+          python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web-ui/package-lock.json
+      - name: Frontend clean build and audit
+        working-directory: web-ui
+        run: |
+          npm ci
+          npx tsc -b --clean
+          npm run build
+          npm audit --audit-level=high
+
+  build-and-update-gitops:
+    needs: verify
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+      - uses: actions/checkout@v4
+        with:
+          repository: Prodigalgal/ircs-prod-config
+          ssh-key: ${{ secrets.FINBOT_GITOPS_DEPLOY_KEY }}
+          path: gitops
+      - uses: imranismail/setup-kustomize@v2
+      - name: Update ArgoCD source of truth
+        run: |
+          rsync -a --delete deploy/k8s/base/ gitops/finbot/base/
+          rsync -a --delete deploy/k8s/oracle/ gitops/finbot/oracle/
+          cd gitops/finbot/oracle
+          kustomize edit set image ghcr.io/example/finbot=${IMAGE_NAME}:${IMAGE_TAG}
+      - name: Commit GitOps revision
+        working-directory: gitops
+        run: |
+          if git diff --quiet; then
+            echo "GitOps is already current"
+            exit 0
+          fi
+          git config user.name "finbot-ci"
+          git config user.email "finbot-ci@users.noreply.github.com"
+          git add finbot
+          git commit -m "deploy(finbot): ${IMAGE_TAG}"
+          git push origin main

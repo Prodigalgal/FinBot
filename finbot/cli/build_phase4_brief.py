@@ -1,0 +1,35 @@
+from __future__ import annotations
+
+import argparse
+
+from finbot.cli.common import build_store, write_report
+from finbot.research.briefing import ResearchBriefBuilder
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build Phase 4 research operations brief.")
+    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--time-window", default="phase4-latest")
+    parser.add_argument("--limit-items", type=int, default=20)
+    parser.add_argument("--clear-existing", action="store_true")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    settings, store = build_store(args.data_dir)
+    report = ResearchBriefBuilder(store).build(
+        time_window=args.time_window,
+        limit_items=args.limit_items,
+        clear_existing=args.clear_existing,
+    )
+    output = write_report(settings, "phase4-research-brief-latest.json", report)
+    print("Brief:", report["brief_id"])
+    print("Watch items:", report["watch_items_created"])
+    print("Summary:", report["summary"])
+    print("Policy gate:", report["policy_gate"])
+    print("Output:", output)
+
+
+if __name__ == "__main__":
+    main()

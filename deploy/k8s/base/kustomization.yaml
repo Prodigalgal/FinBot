@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: finbot
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - service.yaml
+  - egress-proxy.yaml
+  - deployment.yaml
+  - network-policy.yaml
+  - monitoring.yaml
+configMapGenerator:
+  - name: finbot-egress-proxy-config
+    files:
+      - tinyproxy.conf=tinyproxy.conf
+  - name: finbot-env
+    literals:
+      - FINBOT_RUNTIME_ROOT=/var/lib/finbot
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PROXY_POLICY_FILE=/var/lib/finbot/config/proxy_policy.json
+      - FINBOT_DEPLOYMENT_MODE=production
+      - FINBOT_AUTH_ENABLED=true
+      - FINBOT_AUTH_COOKIE_SECURE=true
+      - FINBOT_AUTH_TRUSTED_ORIGINS=https://finbot.mnnu.eu.org
+      - FINBOT_REQUIRE_PAPER_SUBMIT_DISABLED=true
+      - FINBOT_LOG_FORMAT=json
+      - FIRECRAWL_AUTH_MODE=keyless
+      - FIRECRAWL_PROXY_POOL=http://finbot-egress-proxy:8888
+      - FIRECRAWL_PROXY_IP_FAMILY=ipv4
+      - FIRECRAWL_PROXY_DNS_MODE=remote
+  - name: finbot-runtime-bootstrap
+    files:
+      - runtime_config.json=runtime_config.bootstrap.json
+      - proxy_policy.json=proxy_policy.bootstrap.json
+images:
+  - name: ghcr.io/example/finbot
+    newName: ghcr.io/example/finbot
+    newTag: latest

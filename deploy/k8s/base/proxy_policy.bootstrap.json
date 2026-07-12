@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "routes": {
+    "exchange": {
+      "require_proxy": true,
+      "allow_direct": false,
+      "proxy_ip_family": "ipv4",
+      "dns_mode": "remote"
+    },
+    "exchange:bybit": {
+      "allow_direct": false
+    },
+    "exchange:gate": {
+      "allow_direct": false
+    }
+  }
+}

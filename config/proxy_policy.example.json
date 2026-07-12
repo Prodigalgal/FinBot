@@ -1,0 +1,15 @@
+{
+  "description": "Copy to config/proxy_policy.json for local hot policy changes. The real file is gitignored.",
+  "routes": {
+    "exchange": {
+      "require_proxy": true,
+      "allow_direct": false,
+      "proxy_ip_family": "ipv6",
+      "dns_mode": "remote"
+    },
+    "exchange:bybit": {
+      "allow_direct": false,
+      "notes": "Set true only when the operator explicitly allows Bybit public REST direct fallback after proxy provider blocks."
+    }
+  }
+}

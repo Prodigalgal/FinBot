@@ -1,0 +1,101 @@
+# Phase 2 official release calendar example.
+# Replace example dates with authoritative official calendars before production.
+
+releases:
+  - release_id: eia_weekly_petroleum_2026_07_08
+    provider: eia
+    release_type: weekly_petroleum_status
+    title: EIA Weekly Petroleum Status Report
+    scheduled_at: "2026-07-08T14:30:00+00:00"
+    timezone: America/New_York
+    source_url: "https://www.eia.gov/petroleum/supply/weekly/"
+    status: scheduled
+    source_ids: ["official_eia_weekly_petroleum"]
+    asset_scope: ["XTIUSD", "USOIL", "BZUSDT", "XAUUSD", "DXY"]
+    expected_fields:
+      - crude_oil_inventory
+      - gasoline_inventory
+      - distillate_inventory
+      - refinery_utilization
+    match_terms:
+      - weekly petroleum status report
+      - petroleum supply weekly
+      - eia
+
+  - release_id: fomc_rate_decision_2026_07_placeholder
+    provider: federal_reserve
+    release_type: fomc_rate_decision
+    title: FOMC Rate Decision
+    scheduled_at: "2026-07-29T18:00:00+00:00"
+    timezone: America/New_York
+    source_url: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+    status: scheduled
+    source_ids: ["official_federal_reserve"]
+    asset_scope: ["NAS100", "XAUUSD", "XAGUSD", "BTCUSDT", "DXY"]
+    expected_fields:
+      - target_rate_range
+      - statement_text
+      - vote_split
+    match_terms:
+      - fomc
+      - federal open market committee
+      - monetary policy
+
+  - release_id: bls_cpi_2026_07_placeholder
+    provider: bls
+    release_type: cpi
+    title: BLS Consumer Price Index
+    scheduled_at: "2026-07-15T12:30:00+00:00"
+    timezone: America/New_York
+    source_url: "https://www.bls.gov/cpi/"
+    status: scheduled
+    source_ids: ["official_bls_api"]
+    asset_scope: ["NAS100", "XAUUSD", "XAGUSD", "BTCUSDT", "DXY"]
+    expected_fields:
+      - headline_cpi_mom
+      - headline_cpi_yoy
+      - core_cpi_mom
+      - core_cpi_yoy
+    match_terms:
+      - consumer price index
+      - cpi
+      - inflation
+
+  - release_id: bea_gdp_2026_q2_placeholder
+    provider: bea
+    release_type: gdp
+    title: BEA Gross Domestic Product
+    scheduled_at: "2026-07-30T12:30:00+00:00"
+    timezone: America/New_York
+    source_url: "https://www.bea.gov/data/gdp/gross-domestic-product"
+    status: scheduled
+    source_ids: ["official_bea_api"]
+    asset_scope: ["NAS100", "XAUUSD", "BTCUSDT", "DXY"]
+    expected_fields:
+      - real_gdp_qoq_annualized
+      - price_index
+      - personal_consumption
+    match_terms:
+      - gross domestic product
+      - gdp
+      - bea
+
+  - release_id: fred_rates_daily_2026_07_08
+    provider: fred
+    release_type: rates_snapshot
+    title: FRED Treasury and Fed Funds Daily Snapshot
+    scheduled_at: "2026-07-08T21:00:00+00:00"
+    timezone: America/New_York
+    source_url: "https://fred.stlouisfed.org/"
+    status: scheduled
+    source_ids: ["official_fred_api"]
+    asset_scope: ["NAS100", "XAUUSD", "XAGUSD", "BTCUSDT", "DXY"]
+    expected_fields:
+      - DGS10
+      - DGS2
+      - FEDFUNDS
+      - DTWEXBGS
+    match_terms:
+      - treasury
+      - yields
+      - fred

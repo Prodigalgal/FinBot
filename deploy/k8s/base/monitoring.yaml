@@ -1,0 +1,62 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: finbot
+  labels:
+    app.kubernetes.io/name: finbot
+    environment: prod
+    release: prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - finbot
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot
+      app.kubernetes.io/component: metrics
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: finbot
+  labels:
+    app.kubernetes.io/name: finbot
+    environment: prod
+    release: prometheus-stack
+spec:
+  groups:
+    - name: finbot.operations
+      rules:
+        - alert: FinBotMetricsUnavailable
+          expr: up{namespace="finbot", service="finbot-metrics"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: FinBot metrics endpoint is unavailable
+        - alert: FinBotAutonomousQueueBacklog
+          expr: finbot_autonomous_queue_depth > 10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: FinBot autonomous request queue is backlogged
+        - alert: FinBotWorkerHeartbeatStale
+          expr: finbot_worker_heartbeat_age_seconds < 0 or finbot_worker_heartbeat_age_seconds > 180
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: FinBot worker heartbeat is stale
+        - alert: FinBotResearchDataStale
+          expr: finbot_data_freshness_seconds < 0 or finbot_data_freshness_seconds > 7200
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: FinBot successful evidence is stale
