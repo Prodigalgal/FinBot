@@ -1810,8 +1810,13 @@ class SQLiteStore:
             )
 
     def insert_market_candle(self, candle: dict[str, Any]) -> None:
+        self.insert_market_candles([candle])
+
+    def insert_market_candles(self, candles: list[dict[str, Any]]) -> None:
+        if not candles:
+            return
         with self.connect() as conn:
-            conn.execute(
+            conn.executemany(
                 """
                 insert or replace into market_candles (
                   candle_id, provider, market_type, symbol, normalized_symbol,
@@ -1820,23 +1825,26 @@ class SQLiteStore:
                 )
                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    candle["candle_id"],
-                    candle["provider"],
-                    candle["market_type"],
-                    candle["symbol"],
-                    candle["normalized_symbol"],
-                    candle["interval"],
-                    candle["open_time"],
-                    candle["captured_at"],
-                    candle.get("open"),
-                    candle.get("high"),
-                    candle.get("low"),
-                    candle.get("close"),
-                    candle.get("volume"),
-                    candle.get("turnover"),
-                    json.dumps(candle, ensure_ascii=False, default=str),
-                ),
+                [
+                    (
+                        candle["candle_id"],
+                        candle["provider"],
+                        candle["market_type"],
+                        candle["symbol"],
+                        candle["normalized_symbol"],
+                        candle["interval"],
+                        candle["open_time"],
+                        candle["captured_at"],
+                        candle.get("open"),
+                        candle.get("high"),
+                        candle.get("low"),
+                        candle.get("close"),
+                        candle.get("volume"),
+                        candle.get("turnover"),
+                        json.dumps(candle, ensure_ascii=False, default=str),
+                    )
+                    for candle in candles
+                ],
             )
 
     def sync_instrument_catalog(

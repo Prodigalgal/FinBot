@@ -516,7 +516,7 @@ class AISitesConfigStore:
                     "protocol": "chat",
                     "model": "mimo-v2.5-pro",
                     "reasoning_effort": "high",
-                    "fallback_site_ids": [],
+                    "fallback_site_ids": ["deepseek"],
                 },
                 AI_TASK_ID_DEBATE: {
                     "enabled": True,

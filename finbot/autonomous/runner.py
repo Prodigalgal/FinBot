@@ -120,7 +120,10 @@ class AutonomousResearchLoopRunner:
                 break
 
         finished_at = _now()
-        decision_readiness = _decision_readiness(context)
+        decision_readiness = _decision_readiness(
+            context,
+            require_human_review=config.paper_execution_require_human_review,
+        )
         summary = self._summary(loop_run_id, step_reports, context, decision_readiness)
         if safe_request_context.get("query"):
             summary["request_query"] = safe_request_context["query"]
@@ -148,7 +151,7 @@ class AutonomousResearchLoopRunner:
                 "execution_allowed": False,
                 "order_api_allowed": False,
                 "private_exchange_api_allowed": False,
-                "human_confirmation_required": True,
+                "human_confirmation_required": config.paper_execution_require_human_review,
             },
         }
         output = write_report(settings, "autonomous-loop-latest.json", report)
@@ -814,7 +817,10 @@ class AutonomousResearchLoopRunner:
             "ai_governance_status": ((context.get("ai_governance") or {}).get("summary") or {}).get("governance_status"),
             "paper_execution_run_id": (context.get("paper_execution") or {}).get("execution_run_id"),
             "paper_execution_status": (context.get("paper_execution") or {}).get("status"),
-            "decision_readiness": _decision_readiness(context),
+            "decision_readiness": _decision_readiness(
+                context,
+                require_human_review=config.paper_execution_require_human_review,
+            ),
             "enabled": config.enabled,
             "interval_minutes": config.interval_minutes,
         }
@@ -1023,7 +1029,11 @@ def _compact_output(output: dict[str, Any]) -> dict[str, Any]:
     return compact
 
 
-def _decision_readiness(context: dict[str, Any]) -> dict[str, Any]:
+def _decision_readiness(
+    context: dict[str, Any],
+    *,
+    require_human_review: bool = False,
+) -> dict[str, Any]:
     operator_report = context.get("operator_report") if isinstance(context.get("operator_report"), dict) else {}
     operator_items = [item for item in operator_report.get("items", []) if isinstance(item, dict)]
     valid_market_count = sum(1 for item in operator_items if item.get("status") == "ok")
@@ -1066,7 +1076,7 @@ def _decision_readiness(context: dict[str, Any]) -> dict[str, Any]:
         "status": status,
         "decision_ready": status == "ready",
         "simulation_eligible": status == "ready" and bool(directional),
-        "human_review_required": True,
+        "human_review_required": require_human_review,
         "reasons": reasons,
         "valid_market_count": valid_market_count,
         "insufficient_market_count": insufficient_market_count,

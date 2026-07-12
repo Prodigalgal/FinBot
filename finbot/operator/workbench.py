@@ -165,9 +165,13 @@ class OperatorWorkbenchBuilder:
                 )
             if config.persist:
                 self.store.insert_market_quote(_quote_record(quote.to_dict()))
-                for candles in candle_groups.values():
-                    for candle in candles:
-                        self.store.insert_market_candle(_candle_record(candle))
+                self.store.insert_market_candles(
+                    [
+                        _candle_record(candle)
+                        for candles in candle_groups.values()
+                        for candle in candles
+                    ]
+                )
             symbol_research_context = _research_context_for_symbol(symbol, research_context)
             primary_interval = config.advisory.primary_interval if config.advisory.primary_interval in candle_groups else next(iter(candle_groups), "")
             primary_candles = candle_groups.get(primary_interval, [])

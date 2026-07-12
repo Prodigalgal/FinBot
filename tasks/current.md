@@ -1045,11 +1045,12 @@ npm run build
 
 ## 混合模型分析与反思型最终执行机器人
 
-状态：进行中（2026-07-12）
+状态：已完成（2026-07-12）
 
 目标：
 
 - 分析流程混用 DeepSeek、MiMo 和 `gpt-5.6-terra`，最终执行由 `gpt-5.6-sol/xhigh` 独立把关。
+- 信息压缩优先 MiMo，连接或额度失败时降级 DeepSeek；最终执行机器人不允许降级。
 - Gate TestNet 与 Bybit Demo 允许无人值守自动批准和提交，Mainnet/Live 继续硬阻断。
 
 范围：
@@ -1082,3 +1083,24 @@ python scripts/secret_scan.py
 cd web-ui
 npm run build
 ```
+
+实现结果：
+
+- 新增 `execution_robot` 步骤，固定使用 `gpt-5.6-sol/xhigh` 执行初审与反思终审；两次 invocation 独立记录。
+- 机器人只能筛选原始决策，任何调用、解析、预算或风险失败均 fail-closed；Mainnet/Live 继续由 OMS、适配器和风险引擎多层拒绝。
+- 测试网默认 `submit_orders=true`、`require_human_review=false`；生产 readiness 要求自动批准时必须启用执行机器人。
+- AI 配置升级到 v7：压缩为 MiMo -> DeepSeek，辩论混用 DeepSeek/MiMo，主席使用 Terra，最终执行只使用 Sol。
+- 行情工作台改为批量持久化 Kline，避免每根 Kline 单独事务造成 SQLite 长时间锁竞争。
+
+验证：
+
+- 本地全量 Python 回归 `205/205`、前端生产构建、compileall 和 Secret scan 通过；后续批量事务专项测试 `23/23` 通过。
+- GitHub Actions `29199447433`、`29199845536`、`29200183748` 均为 `completed/success`；Argo CD `Synced/Healthy`。
+- 线上 AI v7、三站点、每轮 `$0.50` 成本预算、测试网自动提交和无人工复核配置均已热更新，setup/readiness 为 ready。
+- 真实完整循环通过研究、目录、universe、行情、多轮辩论、Terra 合成、筛选和组合风险；因单产品集中度 `100% > 35%` 被风险门禁拒绝，零订单。
+- 线上隔离 Sol 探针完成初审与反思终审，两次均为 `gpt-5.6-sol/xhigh`；合成证据未被批准，未调用 paper execution。
+
+遗留风险：
+
+- MiMo2API 在本轮多次返回 504；压缩和辩论已配置 DeepSeek fallback，最终机器人不允许降级。
+- 本次实跑仍使用旧的逐 Kline 事务镜像，行情工作台耗时约 25.6 分钟；批量事务优化已完成，性能收益留待下一轮运行数据验证。

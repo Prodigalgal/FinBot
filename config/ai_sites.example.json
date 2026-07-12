@@ -78,7 +78,9 @@
       "protocol": "chat",
       "model": "mimo-v2.5-pro",
       "reasoning_effort": "high",
-      "fallback_site_ids": []
+      "fallback_site_ids": [
+        "deepseek"
+      ]
     },
     "ai_debate": {
       "enabled": true,
