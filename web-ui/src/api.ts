@@ -10,6 +10,20 @@ export interface AuthStatusPayload {
   session: { username: string; expires_at: number } | null;
 }
 
+export interface AuthChallenge {
+  challenge_id: string;
+  math_question: string;
+  pow_prefix: string;
+  difficulty_bits: number;
+  expires_at: number;
+}
+
+export interface AuthChallengePayload {
+  status: string;
+  enabled: boolean;
+  challenge: AuthChallenge | null;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -41,7 +55,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!response.ok) {
-    const detail = await response.text();
+    const rawDetail = await response.text();
+    let detail = rawDetail;
+    try {
+      const parsed = JSON.parse(rawDetail) as { detail?: unknown };
+      if (typeof parsed.detail === 'string') detail = parsed.detail;
+    } catch {
+      // Non-JSON failures keep the original response text.
+    }
     if (response.status === 401 && path !== '/api/v1/auth/login') {
       window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
     }
@@ -53,10 +74,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ status: string; service: string }>('/health'),
   authStatus: () => request<AuthStatusPayload>('/api/v1/auth/status'),
-  login: (username: string, password: string) =>
+  authChallenge: () => request<AuthChallengePayload>('/api/v1/auth/challenge'),
+  login: (payload: {
+    username: string;
+    password: string;
+    challenge_id: string;
+    math_answer: number;
+    pow_nonce: number;
+  }) =>
     request<AuthStatusPayload>('/api/v1/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(payload),
     }),
   logout: () => request<{ status: string; authenticated: boolean }>('/api/v1/auth/logout', {
     method: 'POST',

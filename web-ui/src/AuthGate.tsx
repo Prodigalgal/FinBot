@@ -1,18 +1,23 @@
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import {
   Alert,
   Box,
   Button,
   CircularProgress,
+  IconButton,
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { api, ApiError, AUTH_REQUIRED_EVENT } from './api';
+import type { AuthChallenge } from './api';
+import { solveProofOfWork } from './authPow';
 
 type AuthState = 'loading' | 'authenticated' | 'login';
 
@@ -20,37 +25,84 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>('loading');
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
+  const [challenge, setChallenge] = useState<AuthChallenge | null>(null);
+  const [mathAnswer, setMathAnswer] = useState('');
+  const [challengeLoading, setChallengeLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [powCalculating, setPowCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadChallenge = useCallback(async (clearError = true) => {
+    setChallengeLoading(true);
+    setChallenge(null);
+    setMathAnswer('');
+    if (clearError) setError(null);
+    try {
+      const payload = await api.authChallenge();
+      if (!payload.enabled || !payload.challenge) {
+        throw new Error('认证 Challenge 未启用');
+      }
+      setChallenge(payload.challenge);
+    } catch (requestError) {
+      setError(readableError(requestError));
+    } finally {
+      setChallengeLoading(false);
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
       const status = await api.authStatus();
-      setState(!status.enabled || status.authenticated ? 'authenticated' : 'login');
+      if (!status.enabled || status.authenticated) {
+        setState('authenticated');
+        return;
+      }
+      setState('login');
+      await loadChallenge();
     } catch (requestError) {
       setError(readableError(requestError));
       setState('login');
     }
-  }, []);
+  }, [loadChallenge]);
 
   useEffect(() => {
     refresh();
-    const requireLogin = () => setState('login');
+    const requireLogin = () => {
+      setState('login');
+      void loadChallenge();
+    };
     window.addEventListener(AUTH_REQUIRED_EVENT, requireLogin);
     return () => window.removeEventListener(AUTH_REQUIRED_EVENT, requireLogin);
-  }, [refresh]);
+  }, [loadChallenge, refresh]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!challenge || !mathAnswer.trim() || !Number.isInteger(Number(mathAnswer))) {
+      setError('请输入有效的数学验证码');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      await api.login(username.trim(), password);
+      setPowCalculating(true);
+      const powNonce = await solveProofOfWork(challenge.pow_prefix, challenge.difficulty_bits);
+      setPowCalculating(false);
+      await api.login({
+        username: username.trim(),
+        password,
+        challenge_id: challenge.challenge_id,
+        math_answer: Number(mathAnswer),
+        pow_nonce: powNonce,
+      });
       setPassword('');
+      setMathAnswer('');
+      setChallenge(null);
       setState('authenticated');
     } catch (requestError) {
       setError(readableError(requestError));
+      await loadChallenge(false);
     } finally {
+      setPowCalculating(false);
       setSubmitting(false);
     }
   };
@@ -108,10 +160,42 @@ export function AuthGate({ children }: { children: ReactNode }) {
             disabled={submitting}
             required
             fullWidth
-            autoFocus
           />
-          <Button type="submit" variant="contained" disabled={submitting || !username.trim() || !password}>
-            {submitting ? '正在登录' : '登录'}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Box sx={{ flex: 1, minWidth: 0, border: '1px solid', borderColor: 'divider', px: 1.5, py: 1.25 }}>
+              <Typography variant="caption" color="text.secondary">数学验证码</Typography>
+              <Typography data-testid="auth-math-question" variant="subtitle1">
+                {challengeLoading ? '正在生成' : challenge?.math_question || '暂不可用'}
+              </Typography>
+            </Box>
+            <Tooltip title="刷新数学验证码">
+              <span>
+                <IconButton
+                  aria-label="刷新数学验证码"
+                  onClick={() => void loadChallenge()}
+                  disabled={submitting || challengeLoading}
+                >
+                  {challengeLoading ? <CircularProgress size={20} /> : <RefreshIcon />}
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
+          <TextField
+            label="验证码答案"
+            type="number"
+            value={mathAnswer}
+            onChange={(event) => setMathAnswer(event.target.value)}
+            disabled={submitting || challengeLoading || !challenge}
+            slotProps={{ htmlInput: { inputMode: 'numeric', step: 1 } }}
+            required
+            fullWidth
+          />
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={submitting || challengeLoading || !challenge || !username.trim() || !password || !mathAnswer.trim()}
+          >
+            {powCalculating ? '正在计算 PoW' : submitting ? '正在登录' : '登录'}
           </Button>
         </Stack>
       </Paper>
@@ -126,4 +210,3 @@ function readableError(error: unknown): string {
   }
   return error instanceof Error ? error.message : String(error);
 }
-

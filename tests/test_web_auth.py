@@ -3,13 +3,14 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from finbot.config.ai_sites import AISitesConfigStore
 from finbot.config.runtime_config import RuntimeConfigStore
-from finbot.web.auth import AuthSettings, hash_password, verify_password
+from finbot.web.auth import AuthSettings, hash_password, verify_password, verify_proof_of_work
 from finbot.web.service import FinBotWebApp, create_fastapi_app
 
 
@@ -18,6 +19,25 @@ SESSION_SECRET = "session-secret-with-at-least-32-characters"
 
 
 class WebAuthenticationTests(unittest.TestCase):
+    def test_single_admin_plain_password_can_be_injected_from_environment(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "FINBOT_AUTH_ENABLED": "true",
+                "FINBOT_ADMIN_USERNAME": "admin",
+                "FINBOT_ADMIN_PASSWORD": "test-passphrase",
+                "FINBOT_SESSION_SECRET": SESSION_SECRET,
+                "FINBOT_AUTH_POW_DIFFICULTY_BITS": "12",
+            },
+            clear=True,
+        ):
+            settings = AuthSettings.from_env()
+
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.username, "admin")
+        self.assertEqual(settings.password, "test-passphrase")
+        self.assertEqual(settings.pow_difficulty_bits, 12)
+
     def test_password_hash_round_trip_and_rejects_invalid_values(self) -> None:
         encoded = hash_password(ADMIN_PASSWORD, salt=b"0123456789abcdef")
 
@@ -34,14 +54,8 @@ class WebAuthenticationTests(unittest.TestCase):
             with TestClient(app) as client:
                 live = client.get("/health/live")
                 anonymous = client.get("/api/v1/status")
-                rejected = client.post(
-                    "/api/v1/auth/login",
-                    json={"username": "admin", "password": "incorrect-password-value"},
-                )
-                accepted = client.post(
-                    "/api/v1/auth/login",
-                    json={"username": "admin", "password": ADMIN_PASSWORD},
-                )
+                rejected = _login(client, password="incorrect-password-value")
+                accepted = _login(client, password=ADMIN_PASSWORD)
                 authenticated = client.get("/api/v1/status")
                 untrusted_origin = client.put(
                     "/api/v1/config",
@@ -63,6 +77,8 @@ class WebAuthenticationTests(unittest.TestCase):
         self.assertEqual(untrusted_origin.status_code, 403)
         self.assertEqual(logout.status_code, 200)
         self.assertEqual(after_logout.status_code, 401)
+        status_payload = accepted.json()
+        self.assertTrue(status_payload["authenticated"])
 
     def test_login_rate_limit_blocks_repeated_failures(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -78,15 +94,39 @@ class WebAuthenticationTests(unittest.TestCase):
             app = create_fastapi_app(state, frontend_dist=None, auth_settings=settings)
 
             with TestClient(app) as client:
-                responses = [
-                    client.post(
-                        "/api/v1/auth/login",
-                        json={"username": "admin", "password": "incorrect-password-value"},
-                    )
-                    for _ in range(3)
-                ]
+                responses = [_login(client, password="incorrect-password-value") for _ in range(3)]
 
         self.assertEqual([response.status_code for response in responses], [401, 401, 429])
+
+    def test_math_pow_and_single_use_challenge_are_enforced(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = create_fastapi_app(
+                _state(Path(temp_dir)),
+                frontend_dist=None,
+                auth_settings=_auth_settings(),
+            )
+            with TestClient(app) as client:
+                challenge = _challenge(client)
+                wrong_math = client.post(
+                    "/api/v1/auth/login",
+                    json=_login_payload(challenge, math_answer=_math_answer(challenge) + 1),
+                )
+                replay = client.post(
+                    "/api/v1/auth/login",
+                    json=_login_payload(challenge),
+                )
+                bad_pow_challenge = _challenge(client)
+                bad_pow = client.post(
+                    "/api/v1/auth/login",
+                    json=_login_payload(bad_pow_challenge, pow_nonce=0, force_bad_pow=True),
+                )
+
+        self.assertEqual(wrong_math.status_code, 400)
+        self.assertIn("数学验证码错误", wrong_math.json()["detail"])
+        self.assertEqual(replay.status_code, 400)
+        self.assertIn("已过期", replay.json()["detail"])
+        self.assertEqual(bad_pow.status_code, 400)
+        self.assertIn("PoW", bad_pow.json()["detail"])
 
     def test_production_readiness_requires_auth_proxy_and_safe_execution(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -133,6 +173,7 @@ def _auth_settings(cookie_secure: bool = False) -> AuthSettings:
         session_secret=SESSION_SECRET,
         cookie_secure=cookie_secure,
         trusted_origins=("https://finbot.mnnu.eu.org",),
+        pow_difficulty_bits=8,
     )
 
 
@@ -144,6 +185,60 @@ def _state(root: Path) -> FinBotWebApp:
     )
 
 
+def _login(client: TestClient, *, password: str) -> Any:
+    challenge = _challenge(client)
+    return client.post(
+        "/api/v1/auth/login",
+        json=_login_payload(challenge, password=password),
+    )
+
+
+def _challenge(client: TestClient) -> dict[str, Any]:
+    response = client.get("/api/v1/auth/challenge")
+    if response.status_code != 200:
+        raise AssertionError(response.text)
+    return response.json()["challenge"]
+
+
+def _login_payload(
+    challenge: dict[str, Any],
+    *,
+    password: str = ADMIN_PASSWORD,
+    math_answer: int | None = None,
+    pow_nonce: int | None = None,
+    force_bad_pow: bool = False,
+) -> dict[str, Any]:
+    answer = _math_answer(challenge) if math_answer is None else math_answer
+    nonce = _solve_pow(challenge) if pow_nonce is None else pow_nonce
+    if force_bad_pow:
+        while verify_proof_of_work(challenge["pow_prefix"], nonce, challenge["difficulty_bits"]):
+            nonce += 1
+    return {
+        "username": "admin",
+        "password": password,
+        "challenge_id": challenge["challenge_id"],
+        "math_answer": answer,
+        "pow_nonce": nonce,
+    }
+
+
+def _math_answer(challenge: dict[str, Any]) -> int:
+    left_text, operation, right_text, _equals, _question = challenge["math_question"].split()
+    left = int(left_text)
+    right = int(right_text)
+    if operation == "+":
+        return left + right
+    if operation == "-":
+        return left - right
+    return left * right
+
+
+def _solve_pow(challenge: dict[str, Any]) -> int:
+    nonce = 0
+    while not verify_proof_of_work(challenge["pow_prefix"], nonce, challenge["difficulty_bits"]):
+        nonce += 1
+    return nonce
+
+
 if __name__ == "__main__":
     unittest.main()
-

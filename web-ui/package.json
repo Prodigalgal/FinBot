@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc -b && vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173"
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "smoke:production-quant": "node scripts/production-quant-smoke.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",

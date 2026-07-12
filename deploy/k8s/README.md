@@ -38,6 +38,11 @@ kubectl -n finbot create secret generic finbot-secrets \
 DockerHub 拉取凭据使用只读 PAT 创建为 `finbot-dockerhub`；不要复用 CI 的 push PAT，
 也不要把生成的 `.dockerconfigjson` 写入 GitOps 仓库。
 
+认证保持单管理员模型。`FINBOT_ADMIN_USERNAME`、`FINBOT_ADMIN_PASSWORD`（或
+`FINBOT_ADMIN_PASSWORD_HASH`）和 `FINBOT_SESSION_SECRET` 由 `finbot-secrets` 注入；
+数学验证码 challenge 默认 120 秒过期，PoW 默认 16 bits，可分别通过
+`FINBOT_AUTH_CHALLENGE_TTL_SECONDS`、`FINBOT_AUTH_POW_DIFFICULTY_BITS` 调整。
+
 ## 部署与验证
 
 当前集群的新加坡节点是 `instance-20251229-0833`。首次部署前补齐语义化地域标签；代理 Deployment 故意不使用同时命中大阪和新加坡的 `infra.mnnu/egress=fixed-public`：

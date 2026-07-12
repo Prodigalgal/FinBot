@@ -17,6 +17,14 @@ from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
+from finbot.web.auth_challenge import (
+    DEFAULT_CHALLENGE_TTL_SECONDS,
+    DEFAULT_POW_DIFFICULTY_BITS,
+    LoginChallengeError,
+    LoginChallengeStore,
+    verify_proof_of_work,
+)
+
 
 DEFAULT_COOKIE_NAME = "finbot_session"
 DEFAULT_SESSION_TTL_SECONDS = 8 * 60 * 60
@@ -27,6 +35,7 @@ PUBLIC_PATHS = frozenset(
         "/health/live",
         "/health/ready",
         "/api/v1/auth/status",
+        "/api/v1/auth/challenge",
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
     }
@@ -37,6 +46,9 @@ PROTECTED_NON_API_PATHS = frozenset({"/docs", "/openapi.json", "/redoc"})
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=1, max_length=500)
+    challenge_id: str = Field(min_length=20, max_length=200)
+    math_answer: int
+    pow_nonce: int = Field(ge=0, le=2**53 - 1)
 
 
 @dataclass(frozen=True)
@@ -52,6 +64,8 @@ class AuthSettings:
     trusted_origins: tuple[str, ...] = ()
     login_attempt_limit: int = 5
     login_window_seconds: int = 300
+    challenge_ttl_seconds: int = DEFAULT_CHALLENGE_TTL_SECONDS
+    pow_difficulty_bits: int = DEFAULT_POW_DIFFICULTY_BITS
 
     @classmethod
     def from_env(cls) -> "AuthSettings":
@@ -74,6 +88,14 @@ class AuthSettings:
             ),
             login_attempt_limit=_env_int("FINBOT_AUTH_LOGIN_ATTEMPT_LIMIT", 5),
             login_window_seconds=_env_int("FINBOT_AUTH_LOGIN_WINDOW_SECONDS", 300),
+            challenge_ttl_seconds=_env_int(
+                "FINBOT_AUTH_CHALLENGE_TTL_SECONDS",
+                DEFAULT_CHALLENGE_TTL_SECONDS,
+            ),
+            pow_difficulty_bits=_env_int(
+                "FINBOT_AUTH_POW_DIFFICULTY_BITS",
+                DEFAULT_POW_DIFFICULTY_BITS,
+            ),
         ).validated()
 
     def validated(self) -> "AuthSettings":
@@ -84,8 +106,8 @@ class AuthSettings:
             errors.append("FINBOT_ADMIN_USERNAME 不能为空")
         if not self.password_hash and not self.password:
             errors.append("必须配置 FINBOT_ADMIN_PASSWORD_HASH")
-        if self.password and len(self.password) < 16:
-            errors.append("FINBOT_ADMIN_PASSWORD 至少需要 16 个字符")
+        if self.password and len(self.password) < 8:
+            errors.append("FINBOT_ADMIN_PASSWORD 至少需要 8 个字符")
         if not self.session_secret or len(self.session_secret) < 32:
             errors.append("FINBOT_SESSION_SECRET 至少需要 32 个字符")
         if not self.cookie_name:
@@ -96,6 +118,10 @@ class AuthSettings:
             errors.append("FINBOT_AUTH_LOGIN_ATTEMPT_LIMIT 必须在 1 到 100 之间")
         if not 10 <= self.login_window_seconds <= 3600:
             errors.append("FINBOT_AUTH_LOGIN_WINDOW_SECONDS 必须在 10 到 3600 之间")
+        if not 30 <= self.challenge_ttl_seconds <= 600:
+            errors.append("FINBOT_AUTH_CHALLENGE_TTL_SECONDS 必须在 30 到 600 之间")
+        if not 8 <= self.pow_difficulty_bits <= 24:
+            errors.append("FINBOT_AUTH_POW_DIFFICULTY_BITS 必须在 8 到 24 之间")
         if errors:
             raise RuntimeError("FinBot 认证配置无效：" + "；".join(errors))
         return self
@@ -144,12 +170,39 @@ class AuthManager:
             settings.login_attempt_limit,
             settings.login_window_seconds,
         )
+        self.challenge_store = LoginChallengeStore(
+            settings.challenge_ttl_seconds,
+            settings.pow_difficulty_bits,
+        )
 
-    def authenticate(self, username: str, password: str, identity: str) -> SessionInfo | None:
+    def issue_login_challenge(self, identity: str) -> dict[str, Any]:
+        if not self.settings.enabled:
+            return {"enabled": False, "challenge": None}
+        return {
+            "enabled": True,
+            "challenge": self.challenge_store.issue(identity).public_payload(),
+        }
+
+    def authenticate(
+        self,
+        username: str,
+        password: str,
+        identity: str,
+        *,
+        challenge_id: str,
+        math_answer: int,
+        pow_nonce: int,
+    ) -> SessionInfo | None:
         if not self.settings.enabled:
             return SessionInfo(username=self.settings.username, expires_at=0)
         if not self.rate_limiter.allow(identity):
             raise PermissionError("登录尝试过于频繁，请稍后重试")
+        self.challenge_store.consume_and_verify(
+            challenge_id=challenge_id,
+            identity=identity,
+            math_answer=math_answer,
+            pow_nonce=pow_nonce,
+        )
         username_matches = hmac.compare_digest(username, self.settings.username)
         password_matches = self._verify_password(password)
         if not username_matches or not password_matches:
@@ -336,4 +389,3 @@ def _env_int(key: str, default: int) -> int:
         return int(raw)
     except ValueError as exc:
         raise RuntimeError(f"{key} 必须是整数") from exc
-

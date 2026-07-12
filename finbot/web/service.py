@@ -68,6 +68,7 @@ from finbot.web.auth import (
     AuthenticationMiddleware,
     AuthManager,
     AuthSettings,
+    LoginChallengeError,
     LoginRequest,
 )
 from finbot.web.health import HealthService
@@ -1206,17 +1207,33 @@ def create_fastapi_app(
         return {
             "status": "ok",
             "enabled": auth_manager.settings.enabled,
+            "account_model": "single_admin",
+            "challenge_required": auth_manager.settings.enabled,
             "authenticated": session is not None,
             "session": session.to_dict() if session is not None else None,
         }
+
+    @app.get("/api/v1/auth/challenge")
+    async def auth_challenge(request: Request) -> dict[str, Any]:
+        identity = request.client.host if request.client else "unknown"
+        return {"status": "ok", **auth_manager.issue_login_challenge(identity)}
 
     @app.post("/api/v1/auth/login")
     async def auth_login(request: Request, credentials: LoginRequest, response: Response) -> dict[str, Any]:
         identity = request.client.host if request.client else "unknown"
         try:
-            session = auth_manager.authenticate(credentials.username, credentials.password, identity)
+            session = auth_manager.authenticate(
+                credentials.username,
+                credentials.password,
+                identity,
+                challenge_id=credentials.challenge_id,
+                math_answer=credentials.math_answer,
+                pow_nonce=credentials.pow_nonce,
+            )
         except PermissionError as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except LoginChallengeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if session is None:
             raise HTTPException(status_code=401, detail="用户名或密码错误")
         auth_manager.issue_cookie(response, session)

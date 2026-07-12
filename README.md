@@ -20,7 +20,9 @@ npm run build
 
 ## 运行
 
-开发配置从 `config/*.example.*` 和 `.env.example` 创建。实际 API key、管理员认证、
+开发配置从 `config/*.example.*` 和 `.env.example` 创建。系统只保留一个管理员账户，
+账户名和密码通过 `FINBOT_ADMIN_USERNAME` / `FINBOT_ADMIN_PASSWORD` 或密码哈希 ENV 注入。
+登录还要求一次性数学验证码和 SHA-256 PoW challenge。实际 API key、管理员认证、
 交易所凭据、代理节点和运行时数据不得提交到 Git。
 
 ```powershell
