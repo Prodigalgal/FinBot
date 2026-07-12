@@ -167,9 +167,10 @@ class FirecrawlAdapter(BaseAdapter):
             try:
                 async with httpx.AsyncClient(**kwargs) as client:
                     response = await client.post(endpoint, json=body)
-                if response.status_code in {407, 429, 502, 503, 504} and self.proxy_router.has_proxy("firecrawl"):
-                    self.proxy_router.report_failure("firecrawl", proxy, f"http-{response.status_code}")
-                    last_error = RuntimeError(f"proxy candidate returned HTTP {response.status_code}: {proxy_decision.proxy_redacted}")
+                proxy_failure = _proxy_failure_reason(response)
+                if proxy_failure and self.proxy_router.has_proxy("firecrawl"):
+                    self.proxy_router.report_failure("firecrawl", proxy, proxy_failure)
+                    last_error = RuntimeError(f"proxy candidate rejected ({proxy_failure}): {proxy_decision.proxy_redacted}")
                     continue
                 self.proxy_router.report_success("firecrawl", proxy)
                 return response, proxy_decision
@@ -177,9 +178,10 @@ class FirecrawlAdapter(BaseAdapter):
                 if proxy and proxy.lower().startswith("socks"):
                     try:
                         response = await self._post_firecrawl_with_curl(endpoint, body, headers, proxy)
-                        if response.status_code in {407, 429, 502, 503, 504} and self.proxy_router.has_proxy("firecrawl"):
-                            self.proxy_router.report_failure("firecrawl", proxy, f"curl-http-{response.status_code}")
-                            last_error = RuntimeError(f"curl proxy candidate returned HTTP {response.status_code}: {proxy_decision.proxy_redacted}")
+                        proxy_failure = _proxy_failure_reason(response)
+                        if proxy_failure and self.proxy_router.has_proxy("firecrawl"):
+                            self.proxy_router.report_failure("firecrawl", proxy, f"curl-{proxy_failure}")
+                            last_error = RuntimeError(f"curl proxy candidate rejected ({proxy_failure}): {proxy_decision.proxy_redacted}")
                             continue
                         self.proxy_router.report_success("firecrawl", proxy)
                         return response, proxy_decision
@@ -302,3 +304,17 @@ class FirecrawlAdapter(BaseAdapter):
             if len(jobs) >= limit:
                 break
         return jobs
+
+
+def _proxy_failure_reason(response: httpx.Response) -> str | None:
+    if response.status_code in {407, 429, 502, 503, 504}:
+        return f"http-{response.status_code}"
+    if response.status_code != 403:
+        return None
+    text = response.text[:1200].lower()
+    suspicious_ip_markers = (
+        "ip address looks suspicious",
+        "suspicious ip",
+        "can't be used without an api key from here",
+    )
+    return "provider-suspicious-ip" if any(marker in text for marker in suspicious_ip_markers) else None

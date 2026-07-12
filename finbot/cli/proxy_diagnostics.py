@@ -19,10 +19,10 @@ DEFAULT_TARGETS = {
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Inspect FinBot proxy routes and optional VLESS sing-box bridge.")
+    parser = argparse.ArgumentParser(description="Inspect FinBot proxy routes and local sing-box protocol bridges.")
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--no-start-bridges", action="store_true")
-    parser.add_argument("--smoke", action="store_true", help="Run curl smoke through ok proxy decisions.")
+    parser.add_argument("--smoke", action="store_true", help="Run HTTP smoke through ok proxy decisions.")
     parser.add_argument("--target", action="append", help="route=url, e.g. exchange:binance=https://data-api.binance.vision/api/v3/time")
     return parser.parse_args()
 
