@@ -1010,7 +1010,7 @@ npm run build
 目标：
 
 - 将 FinBot 的 MiMo 官方 API 入口替换为集群内已部署的 MiMo2API 账户池。
-- 所有 AI 任务、委员会角色和主席统一使用 `mimo-v2.5-pro`，并显式开启思考。
+- 先完成所有 AI 任务统一切换到 `mimo-v2.5-pro` 的基线验证；后续任务可在此基础上恢复混合模型编排。
 
 范围：
 
@@ -1025,7 +1025,7 @@ npm run build
 
 验收标准：
 
-- 在线配置中只有 MiMo 站点启用；全部任务绑定、角色和主席均为 `chat + mimo-v2.5-pro`，思考等级非关闭状态且无备用站点。
+- 该阶段在线配置中只有 MiMo 站点启用；全部任务绑定、角色和主席均为 `chat + mimo-v2.5-pro`，思考等级非关闭状态且无备用站点。
 - MiMo2API `/v1/models` 与最小 Chat 请求成功，真实请求携带思考开关。
 - Python 测试、前端构建、CI 镜像发布、Argo CD 同步和在线调用验证通过。
 
@@ -1042,3 +1042,42 @@ npm run build
 - `python -m compileall -q finbot`、`python scripts/secret_scan.py`：通过。
 - `npm run build`：通过，仅保留既有 MUI vendor chunk 大小提示。
 - MiMo2API 真实最小调用返回 `200`、模型 `mimo-v2.5-pro`，账户池当前包含 11 个账户。
+
+## 混合模型分析与反思型最终执行机器人
+
+状态：进行中（2026-07-12）
+
+目标：
+
+- 分析流程混用 DeepSeek、MiMo 和 `gpt-5.6-terra`，最终执行由 `gpt-5.6-sol/xhigh` 独立把关。
+- Gate TestNet 与 Bybit Demo 允许无人值守自动批准和提交，Mainnet/Live 继续硬阻断。
+
+范围：
+
+- 新增 `ai_execution_robot` task binding 和 `execution_robot` 自动循环步骤。
+- 实现 Sol 初审与反思终审两阶段调用、独立 invocation/Token/成本审计和 fail-closed。
+- 升级 AI 配置到 v7，迁移旧 Sub2API 模型清单并贯通模型思考强度。
+- 调整 K8S 运行配置、生产 readiness、测试网自动提交策略和 GitOps 部署。
+
+非目标：
+
+- 不允许 AI 创建订单参数、改变方向/数量/杠杆或直接调用交易所。
+- 不接入或放开任何真实盘 host，不实现资金划转、充值、提现或主网私有 API。
+
+验收标准：
+
+- 初审和反思终审均使用 `responses + gpt-5.6-sol + xhigh`；任一阶段失败时零订单。
+- 终审只能批准输入中的原始 `decision_id`，漏审项自动拒绝。
+- 自动提交不要求 `human_review_status=approved`，但必须通过 Portfolio Risk、AI Governance、置信度、名义价值、映射和重复持仓门禁。
+- 生产 readiness 在“自动提交 + 无人工复核 + 未启用执行机器人”时返回阻断。
+- 全量测试、前端构建、Secret 扫描、CI 镜像、Argo CD、线上健康检查和真实 Sol 最小调用通过。
+
+测试方式：
+
+```powershell
+python -m unittest discover -s tests -v
+python -m compileall -q finbot
+python scripts/secret_scan.py
+cd web-ui
+npm run build
+```

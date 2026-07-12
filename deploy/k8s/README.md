@@ -5,7 +5,7 @@
 - 当前存储是 SQLite，因此 Web 与 Worker 放在同一个 Pod、共享同一个 `ReadWriteOnce` PVC。
 - `replicas` 必须保持 `1`，更新策略必须保持 `Recreate`。在迁移 PostgreSQL 前，不允许横向扩 Pod。
 - `/app` 是只读镜像内容；`/var/lib/finbot` 保存 SQLite、报告、运行时配置和 AI Workflow 配置。
-- `paper_execution.submit_orders` 首次启动固定为 `false`；真实盘 host 与 Mainnet 私有 API 仍由代码硬禁止。
+- Oracle 生产 overlay 允许 Gate TestNet / Bybit Demo 自动提交模拟订单，并通过执行机器人、组合风险、AI Governance、OMS 环境校验和 100 USDT 名义上限约束；真实盘 host 与 Mainnet 私有 API 仍由代码硬禁止。
 - Firecrawl keyless 从 Secret 读取 `FIRECRAWL_VLESS_SUBSCRIPTION_URL`，由应用内 sing-box bridge 将订阅节点转换为本地 HTTP 代理池；候选失败后进入指数冷却，禁止 direct fallback。订阅 URL、token、节点 UUID 和临时 sing-box 配置都不进入 GitOps。
 - Gate/Bybit 固定通过 `finbot-egress-proxy` 的 IPv4 出口。该代理调度到带有 `infra.mnnu/location=sg` 标签的新加坡节点，只接受同 namespace 的 FinBot Pod 访问，并且只开放 HTTPS `CONNECT:443`。
 - Firecrawl 与交易所使用独立 ProxyPool、路由策略和 bridge 生命周期；任一代理池不可用时只影响对应 provider，不允许跨池借道。

@@ -22,7 +22,7 @@ class PaperExecutionBlocked(RuntimeError):
 @dataclass(frozen=True)
 class PaperExecutionPolicy:
     submit_orders: bool = False
-    require_human_review: bool = True
+    require_human_review: bool = False
     max_orders_per_adapter: int = 1
     max_notional_usdt: float = 100.0
     min_confidence: float = 0.70

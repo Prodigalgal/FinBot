@@ -166,17 +166,10 @@ class AIDebateTests(unittest.TestCase):
             store = SQLiteStore(root / "finbot.sqlite3")
             store.init_schema()
             ai_store = AISitesConfigStore(root)
-            provider = OpenAICompatibleProvider(
-                name="mimo",
-                api_key="unit-test-key",
-                base_url="https://ai.example.test/v1",
-                chat_model="fake-chat",
-                responses_model=None,
-            )
             client = FakeDebateClient()
             runner = AIDebateCouncilRunner(
                 store=store,
-                providers={"mimo": provider},
+                providers=_providers(),
                 ai_store=ai_store,
                 client=client,
             )
@@ -226,16 +219,9 @@ class AIDebateTests(unittest.TestCase):
             root = Path(temp_dir)
             store = SQLiteStore(root / "finbot.sqlite3")
             store.init_schema()
-            provider = OpenAICompatibleProvider(
-                name="mimo",
-                api_key="unit-test-key",
-                base_url="https://ai.example.test/v1",
-                chat_model="fake-chat",
-                responses_model=None,
-            )
             runner = AIDebateCouncilRunner(
                 store=store,
-                providers={"mimo": provider},
+                providers=_providers(),
                 ai_store=AISitesConfigStore(root),
                 client=(client := FakeDebateClient()),
             )
@@ -265,16 +251,9 @@ class AIDebateTests(unittest.TestCase):
             root = Path(temp_dir)
             store = SQLiteStore(root / "finbot.sqlite3")
             store.init_schema()
-            provider = OpenAICompatibleProvider(
-                name="mimo",
-                api_key="unit-test-key",
-                base_url="https://ai.example.test/v1",
-                chat_model="fake-chat",
-                responses_model=None,
-            )
             runner = AIDebateCouncilRunner(
                 store=store,
-                providers={"mimo": provider},
+                providers=_providers(),
                 ai_store=AISitesConfigStore(root),
                 client=FakeDebateClient(),
             )
@@ -300,16 +279,9 @@ class AIDebateTests(unittest.TestCase):
             root = Path(temp_dir)
             store = SQLiteStore(root / "finbot.sqlite3")
             store.init_schema()
-            provider = OpenAICompatibleProvider(
-                name="mimo",
-                api_key="unit-test-key",
-                base_url="https://ai.example.test/v1",
-                chat_model="fake-chat",
-                responses_model=None,
-            )
             runner = AIDebateCouncilRunner(
                 store=store,
-                providers={"mimo": provider},
+                providers=_providers(),
                 ai_store=AISitesConfigStore(root),
                 client=FakeDebateClient(),
             )
@@ -367,6 +339,32 @@ def _candidate(matched_research: bool) -> dict[str, Any]:
             "matched_items": [{"event_key": "btc"}] if matched_research else [],
         },
         "evidence_refs": ["council:council-a", "market:binance:BTCUSDT"],
+    }
+
+
+def _providers() -> dict[str, OpenAICompatibleProvider]:
+    return {
+        "deepseek": OpenAICompatibleProvider(
+            name="deepseek",
+            api_key="unit-test-key",
+            base_url="https://deepseek.example.test/v1",
+            chat_model="deepseek-v4-flash",
+            responses_model=None,
+        ),
+        "mimo": OpenAICompatibleProvider(
+            name="mimo",
+            api_key="unit-test-key",
+            base_url="https://mimo.example.test/v1",
+            chat_model="mimo-v2.5-pro",
+            responses_model=None,
+        ),
+        "sub2api": OpenAICompatibleProvider(
+            name="sub2api",
+            api_key="unit-test-key",
+            base_url="https://sub2api.example.test/v1",
+            chat_model=None,
+            responses_model="gpt-5.6-terra",
+        ),
     }
 
 

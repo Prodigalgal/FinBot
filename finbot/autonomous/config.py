@@ -43,9 +43,11 @@ class AutonomousLoopConfig:
     ai_debate_max_candidates: int = 3
     ai_trade_min_confidence: float = 0.58
     ai_trade_require_research_confirmation: bool = True
+    execution_robot_enabled: bool = True
+    execution_robot_max_output_tokens: int = 2_048
     paper_execution_enabled: bool = False
     paper_execution_submit_orders: bool = False
-    paper_execution_require_human_review: bool = True
+    paper_execution_require_human_review: bool = False
     paper_execution_adapters: tuple[str, ...] = ("gate_testnet", "bybit_demo")
     paper_execution_max_orders_per_adapter: int = 1
     paper_execution_max_notional_usdt: float = 100.0
@@ -156,6 +158,12 @@ class AutonomousLoopConfig:
                     "autonomous.ai_trade_require_research_confirmation",
                     cls.ai_trade_require_research_confirmation,
                 )
+            ),
+            execution_robot_enabled=bool(
+                value("execution_robot.enabled", cls.execution_robot_enabled)
+            ),
+            execution_robot_max_output_tokens=int(
+                value("execution_robot.max_output_tokens", cls.execution_robot_max_output_tokens)
             ),
             paper_execution_enabled=bool(
                 value("paper_execution.enabled", cls.paper_execution_enabled)

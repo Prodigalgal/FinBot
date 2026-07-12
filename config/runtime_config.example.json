@@ -56,6 +56,7 @@
     "autonomous.ai_trade_require_research_confirmation": true,
     "paper_execution.enabled": false,
     "paper_execution.submit_orders": false,
+    "paper_execution.require_human_review": false,
     "paper_execution.adapters": [
       "gate_testnet",
       "bybit_demo"
@@ -102,9 +103,13 @@
     "worker.lease_seconds": 30,
     "worker.heartbeat_seconds": 5,
     "ai.provider_order": [
-      "mimo"
+      "deepseek",
+      "mimo",
+      "sub2api"
     ],
     "ai.protocol": "chat",
-    "ai.keys_file": "config/ai-provider-keys.env"
+    "ai.keys_file": "config/ai-provider-keys.env",
+    "execution_robot.enabled": true,
+    "execution_robot.max_output_tokens": 2048
   }
 }

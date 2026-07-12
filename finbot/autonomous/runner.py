@@ -15,6 +15,7 @@ from finbot.ai.openai_compatible import load_provider_configs
 from finbot.advisory.engine import AdvisoryConfig
 from finbot.autonomous.ai_debate import AIDebateConfig, AIDebateCouncilRunner
 from finbot.autonomous.config import AutonomousLoopConfig
+from finbot.autonomous.execution_robot import ExecutionRobot, ExecutionRobotConfig
 from finbot.autonomous.product_candidates import ProductCandidateBuilder, ProductCandidateConfig
 from finbot.autonomous.product_selector import ProductRecommendationSelector, ProductSelectionConfig
 from finbot.cli.common import build_store, write_report
@@ -51,6 +52,7 @@ AUTONOMOUS_LOOP_STEPS = (
     "product_selection",
     "recommendation_evaluation",
     "portfolio_risk",
+    "execution_robot",
     "ai_governance",
     "paper_execution",
     "publish_status",
@@ -69,6 +71,7 @@ class AutonomousResearchLoopRunner:
         selector: ProductRecommendationSelector | None = None,
         candidate_builder: ProductCandidateBuilder | None = None,
         debate_runner_factory: Callable[[Any], AIDebateCouncilRunner] | None = None,
+        execution_robot_factory: Callable[[Any], ExecutionRobot] | None = None,
     ):
         self.research_executor = research_executor
         self.catalog_executor = catalog_executor
@@ -77,6 +80,7 @@ class AutonomousResearchLoopRunner:
         self.selector = selector or ProductRecommendationSelector()
         self.candidate_builder = candidate_builder or ProductCandidateBuilder()
         self.debate_runner_factory = debate_runner_factory
+        self.execution_robot_factory = execution_robot_factory
 
     def run(
         self,
@@ -172,6 +176,8 @@ class AutonomousResearchLoopRunner:
             return config.run_portfolio_risk and config.run_operator_workbench
         if step_name == "ai_governance":
             return config.run_ai_governance and config.run_ai_debate
+        if step_name == "execution_robot":
+            return config.execution_robot_enabled and config.run_ai_debate
         if step_name == "paper_execution":
             return config.paper_execution_enabled
         return True
@@ -374,6 +380,11 @@ class AutonomousResearchLoopRunner:
         if step_name == "portfolio_risk":
             report = self._run_portfolio_risk(config, loop_run_id, context)
             context["portfolio_risk"] = report
+            return report
+        if step_name == "execution_robot":
+            report = self._run_execution_robot(config, loop_run_id, context)
+            context["execution_robot"] = report
+            context["execution_decisions"] = report.get("approved_decisions", [])
             return report
         if step_name == "ai_governance":
             report = self._run_ai_governance(config, loop_run_id, context)
@@ -649,16 +660,62 @@ class AutonomousResearchLoopRunner:
         report["output"] = str(write_report(settings, "ai-governance-latest.json", report))
         return report
 
+    def _run_execution_robot(
+        self,
+        config: AutonomousLoopConfig,
+        loop_run_id: str,
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
+        _, store = build_store(config.data_dir)
+        robot = (
+            self.execution_robot_factory(store)
+            if self.execution_robot_factory
+            else ExecutionRobot(
+                store=store,
+                providers=load_provider_configs(keys_file=Path(config.ai_keys_file), project_root=Path.cwd()),
+                ai_store=AISitesConfigStore(runtime_root(Path.cwd())),
+            )
+        )
+        return robot.run(
+            decisions=[item for item in context.get("ai_decisions", []) if isinstance(item, dict)],
+            portfolio_risk=context.get("portfolio_risk"),
+            config=ExecutionRobotConfig(
+                loop_run_id=loop_run_id,
+                debate_id=(context.get("ai_debate") or {}).get("debate_id"),
+                max_total_tokens_per_loop=config.ai_budget_max_total_tokens_per_loop,
+                max_cost_usd_per_loop=config.ai_budget_max_cost_usd_per_loop,
+                max_output_tokens=min(
+                    config.execution_robot_max_output_tokens,
+                    config.ai_budget_max_output_tokens_per_call,
+                ),
+            ),
+        )
+
     def _run_paper_execution(
         self,
         config: AutonomousLoopConfig,
         loop_run_id: str,
         context: dict[str, Any],
     ) -> dict[str, Any]:
+        if config.execution_robot_enabled:
+            robot = context.get("execution_robot") or {}
+            if robot.get("status") != "passed":
+                return {
+                    "status": "blocked",
+                    "execution_run_id": None,
+                    "summary": {
+                        "execution_count": 0,
+                        "reasons": ["执行机器人未通过，按 fail-closed 禁止模拟下单"],
+                    },
+                    "executions": [],
+                }
+            decisions = [item for item in context.get("execution_decisions", []) if isinstance(item, dict)]
+        else:
+            decisions = [item for item in context.get("ai_decisions", []) if isinstance(item, dict)]
         return execute_paper_decisions(
             config=config,
             loop_run_id=loop_run_id,
-            decisions=[item for item in context.get("ai_decisions", []) if isinstance(item, dict)],
+            decisions=decisions,
             portfolio_risk=context.get("portfolio_risk"),
             ai_governance=context.get("ai_governance"),
         )
@@ -843,6 +900,14 @@ class AutonomousResearchLoopRunner:
                 "max_cost_usd_per_loop": config.ai_budget_max_cost_usd_per_loop,
                 "minimum_claim_coverage": config.ai_governance_minimum_claim_coverage,
             }
+        if step_name == "execution_robot":
+            return {
+                "enabled": config.execution_robot_enabled,
+                "max_output_tokens": config.execution_robot_max_output_tokens,
+                "selection_only": True,
+                "reflection_required": True,
+                "mainnet_allowed": False,
+            }
         if step_name == "paper_execution":
             return {
                 "submit_orders": config.paper_execution_submit_orders,
@@ -887,6 +952,8 @@ class AutonomousResearchLoopRunner:
             "evaluated_recommendation_count": ((context.get("recommendation_evaluation") or {}).get("summary") or {}).get("evaluated_count", 0),
             "portfolio_risk_report_id": (context.get("portfolio_risk") or {}).get("risk_report_id"),
             "portfolio_risk_status": ((context.get("portfolio_risk") or {}).get("summary") or {}).get("risk_status"),
+            "execution_robot_status": (context.get("execution_robot") or {}).get("status"),
+            "execution_robot_approved_count": ((context.get("execution_robot") or {}).get("summary") or {}).get("approved_count", 0),
             "ai_governance_report_id": (context.get("ai_governance") or {}).get("governance_report_id"),
             "ai_governance_status": ((context.get("ai_governance") or {}).get("summary") or {}).get("governance_status"),
             "paper_execution_run_id": (context.get("paper_execution") or {}).get("execution_run_id"),

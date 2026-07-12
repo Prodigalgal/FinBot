@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,7 @@ import httpx
 from finbot.ai.openai_compatible import OpenAICompatibleClient, OpenAICompatibleProvider, load_provider_configs
 from finbot.config.ai_sites import (
     AI_TASK_ID_COMPRESSION,
+    AI_TASK_ID_EXECUTION_ROBOT,
     AI_TASK_ID_TRADE_SYNTHESIS,
     AISitesConfigStore,
     render_prompt_template,
@@ -69,6 +71,47 @@ class FakeCompletionHttpClient:
 
 
 class AISitesConfigTests(unittest.TestCase):
+    def test_v6_config_exposes_sol_execution_robot_after_v7_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            path = root / "config" / "ai_sites.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 6,
+                        "sites": [
+                            {
+                                "site_id": "sub2api",
+                                "display_name": "GPT 5.6 Luna（开发网关）",
+                                "enabled": True,
+                                "base_url": "https://sub2api.example.test/v1",
+                                "responses_models": ["gpt-5.6-luna"],
+                                "default_responses_model": "gpt-5.6-luna",
+                                "pricing_model": "gpt-5.6-luna",
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            store = AISitesConfigStore(root)
+
+            payload = store.payload()
+            public = store.public_payload()
+            binding = store.task_binding(AI_TASK_ID_EXECUTION_ROBOT)
+
+        self.assertEqual(payload["version"], 7)
+        self.assertEqual(public["sites"][0]["display_name"], "Sub2API GPT 5.6")
+        self.assertEqual(
+            public["sites"][0]["responses_models"],
+            ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+        )
+        self.assertEqual(binding.site_id, "sub2api")
+        self.assertEqual(binding.model, "gpt-5.6-sol")
+        self.assertEqual(binding.reasoning_effort, "xhigh")
+
     def test_trade_synthesis_prompt_treats_valid_market_confirmation_as_research_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             payload = AISitesConfigStore(Path(temp_dir)).public_payload()
@@ -236,7 +279,7 @@ class AISitesConfigTests(unittest.TestCase):
             public = store.public_payload(env={"DEEPSEEK_API_KEY": "secret", "MIMO_API_KEY": "secret-2"})
 
         self.assertGreaterEqual(len(public["role_presets"]), 7)
-        self.assertEqual(public["role_presets"][0]["site_id"], "mimo")
+        self.assertEqual(public["role_presets"][0]["site_id"], "deepseek")
         self.assertTrue(public["role_presets"][0]["model"])
         self.assertNotIn("api_key", public["role_presets"][0])
 
@@ -254,7 +297,7 @@ class AISitesConfigTests(unittest.TestCase):
         self.assertEqual(deepseek["output_cost_per_million_tokens"], 0.28)
         self.assertEqual(mimo["input_cost_per_million_tokens"], 0.435)
         self.assertEqual(mimo["output_cost_per_million_tokens"], 0.87)
-        self.assertEqual(sub2api["default_responses_model"], "gpt-5.6-luna")
+        self.assertEqual(sub2api["default_responses_model"], "gpt-5.6-terra")
         self.assertEqual(sub2api["pricing_basis"], "internal-conservative-estimate")
         self.assertEqual(sub2api["input_cost_per_million_tokens"], 5.0)
         self.assertEqual(sub2api["output_cost_per_million_tokens"], 20.0)
@@ -272,8 +315,8 @@ class AISitesConfigTests(unittest.TestCase):
 
         sub2api = next(site for site in public["sites"] if site["site_id"] == "sub2api")
         self.assertTrue(sub2api["api_key_configured"])
-        self.assertEqual(sub2api["responses_models"], ["gpt-5.6-luna"])
-        self.assertEqual(providers["sub2api"].responses_model, "gpt-5.6-luna")
+        self.assertEqual(sub2api["responses_models"], ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"])
+        self.assertEqual(providers["sub2api"].responses_model, "gpt-5.6-terra")
         self.assertIsNone(providers["sub2api"].chat_model)
 
     def test_experiment_assignment_is_stable(self) -> None:

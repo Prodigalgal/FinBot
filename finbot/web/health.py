@@ -77,14 +77,21 @@ class HealthService:
             blockers.append("认证未启用")
         elif not auth_settings.cookie_secure:
             blockers.append("认证 Cookie 未启用 Secure")
-        if not self.app_state.config_store.value("paper_execution.require_human_review", True):
-            blockers.append("模拟执行未强制人工复核")
+        submit_orders = self.app_state.config_store.value("paper_execution.submit_orders", False)
+        require_human_review = self.app_state.config_store.value(
+            "paper_execution.require_human_review", False
+        )
+        execution_robot_enabled = self.app_state.config_store.value(
+            "execution_robot.enabled", True
+        )
+        if submit_orders and not require_human_review and not execution_robot_enabled:
+            blockers.append("自动批准模拟执行必须启用最终执行机器人")
         if os.getenv("FINBOT_REQUIRE_PAPER_SUBMIT_DISABLED", "1").strip().lower() in {
             "1",
             "true",
             "yes",
             "on",
-        } and self.app_state.config_store.value("paper_execution.submit_orders", False):
+        } and submit_orders:
             blockers.append("首次生产部署不允许开启模拟订单提交")
         proxy_pool = self.app_state.config_store.value("exchange.proxy_pool", "")
         if not str(proxy_pool or "").strip():
@@ -92,4 +99,3 @@ class HealthService:
         if blockers:
             return ReadinessCheck("production_safety", "failed", "；".join(blockers))
         return ReadinessCheck("production_safety", "passed", "production")
-

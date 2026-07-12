@@ -182,6 +182,57 @@ class WebAuthenticationTests(unittest.TestCase):
         )
         self.assertIn("不允许开启模拟订单提交", production_check["detail"])
 
+    def test_production_readiness_allows_robot_approved_testnet_submission(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_store = RuntimeConfigStore(root)
+            config_store.update(
+                {
+                    "exchange.proxy_pool": "http://finbot-egress-proxy:8888",
+                    "paper_execution.submit_orders": True,
+                    "paper_execution.require_human_review": False,
+                    "execution_robot.enabled": True,
+                }
+            )
+            state = FinBotWebApp(
+                data_dir=str(root / "data"),
+                config_store=config_store,
+                ai_config_store=AISitesConfigStore(root),
+            )
+            app = create_fastapi_app(
+                state,
+                frontend_dist=None,
+                auth_settings=_auth_settings(cookie_secure=True),
+            )
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "FINBOT_DEPLOYMENT_MODE": "production",
+                    "FINBOT_REQUIRE_PAPER_SUBMIT_DISABLED": "false",
+                },
+            ):
+                with TestClient(app) as client:
+                    ready = client.get("/health/ready")
+
+            config_store.update({"execution_robot.enabled": False})
+            with patch.dict(
+                "os.environ",
+                {
+                    "FINBOT_DEPLOYMENT_MODE": "production",
+                    "FINBOT_REQUIRE_PAPER_SUBMIT_DISABLED": "false",
+                },
+            ):
+                with TestClient(app) as client:
+                    blocked = client.get("/health/ready")
+
+        self.assertEqual(ready.status_code, 200)
+        self.assertEqual(blocked.status_code, 503)
+        production_check = next(
+            item for item in blocked.json()["checks"] if item["name"] == "production_safety"
+        )
+        self.assertIn("必须启用最终执行机器人", production_check["detail"])
+
 
 def _auth_settings(cookie_secure: bool = False) -> AuthSettings:
     return AuthSettings(

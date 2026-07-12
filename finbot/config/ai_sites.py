@@ -14,11 +14,12 @@ from finbot.council.builtin_templates import builtin_council_templates
 from finbot.config.env_file import read_env_file
 
 
-AI_SITES_CONFIG_VERSION = 6
+AI_SITES_CONFIG_VERSION = 7
 AI_SITES_CONFIG_FILENAME = "ai_sites.json"
 AI_TASK_ID_COMPRESSION = "ai_compression"
 AI_TASK_ID_DEBATE = "ai_debate"
 AI_TASK_ID_TRADE_SYNTHESIS = "ai_trade_synthesis"
+AI_TASK_ID_EXECUTION_ROBOT = "ai_execution_robot"
 
 DEFAULT_AI_SITE_PRICING: dict[str, dict[str, Any]] = {
     "deepseek": {
@@ -40,7 +41,7 @@ DEFAULT_AI_SITE_PRICING: dict[str, dict[str, Any]] = {
         "output_cost_per_million_tokens": 0.87,
     },
     "sub2api": {
-        "pricing_model": "gpt-5.6-luna",
+        "pricing_model": "gpt-5.6-terra",
         "pricing_currency": "USD",
         "pricing_basis": "internal-conservative-estimate",
         "pricing_source_url": None,
@@ -169,7 +170,18 @@ DEFAULT_AI_TASKS = {
         "description": "综合多 Agent 辩论、P4.1 研究复核和交易所公共行情，输出 advisory-only 决策。",
         "default_system_prompt": DEFAULT_TRADE_SYNTHESIS_SYSTEM_PROMPT,
         "default_user_prompt_template": "{payload_json}",
-    }
+    },
+    AI_TASK_ID_EXECUTION_ROBOT: {
+        "task_id": AI_TASK_ID_EXECUTION_ROBOT,
+        "label": "AI 交易执行机器人",
+        "description": "在组合风险之后执行初审与反思终审，只筛选允许进入受控模拟执行的原始决策。",
+        "default_system_prompt": (
+            "你是 FinBot 最终交易执行机器人。你需要先审查，再接受第二阶段反思终审。只返回合法 JSON 对象。"
+            "你只能对输入 decision_id 给出 execute=true/false，不得创建新决策、改变方向、"
+            "价格、数量、杠杆或绕过风险门禁。证据不足、风险冲突或状态异常时必须拒绝执行。"
+        ),
+        "default_user_prompt_template": "{payload_json}",
+    },
 }
 
 
@@ -187,11 +199,11 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
             "objective": "寻找支持方向性机会的证据，同时指出成立条件和可证伪条件。",
             "enabled": True,
             "order": 10,
-            "site_id": "mimo",
+            "site_id": "deepseek",
             "protocol": "chat",
-            "model": "mimo-v2.5-pro",
-            "reasoning_effort": "high",
-            "fallback_site_ids": [],
+            "model": "deepseek-v4-flash",
+            "reasoning_effort": "medium",
+            "fallback_site_ids": ["mimo"],
             "system_prompt": "优先寻找支持机会的证据，但必须主动列出反证、证据缺口和失效条件。",
             "user_prompt_template": "{payload_json}",
         },
@@ -206,7 +218,7 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
             "protocol": "chat",
             "model": "mimo-v2.5-pro",
             "reasoning_effort": "high",
-            "fallback_site_ids": [],
+            "fallback_site_ids": ["deepseek"],
             "system_prompt": "优先寻找反证、拥挤风险和错误映射，不得为了反对而虚构事实。",
             "user_prompt_template": "{payload_json}",
         },
@@ -217,11 +229,11 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
             "objective": "聚焦多周期趋势、动量、波动、成交量、价差和关键价位。",
             "enabled": True,
             "order": 30,
-            "site_id": "mimo",
-            "protocol": "chat",
-            "model": "mimo-v2.5-pro",
+            "site_id": "sub2api",
+            "protocol": "responses",
+            "model": "gpt-5.6-terra",
             "reasoning_effort": "high",
-            "fallback_site_ids": [],
+            "fallback_site_ids": ["mimo"],
             "system_prompt": "只使用输入的确定性行情指标，明确区分短周期和长周期结论。",
             "user_prompt_template": "{payload_json}",
         },
@@ -236,7 +248,7 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
             "protocol": "chat",
             "model": "mimo-v2.5-pro",
             "reasoning_effort": "high",
-            "fallback_site_ids": [],
+            "fallback_site_ids": ["deepseek"],
             "system_prompt": "优先识别不可交易、证据不足和风险收益不成立的候选。",
             "user_prompt_template": "{payload_json}",
         },
@@ -267,11 +279,11 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
     "chair": {
         "role_id": "chair_arbiter",
         "display_name": "主席仲裁员",
-        "site_id": "mimo",
-        "protocol": "chat",
-        "model": "mimo-v2.5-pro",
+        "site_id": "sub2api",
+        "protocol": "responses",
+        "model": "gpt-5.6-terra",
         "reasoning_effort": "high",
-        "fallback_site_ids": [],
+        "fallback_site_ids": ["mimo"],
         "system_prompt": DEFAULT_TRADE_SYNTHESIS_SYSTEM_PROMPT,
         "user_prompt_template": "{payload_json}",
     },
@@ -444,6 +456,12 @@ class AISitesConfigStore:
                 _upgrade_legacy_site_pricing(site)
                 for site in _list_payload(payload.get("sites"))
             ]
+        if source_version < 7:
+            payload["sites"] = [
+                _upgrade_v7_site(site)
+                for site in _list_payload(payload.get("sites"))
+            ]
+            payload["version"] = AI_SITES_CONFIG_VERSION
         return payload
 
     def default_payload(self) -> dict[str, Any]:
@@ -454,7 +472,7 @@ class AISitesConfigStore:
                 {
                     "site_id": "deepseek",
                     "display_name": "DeepSeek",
-                    "enabled": False,
+                    "enabled": True,
                     "base_url": "https://api.deepseek.com",
                     "api_key": None,
                     "chat_models": ["deepseek-v4-flash"],
@@ -479,14 +497,14 @@ class AISitesConfigStore:
                 },
                 {
                     "site_id": "sub2api",
-                    "display_name": "GPT 5.6 Luna（开发网关）",
-                    "enabled": False,
+                    "display_name": "Sub2API GPT 5.6",
+                    "enabled": True,
                     "base_url": "http://168.138.40.52:8181/v1",
                     "api_key": None,
                     "chat_models": [],
-                    "responses_models": ["gpt-5.6-luna"],
+                    "responses_models": ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
                     "default_chat_model": None,
-                    "default_responses_model": "gpt-5.6-luna",
+                    "default_responses_model": "gpt-5.6-terra",
                     "timeout_seconds": 90,
                     **DEFAULT_AI_SITE_PRICING["sub2api"],
                 },
@@ -502,18 +520,26 @@ class AISitesConfigStore:
                 },
                 AI_TASK_ID_DEBATE: {
                     "enabled": True,
-                    "site_id": "mimo",
+                    "site_id": "deepseek",
                     "protocol": "chat",
-                    "model": "mimo-v2.5-pro",
-                    "reasoning_effort": "high",
-                    "fallback_site_ids": [],
+                    "model": "deepseek-v4-flash",
+                    "reasoning_effort": "medium",
+                    "fallback_site_ids": ["mimo"],
                 },
                 AI_TASK_ID_TRADE_SYNTHESIS: {
                     "enabled": True,
-                    "site_id": "mimo",
-                    "protocol": "chat",
-                    "model": "mimo-v2.5-pro",
+                    "site_id": "sub2api",
+                    "protocol": "responses",
+                    "model": "gpt-5.6-terra",
                     "reasoning_effort": "high",
+                    "fallback_site_ids": ["mimo"],
+                },
+                AI_TASK_ID_EXECUTION_ROBOT: {
+                    "enabled": True,
+                    "site_id": "sub2api",
+                    "protocol": "responses",
+                    "model": "gpt-5.6-sol",
+                    "reasoning_effort": "xhigh",
                     "fallback_site_ids": [],
                 }
             },
@@ -528,6 +554,10 @@ class AISitesConfigStore:
                 },
                 AI_TASK_ID_TRADE_SYNTHESIS: {
                     "system_prompt": DEFAULT_TRADE_SYNTHESIS_SYSTEM_PROMPT,
+                    "user_prompt_template": "{payload_json}",
+                },
+                AI_TASK_ID_EXECUTION_ROBOT: {
+                    "system_prompt": DEFAULT_AI_TASKS[AI_TASK_ID_EXECUTION_ROBOT]["default_system_prompt"],
                     "user_prompt_template": "{payload_json}",
                 }
             },
@@ -876,6 +906,23 @@ def _upgrade_legacy_site_pricing(site: dict[str, Any]) -> dict[str, Any]:
             upgraded.setdefault(key, value)
             if upgraded.get(key) is None:
                 upgraded[key] = value
+    return upgraded
+
+
+def _upgrade_v7_site(site: dict[str, Any]) -> dict[str, Any]:
+    upgraded = dict(site)
+    if str(upgraded.get("site_id") or "").strip() != "sub2api":
+        return upgraded
+    existing_models = _string_list(upgraded.get("responses_models"))
+    upgraded["responses_models"] = list(
+        dict.fromkeys(["gpt-5.6-sol", "gpt-5.6-terra", *existing_models])
+    )
+    if upgraded.get("default_responses_model") in {None, "", "gpt-5.6-luna"}:
+        upgraded["default_responses_model"] = "gpt-5.6-terra"
+    if upgraded.get("pricing_model") in {None, "", "gpt-5.6-luna"}:
+        upgraded["pricing_model"] = "gpt-5.6-terra"
+    if upgraded.get("display_name") == "GPT 5.6 Luna（开发网关）":
+        upgraded["display_name"] = "Sub2API GPT 5.6"
     return upgraded
 
 

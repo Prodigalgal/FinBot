@@ -110,10 +110,10 @@ def _standard_product_research() -> dict[str, Any]:
 def _deep_investment_committee() -> dict[str, Any]:
     roles = [
         _role("deep_evidence_auditor", "深度证据审计员", "risk", "识别关键证据缺口并验证新增证据。", 10, "high"),
-        _role("scenario_analyst", "情景分析员", "neutral", "建立基准、上行、下行和尾部情景。", 20, "high", site_id="mimo"),
+        _role("scenario_analyst", "情景分析员", "neutral", "建立基准、上行、下行和尾部情景。", 20, "high", site_id="sub2api"),
         _role("deep_bull_advocate", "深度多方委员", "bullish", "提出强论证并明确证伪条件。", 30, "high"),
         _role("deep_bear_advocate", "深度空方委员", "bearish", "提出最强反证与拥挤风险。", 40, "high", site_id="mimo"),
-        _role("portfolio_risk_member", "组合风险委员", "risk", "检查相关性、敞口、流动性和极端风险。", 50, "high"),
+        _role("portfolio_risk_member", "组合风险委员", "risk", "检查相关性、敞口、流动性和极端风险。", 50, "high", site_id="sub2api"),
     ]
     nodes = [
         _node("input_context", "input", 40, 280),
@@ -180,7 +180,7 @@ def _deep_investment_committee() -> dict[str, Any]:
 def _event_impact_analysis() -> dict[str, Any]:
     roles = [
         _role("credibility_analyst", "事件可信度分析员", "neutral", "核查事件来源、时间与独立互证。", 10, "medium"),
-        _role("impact_chain_analyst", "影响链分析员", "neutral", "拆解一阶、二阶影响和时间窗口。", 20, "medium", site_id="mimo"),
+        _role("impact_chain_analyst", "影响链分析员", "neutral", "拆解一阶、二阶影响和时间窗口。", 20, "medium", site_id="sub2api"),
         _role("event_market_analyst", "市场确认分析员", "market", "检查价格、成交和跨市场是否确认事件。", 30, "medium"),
         _role("counterfactual_analyst", "反事实分析员", "bearish", "构造事件无效、已定价或方向相反的解释。", 40, "high", site_id="mimo"),
         _role("event_risk_controller", "事件风险控制员", "risk", "输出失效条件和建议降级原因。", 50, "high"),
@@ -322,9 +322,13 @@ def _role(
     order: int,
     reasoning_effort: str,
     *,
-    site_id: str = "mimo",
+    site_id: str = "deepseek",
 ) -> dict[str, Any]:
-    site_id = "mimo"
+    provider = {
+        "deepseek": ("chat", "deepseek-v4-flash", ["mimo"]),
+        "mimo": ("chat", "mimo-v2.5-pro", ["deepseek"]),
+        "sub2api": ("responses", "gpt-5.6-terra", ["mimo"]),
+    }[site_id]
     return {
         "role_id": role_id,
         "display_name": display_name,
@@ -333,23 +337,23 @@ def _role(
         "enabled": True,
         "order": order,
         "site_id": site_id,
-        "protocol": "chat",
-        "model": "mimo-v2.5-pro",
+        "protocol": provider[0],
+        "model": provider[1],
         "reasoning_effort": reasoning_effort,
-        "fallback_site_ids": [],
+        "fallback_site_ids": provider[2],
         "system_prompt": f"你是{display_name}。{objective}只输出可审计的结构化结论，不展示隐藏推理过程。",
     }
 
 
-def _chair(role_id: str, display_name: str, reasoning_effort: str, *, site_id: str = "mimo") -> dict[str, Any]:
+def _chair(role_id: str, display_name: str, reasoning_effort: str, *, site_id: str = "sub2api") -> dict[str, Any]:
     return {
         "role_id": role_id,
         "display_name": display_name,
-        "site_id": "mimo",
-        "protocol": "chat",
-        "model": "mimo-v2.5-pro",
+        "site_id": "sub2api",
+        "protocol": "responses",
+        "model": "gpt-5.6-terra",
         "reasoning_effort": reasoning_effort,
-        "fallback_site_ids": [],
+        "fallback_site_ids": ["mimo"],
         "system_prompt": "综合可追溯证据、主要分歧和风险门禁，输出面向人工复核的简体中文结论。",
     }
 

@@ -62,6 +62,7 @@ class AutonomousLoopTests(unittest.TestCase):
                     "product_selection",
                     "recommendation_evaluation",
                     "portfolio_risk",
+                    "execution_robot",
                     "ai_governance",
                     "paper_execution",
                     "publish_status",
@@ -93,6 +94,8 @@ class AutonomousLoopTests(unittest.TestCase):
                     "autonomous.ai_debate_max_candidates": 2,
                     "autonomous.ai_trade_min_confidence": 0.7,
                     "autonomous.ai_trade_require_research_confirmation": False,
+                    "execution_robot.enabled": True,
+                    "execution_robot.max_output_tokens": 3072,
                     "paper_execution.enabled": True,
                     "paper_execution.submit_orders": True,
                     "paper_execution.adapters": ["gate_testnet", "bybit_demo"],
@@ -117,6 +120,8 @@ class AutonomousLoopTests(unittest.TestCase):
             self.assertEqual(config.ai_debate_max_candidates, 2)
             self.assertEqual(config.ai_trade_min_confidence, 0.7)
             self.assertFalse(config.ai_trade_require_research_confirmation)
+            self.assertTrue(config.execution_robot_enabled)
+            self.assertEqual(config.execution_robot_max_output_tokens, 3072)
             self.assertTrue(config.paper_execution_enabled)
             self.assertTrue(config.paper_execution_submit_orders)
             self.assertEqual(config.paper_execution_adapters, ("gate_testnet", "bybit_demo"))

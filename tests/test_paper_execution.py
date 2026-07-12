@@ -135,6 +135,26 @@ class SigningContractTests(unittest.TestCase):
 
 
 class MultiExchangePaperExecutionTests(unittest.TestCase):
+    def test_robot_approved_decision_does_not_require_human_review(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = SQLiteStore(Path(temp_dir) / "finbot.sqlite3")
+            _seed_perpetual_catalog(store)
+            engine = MultiExchangePaperExecutionEngine(store, (GateTestnetAdapter(None),))
+            decision = _decision()
+            decision.pop("human_review_status")
+
+            report = engine.execute(
+                loop_run_id="loop-robot-approved",
+                decisions=[decision],
+                portfolio_risk=_portfolio_risk(),
+                ai_governance=_governance(),
+                policy=PaperExecutionPolicy(submit_orders=False),
+            )
+
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["summary"]["execution_count"], 1)
+        self.assertEqual(report["executions"][0]["status"], "dry_run")
+
     def test_risk_warning_does_not_block_simulation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = SQLiteStore(Path(temp_dir) / "finbot.sqlite3")

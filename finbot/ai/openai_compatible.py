@@ -289,7 +289,7 @@ def load_provider_configs(
             api_key=value("SUB2API_API_KEY"),
             base_url=value("SUB2API_BASE_URL", "http://168.138.40.52:8181/v1"),
             chat_model=None,
-            responses_model=value("SUB2API_RESPONSES_MODEL", "gpt-5.6-luna"),
+            responses_model=value("SUB2API_RESPONSES_MODEL", "gpt-5.6-terra"),
             timeout_seconds=max(timeout, 90.0),
         ),
     }

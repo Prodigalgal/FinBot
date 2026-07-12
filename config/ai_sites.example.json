@@ -1,12 +1,12 @@
 {
-  "version": 6,
+  "version": 7,
   "updated_at": null,
   "description": "复制为 config/ai_sites.json 后可由 Web AI 配置界面热更。真实文件已加入 .gitignore，允许保存 AI 站点密钥。",
   "sites": [
     {
       "site_id": "deepseek",
       "display_name": "DeepSeek",
-      "enabled": false,
+      "enabled": true,
       "base_url": "https://api.deepseek.com",
       "api_key": null,
       "chat_models": [
@@ -49,20 +49,22 @@
     },
     {
       "site_id": "sub2api",
-      "display_name": "GPT 5.6 Luna（开发网关）",
-      "enabled": false,
+      "display_name": "Sub2API GPT 5.6",
+      "enabled": true,
       "base_url": "http://168.138.40.52:8181/v1",
       "api_key": null,
       "chat_models": [],
       "responses_models": [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
         "gpt-5.6-luna"
       ],
       "default_chat_model": null,
-      "default_responses_model": "gpt-5.6-luna",
+      "default_responses_model": "gpt-5.6-terra",
       "timeout_seconds": 90,
       "input_cost_per_million_tokens": 5,
       "output_cost_per_million_tokens": 20,
-      "pricing_model": "gpt-5.6-luna",
+      "pricing_model": "gpt-5.6-terra",
       "pricing_currency": "USD",
       "pricing_basis": "internal-conservative-estimate",
       "pricing_source_url": null,
@@ -75,24 +77,36 @@
       "site_id": "mimo",
       "protocol": "chat",
       "model": "mimo-v2.5-pro",
-      "fallback_site_ids": [],
-      "reasoning_effort": "high"
+      "reasoning_effort": "high",
+      "fallback_site_ids": []
     },
     "ai_debate": {
       "enabled": true,
-      "site_id": "mimo",
+      "site_id": "deepseek",
       "protocol": "chat",
-      "model": "mimo-v2.5-pro",
-      "fallback_site_ids": [],
-      "reasoning_effort": "high"
+      "model": "deepseek-v4-flash",
+      "reasoning_effort": "medium",
+      "fallback_site_ids": [
+        "mimo"
+      ]
     },
     "ai_trade_synthesis": {
       "enabled": true,
-      "site_id": "mimo",
-      "protocol": "chat",
-      "model": "mimo-v2.5-pro",
-      "fallback_site_ids": [],
-      "reasoning_effort": "high"
+      "site_id": "sub2api",
+      "protocol": "responses",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "high",
+      "fallback_site_ids": [
+        "mimo"
+      ]
+    },
+    "ai_execution_robot": {
+      "enabled": true,
+      "site_id": "sub2api",
+      "protocol": "responses",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "xhigh",
+      "fallback_site_ids": []
     }
   },
   "prompts": {
@@ -106,6 +120,10 @@
     },
     "ai_trade_synthesis": {
       "system_prompt": "你是 FinBot P8 多 Agent 辩论委员会的 Chair Arbiter 和风险门禁助手。只返回合法 JSON 对象。输出只能作为人工参考，execution_allowed 必须为 false。research_context.status 为 needs-followup 时必须输出 HOLD 或 WATCH；market-confirmed 且 confirmation_scope=market-only 时可给出技术面方向建议，但必须把未确认基本面作为独立风险披露。",
+      "user_prompt_template": "{payload_json}"
+    },
+    "ai_execution_robot": {
+      "system_prompt": "你是 FinBot 最终交易执行机器人。你需要先审查，再接受第二阶段反思终审。只返回合法 JSON 对象。你只能对输入 decision_id 给出 execute=true/false，不得创建新决策、改变方向、价格、数量、杠杆或绕过风险门禁。证据不足、风险冲突或状态异常时必须拒绝执行。",
       "user_prompt_template": "{payload_json}"
     }
   },
@@ -124,13 +142,15 @@
           "objective": "寻找支持方向性机会的证据，同时指出成立条件和可证伪条件。",
           "enabled": true,
           "order": 10,
-          "site_id": "mimo",
+          "site_id": "deepseek",
           "protocol": "chat",
-          "model": "mimo-v2.5-pro",
-          "fallback_site_ids": [],
+          "model": "deepseek-v4-flash",
+          "fallback_site_ids": [
+            "mimo"
+          ],
           "system_prompt": "优先寻找支持机会的证据，但必须主动列出反证、证据缺口和失效条件。",
           "user_prompt_template": "{payload_json}",
-          "reasoning_effort": "high"
+          "reasoning_effort": "medium"
         },
         {
           "role_id": "bear_researcher",
@@ -142,7 +162,9 @@
           "site_id": "mimo",
           "protocol": "chat",
           "model": "mimo-v2.5-pro",
-          "fallback_site_ids": [],
+          "fallback_site_ids": [
+            "deepseek"
+          ],
           "system_prompt": "优先寻找反证、拥挤风险和错误映射，不得为了反对而虚构事实。",
           "user_prompt_template": "{payload_json}",
           "reasoning_effort": "high"
@@ -154,10 +176,12 @@
           "objective": "聚焦多周期趋势、动量、波动、成交量、价差和关键价位。",
           "enabled": true,
           "order": 30,
-          "site_id": "mimo",
-          "protocol": "chat",
-          "model": "mimo-v2.5-pro",
-          "fallback_site_ids": [],
+          "site_id": "sub2api",
+          "protocol": "responses",
+          "model": "gpt-5.6-terra",
+          "fallback_site_ids": [
+            "mimo"
+          ],
           "system_prompt": "只使用输入的确定性行情指标，明确区分短周期和长周期结论。",
           "user_prompt_template": "{payload_json}",
           "reasoning_effort": "high"
@@ -169,13 +193,15 @@
           "objective": "从风险约束、失效条件、证据质量和人工确认边界审查候选。",
           "enabled": true,
           "order": 40,
-          "site_id": "mimo",
+          "site_id": "deepseek",
           "protocol": "chat",
-          "model": "mimo-v2.5-pro",
-          "fallback_site_ids": [],
+          "model": "deepseek-v4-flash",
+          "fallback_site_ids": [
+            "mimo"
+          ],
           "system_prompt": "优先识别不可交易、证据不足和风险收益不成立的候选。",
           "user_prompt_template": "{payload_json}",
-          "reasoning_effort": "high"
+          "reasoning_effort": "medium"
         }
       ],
       "phases": [
@@ -204,10 +230,12 @@
       "chair": {
         "role_id": "chair_arbiter",
         "display_name": "主席仲裁员",
-        "site_id": "mimo",
-        "protocol": "chat",
-        "model": "mimo-v2.5-pro",
-        "fallback_site_ids": [],
+        "site_id": "sub2api",
+        "protocol": "responses",
+        "model": "gpt-5.6-terra",
+        "fallback_site_ids": [
+          "mimo"
+        ],
         "system_prompt": "综合各轮观点并输出 advisory-only 决策，execution_allowed 必须为 false。",
         "user_prompt_template": "{payload_json}",
         "reasoning_effort": "high"
@@ -321,12 +349,15 @@
           "variant_id": "deepseek_control",
           "display_name": "DeepSeek 对照组",
           "weight": 1,
-          "site_id": "mimo",
+          "site_id": "deepseek",
           "protocol": "chat",
-          "model": "mimo-v2.5-pro",
+          "model": "deepseek-v4-flash",
           "system_prompt_append": null,
           "user_prompt_template": null,
-          "reasoning_effort": "high"
+          "reasoning_effort": "medium",
+          "fallback_site_ids": [
+            "mimo"
+          ]
         },
         {
           "variant_id": "mimo_challenger",
@@ -337,7 +368,10 @@
           "model": "mimo-v2.5-pro",
           "system_prompt_append": null,
           "user_prompt_template": null,
-          "reasoning_effort": "high"
+          "reasoning_effort": "high",
+          "fallback_site_ids": [
+            "deepseek"
+          ]
         }
       ]
     }
