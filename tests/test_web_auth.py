@@ -19,6 +19,24 @@ SESSION_SECRET = "session-secret-with-at-least-32-characters"
 
 
 class WebAuthenticationTests(unittest.TestCase):
+    def test_unknown_api_path_is_json_404_instead_of_spa_html(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            frontend = root / "dist"
+            frontend.mkdir()
+            (frontend / "index.html").write_text("<html>FinBot SPA</html>", encoding="utf-8")
+            app = create_fastapi_app(
+                _state(root),
+                frontend_dist=str(frontend),
+                auth_settings=AuthSettings(enabled=False),
+            )
+            with TestClient(app) as client:
+                response = client.get("/api/v1/route-does-not-exist")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "api_not_found")
+        self.assertNotIn("FinBot SPA", response.text)
+
     def test_single_admin_plain_password_can_be_injected_from_environment(self) -> None:
         with patch.dict(
             "os.environ",

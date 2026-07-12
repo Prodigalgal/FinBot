@@ -1753,8 +1753,13 @@ def create_fastapi_app(
         async def frontend_index() -> FileResponse:
             return FileResponse(dist_path / "index.html")
 
-        @app.get("/{path:path}", response_class=FileResponse)
-        async def frontend_spa(path: str) -> FileResponse:
+        @app.get("/{path:path}")
+        async def frontend_spa(path: str) -> Response:
+            if path == "api" or path.startswith("api/"):
+                return JSONResponse(
+                    status_code=404,
+                    content={"detail": "API endpoint not found", "code": "api_not_found"},
+                )
             target = dist_path / path
             if target.exists() and target.is_file():
                 return FileResponse(target)
