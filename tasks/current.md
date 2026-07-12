@@ -1091,6 +1091,7 @@ npm run build
 - 测试网默认 `submit_orders=true`、`require_human_review=false`；生产 readiness 要求自动批准时必须启用执行机器人。
 - AI 配置升级到 v7：压缩为 MiMo -> DeepSeek，辩论混用 DeepSeek/MiMo，主席使用 Terra，最终执行只使用 Sol。
 - 行情工作台改为批量持久化 Kline，避免每根 Kline 单独事务造成 SQLite 长时间锁竞争。
+- 只读交易所凭据探针改为使用 K8S runtime root 和持久化 reports 路径，并随运行镜像发布。
 
 验证：
 
@@ -1099,6 +1100,7 @@ npm run build
 - 线上 AI v7、三站点、每轮 `$0.50` 成本预算、测试网自动提交和无人工复核配置均已热更新，setup/readiness 为 ready。
 - 真实完整循环通过研究、目录、universe、行情、多轮辩论、Terra 合成、筛选和组合风险；因单产品集中度 `100% > 35%` 被风险门禁拒绝，零订单。
 - 线上隔离 Sol 探针完成初审与反思终审，两次均为 `gpt-5.6-sol/xhigh`；合成证据未被批准，未调用 paper execution。
+- Gate TestNet 与 Bybit Demo 只读私有 API 探针均通过，最终 adapter 状态均为 `ready`，写请求数为 0。
 
 遗留风险：
 

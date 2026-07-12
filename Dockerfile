@@ -35,6 +35,7 @@ RUN apt-get update \
 
 COPY pyproject.toml ./
 COPY finbot/ ./finbot/
+COPY scripts/probe_paper_exchange_credentials.py ./scripts/probe_paper_exchange_credentials.py
 COPY config/source_catalog.example.yml config/topic_watchlists.example.yml config/runtime_config.example.json ./config/
 COPY --from=web-builder /build/web-ui/dist ./web-ui/dist/
 

@@ -13,6 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from finbot.config.paths import runtime_root
 from finbot.config.runtime_config import RuntimeConfigStore
 from finbot.config.settings import Settings
 from finbot.exchange.bybit_demo import (
@@ -36,13 +37,13 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=PROJECT_ROOT / "data" / "reports" / "paper-exchange-credential-probe.json",
+        default=None,
     )
     args = parser.parse_args()
 
     project_root = PROJECT_ROOT
     settings = Settings.from_env(project_root=project_root)
-    values = RuntimeConfigStore(project_root).values()
+    values = RuntimeConfigStore(runtime_root(project_root)).values()
     runtime = ProxyRuntime.from_settings(settings, start_bridges=not args.no_start_bridges)
     try:
         report = {
@@ -99,7 +100,9 @@ def main() -> int:
                 ),
             },
         }
-        output_path = args.output if args.output.is_absolute() else PROJECT_ROOT / args.output
+        output_path = args.output or settings.reports_dir / "paper-exchange-credential-probe.json"
+        if not output_path.is_absolute():
+            output_path = project_root / output_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(report, ensure_ascii=False, indent=2), flush=True)
