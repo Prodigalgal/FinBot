@@ -1070,6 +1070,7 @@ npm run build
 - 终审只能批准输入中的原始 `decision_id`，漏审项自动拒绝。
 - 自动提交不要求 `human_review_status=approved`，但必须通过 Portfolio Risk、AI Governance、置信度、名义价值、映射和重复持仓门禁。
 - 生产 readiness 在“自动提交 + 无人工复核 + 未启用执行机器人”时返回阻断。
+- 生产环境默认设置每轮 `$0.50` AI 成本硬预算，并继续保留 50 万总 Token 与单次输出上限。
 - 全量测试、前端构建、Secret 扫描、CI 镜像、Argo CD、线上健康检查和真实 Sol 最小调用通过。
 
 测试方式：

@@ -33,6 +33,7 @@
     "paper_execution.max_orders_per_adapter": 1,
     "paper_execution.max_notional_usdt": 100.0,
     "paper_execution.min_confidence": 0.7,
+    "autonomous.ai_budget_max_cost_usd_per_loop": 0.5,
     "ai.provider_order": ["deepseek", "mimo", "sub2api"],
     "ai.protocol": "chat",
     "ai.keys_file": "/var/lib/finbot/config/ai-provider-keys.env",
