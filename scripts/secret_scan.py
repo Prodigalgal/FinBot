@@ -20,6 +20,8 @@ def main() -> None:
     files = _tracked_files()
     violations: list[str] = []
     for path in files:
+        if not path.is_file():
+            continue
         if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in {"Dockerfile", ".gitignore", ".dockerignore"}:
             continue
         try:
