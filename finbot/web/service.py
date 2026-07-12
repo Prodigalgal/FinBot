@@ -722,7 +722,7 @@ class FinBotWebApp:
                 "order_api_allowed": False,
                 "private_exchange_api_allowed": False,
                 "simulated_execution_allowed": True,
-                "human_confirmation_required": True,
+                "human_confirmation_required": self.autonomous_config().paper_execution_require_human_review,
             },
         }
 

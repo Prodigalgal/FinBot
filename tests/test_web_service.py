@@ -115,6 +115,7 @@ class WebServiceTests(unittest.TestCase):
         self.assertEqual(payload["recent_runs"][0]["loop_run_id"], "running-run")
         self.assertEqual(payload["latest_result_loop_run_id"], "completed-run")
         self.assertEqual(payload["latest_decision_readiness"], readiness)
+        self.assertFalse(payload["policy"]["human_confirmation_required"])
         completed = next(run for run in payload["recent_runs"] if run["loop_run_id"] == "completed-run")
         self.assertEqual(completed["decision_readiness"], readiness)
 
