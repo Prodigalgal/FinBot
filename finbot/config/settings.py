@@ -65,8 +65,8 @@ class Settings:
             firecrawl_proxy_pool=os.getenv("FIRECRAWL_PROXY_POOL") or None,
             firecrawl_proxy_file=os.getenv("FIRECRAWL_PROXY_FILE") or str(root / "config" / "firecrawl_proxies.txt"),
             firecrawl_proxy_include_direct=os.getenv("FIRECRAWL_PROXY_INCLUDE_DIRECT", "0").strip().lower() not in {"0", "false", "no"},
-            firecrawl_proxy_ip_family=os.getenv("FIRECRAWL_PROXY_IP_FAMILY", "unknown"),
-            firecrawl_proxy_dns_mode=os.getenv("FIRECRAWL_PROXY_DNS_MODE", "local"),
+            firecrawl_proxy_ip_family=os.getenv("FIRECRAWL_PROXY_IP_FAMILY", "ipv6"),
+            firecrawl_proxy_dns_mode=os.getenv("FIRECRAWL_PROXY_DNS_MODE", "remote"),
             firecrawl_vless_subscription_url=os.getenv("FIRECRAWL_VLESS_SUBSCRIPTION_URL") or None,
             firecrawl_vless_subscription_file=os.getenv("FIRECRAWL_VLESS_SUBSCRIPTION_FILE") or None,
             firecrawl_vless_max_nodes=_env_int("FIRECRAWL_VLESS_MAX_NODES", 1),
@@ -76,7 +76,7 @@ class Settings:
             exchange_proxy_file=os.getenv("EXCHANGE_PROXY_FILE")
             or os.getenv("MARKET_PROXY_FILE")
             or None,
-            exchange_proxy_ip_family=os.getenv("EXCHANGE_PROXY_IP_FAMILY", "ipv6"),
+            exchange_proxy_ip_family=os.getenv("EXCHANGE_PROXY_IP_FAMILY", "ipv4"),
             exchange_proxy_dns_mode=os.getenv("EXCHANGE_PROXY_DNS_MODE", "remote"),
             exchange_vless_subscription_url=os.getenv("EXCHANGE_VLESS_SUBSCRIPTION_URL") or os.getenv("CF_VLESS_SUBSCRIPTION_URL") or None,
             exchange_vless_subscription_file=os.getenv("EXCHANGE_VLESS_SUBSCRIPTION_FILE") or os.getenv("CF_VLESS_SUBSCRIPTION_FILE") or None,

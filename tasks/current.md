@@ -1,5 +1,14 @@
 # 当前任务
 
+## S2：Firecrawl IPv6 / Bybit IPv4 代理池隔离
+
+- 目标：Firecrawl keyless 只通过 IPv6 出口代理池访问；Bybit 公共行情与 Demo 私有 API 只通过 IPv4 交易所代理池访问。
+- 范围：代理路由契约、K8S 双代理 Deployment/Service/NetworkPolicy、运行时默认配置、单元测试与生产连通性验证。
+- 非目标：不修改 Gate/Bybit API 凭据，不开放 direct fallback，不改变模拟下单开关，不引入第三方付费代理服务。
+- 影响文件：`finbot/config/`、`finbot/network/`、`deploy/k8s/`、`tests/`、`.env.example`。
+- 验收标准：Firecrawl IPv4 配置被路由层拒绝；Bybit IPv6 配置被拒绝；集群内 Firecrawl 出口显示 IPv6、Bybit 出口显示 IPv4，两个目标 API 均可达。
+- 测试方式：代理路由单测、全量 Python 测试、前端构建、Kustomize dry-run、ArgoCD 同步与 Pod 内 HTTP smoke。
+
 ## S2：全局标题与操作动线优化
 
 - 目标：按用户任务重组导航和页面标题，降低“自动研究、快速市场分析、手动采集处理、复核与报告”之间的理解成本，并在工作台提供高频入口。
