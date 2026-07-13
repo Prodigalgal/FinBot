@@ -9,6 +9,7 @@ from unittest.mock import patch
 import httpx
 
 from finbot.ai.openai_compatible import OpenAICompatibleClient, OpenAICompatibleProvider, load_provider_configs
+from finbot.council.builtin_templates import builtin_council_templates
 from finbot.config.ai_sites import (
     AI_TASK_ID_COMPRESSION,
     AI_TASK_ID_EXECUTION_ROBOT,
@@ -71,6 +72,72 @@ class FakeCompletionHttpClient:
 
 
 class AISitesConfigTests(unittest.TestCase):
+    def test_default_councils_mix_three_providers_with_separate_chair_and_execution_models(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = AISitesConfigStore(Path(temp_dir))
+            payload = store.default_payload()
+
+        templates = payload["council_templates"]
+        self.assertGreaterEqual(len(templates), 6)
+        for template in templates:
+            enabled_roles = [role for role in template["roles"] if role["enabled"]]
+            self.assertEqual(
+                {role["site_id"] for role in enabled_roles},
+                {"deepseek", "mimo", "sub2api"},
+                msg=template["template_id"],
+            )
+            terra_roles = [role for role in enabled_roles if role["site_id"] == "sub2api"]
+            self.assertTrue(terra_roles, msg=template["template_id"])
+            self.assertTrue(
+                all(role["model"] == "gpt-5.6-terra" and role["reasoning_effort"] == "xhigh" for role in terra_roles),
+                msg=template["template_id"],
+            )
+            self.assertEqual(template["chair"]["site_id"], "sub2api", msg=template["template_id"])
+            self.assertEqual(template["chair"]["model"], "gpt-5.6-sol", msg=template["template_id"])
+
+        synthesis = payload["task_bindings"][AI_TASK_ID_TRADE_SYNTHESIS]
+        execution = payload["task_bindings"][AI_TASK_ID_EXECUTION_ROBOT]
+        self.assertEqual((synthesis["model"], synthesis["reasoning_effort"]), ("gpt-5.6-sol", "high"))
+        self.assertEqual((execution["model"], execution["reasoning_effort"]), ("gpt-5.6-sol", "xhigh"))
+
+    def test_builtin_template_factory_keeps_three_provider_invariant(self) -> None:
+        for template in builtin_council_templates():
+            providers = {role["site_id"] for role in template["roles"] if role["enabled"]}
+            self.assertEqual(providers, {"deepseek", "mimo", "sub2api"}, msg=template["template_id"])
+
+    def test_chair_and_execution_defaults_remain_user_customizable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = AISitesConfigStore(Path(temp_dir))
+            payload = store.default_payload()
+            payload["council_templates"][0]["chair"].update(
+                {
+                    "site_id": "mimo",
+                    "protocol": "chat",
+                    "model": "mimo-v2.5-pro",
+                    "reasoning_effort": "medium",
+                    "fallback_site_ids": ["deepseek"],
+                }
+            )
+            payload["task_bindings"][AI_TASK_ID_EXECUTION_ROBOT].update(
+                {
+                    "site_id": "deepseek",
+                    "protocol": "chat",
+                    "model": "deepseek-v4-flash",
+                    "reasoning_effort": "high",
+                    "fallback_site_ids": ["mimo"],
+                }
+            )
+            store.update(payload)
+            public = store.public_payload()
+            fresh_defaults = store.default_payload()
+
+        template = next(item for item in public["council_templates"] if item["template_id"] == "product_advisory")
+        execution = public["task_bindings"][AI_TASK_ID_EXECUTION_ROBOT]
+        self.assertEqual((template["chair"]["site_id"], template["chair"]["model"]), ("mimo", "mimo-v2.5-pro"))
+        self.assertEqual((execution["site_id"], execution["model"]), ("deepseek", "deepseek-v4-flash"))
+        self.assertEqual(execution["reasoning_effort"], "high")
+        self.assertEqual(fresh_defaults["council_templates"][0]["chair"]["model"], "gpt-5.6-sol")
+
     def test_v6_config_exposes_sol_execution_robot_after_v7_upgrade(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import threading
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -232,7 +233,7 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
             "site_id": "sub2api",
             "protocol": "responses",
             "model": "gpt-5.6-terra",
-            "reasoning_effort": "high",
+            "reasoning_effort": "xhigh",
             "fallback_site_ids": ["mimo"],
             "system_prompt": "只使用输入的确定性行情指标，明确区分短周期和长周期结论。",
             "user_prompt_template": "{payload_json}",
@@ -281,7 +282,7 @@ DEFAULT_PRODUCT_COUNCIL_TEMPLATE = {
         "display_name": "主席仲裁员",
         "site_id": "sub2api",
         "protocol": "responses",
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "reasoning_effort": "high",
         "fallback_site_ids": ["mimo"],
         "system_prompt": DEFAULT_TRADE_SYNTHESIS_SYSTEM_PROMPT,
@@ -530,7 +531,7 @@ class AISitesConfigStore:
                     "enabled": True,
                     "site_id": "sub2api",
                     "protocol": "responses",
-                    "model": "gpt-5.6-terra",
+                    "model": "gpt-5.6-sol",
                     "reasoning_effort": "high",
                     "fallback_site_ids": ["mimo"],
                 },
@@ -561,7 +562,7 @@ class AISitesConfigStore:
                     "user_prompt_template": "{payload_json}",
                 }
             },
-            "council_templates": [DEFAULT_PRODUCT_COUNCIL_TEMPLATE, *builtin_council_templates()],
+            "council_templates": [deepcopy(DEFAULT_PRODUCT_COUNCIL_TEMPLATE), *builtin_council_templates()],
             "experiments": [],
         }
 

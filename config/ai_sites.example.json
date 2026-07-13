@@ -96,7 +96,7 @@
       "enabled": true,
       "site_id": "sub2api",
       "protocol": "responses",
-      "model": "gpt-5.6-terra",
+      "model": "gpt-5.6-sol",
       "reasoning_effort": "high",
       "fallback_site_ids": [
         "mimo"
@@ -186,7 +186,7 @@
           ],
           "system_prompt": "只使用输入的确定性行情指标，明确区分短周期和长周期结论。",
           "user_prompt_template": "{payload_json}",
-          "reasoning_effort": "high"
+          "reasoning_effort": "xhigh"
         },
         {
           "role_id": "risk_controller",
@@ -234,7 +234,7 @@
         "display_name": "主席仲裁员",
         "site_id": "sub2api",
         "protocol": "responses",
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "fallback_site_ids": [
           "mimo"
         ],

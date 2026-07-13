@@ -20,7 +20,15 @@ def _quick_market_scan() -> dict[str, Any]:
     roles = [
         _role("technical_analyst", "技术分析员", "market", "检查多周期价格结构、波动和流动性。", 10, "low"),
         _role("news_analyst", "信息分析员", "neutral", "压缩最新可信信息并区分事实与推断。", 20, "low", site_id="mimo"),
-        _role("risk_guard", "快速风险检查", "risk", "识别数据缺口、冲突和不适合形成方向建议的条件。", 30, "low"),
+        _role(
+            "risk_guard",
+            "快速风险检查",
+            "risk",
+            "识别数据缺口、冲突和不适合形成方向建议的条件。",
+            30,
+            "xhigh",
+            site_id="sub2api",
+        ),
     ]
     nodes = [
         _node("input_context", "input", 40, 210),
@@ -58,7 +66,15 @@ def _standard_product_research() -> dict[str, Any]:
     roles = [
         _role("fundamental_researcher", "基本面研究员", "neutral", "检查项目、宏观、资金和事件证据。", 10, "medium"),
         _role("technical_researcher", "市场结构研究员", "market", "检查价格、成交和跨市场确认。", 20, "medium", site_id="mimo"),
-        _role("evidence_auditor", "证据审计员", "risk", "逐项检查来源、时效、冲突和引用覆盖。", 30, "medium"),
+        _role(
+            "evidence_auditor",
+            "证据审计员",
+            "risk",
+            "逐项检查来源、时效、冲突和引用覆盖。",
+            30,
+            "xhigh",
+            site_id="sub2api",
+        ),
         _role("bull_advocate", "看多论证员", "bullish", "提出成立条件明确、可被证伪的多方论证。", 40, "medium", site_id="mimo"),
         _role("bear_advocate", "看空论证员", "bearish", "寻找反证、拥挤风险和下行情景。", 50, "medium"),
         _role("standard_risk_controller", "风险控制员", "risk", "综合分歧并执行建议降级门禁。", 60, "high", site_id="mimo"),
@@ -110,10 +126,10 @@ def _standard_product_research() -> dict[str, Any]:
 def _deep_investment_committee() -> dict[str, Any]:
     roles = [
         _role("deep_evidence_auditor", "深度证据审计员", "risk", "识别关键证据缺口并验证新增证据。", 10, "high"),
-        _role("scenario_analyst", "情景分析员", "neutral", "建立基准、上行、下行和尾部情景。", 20, "high", site_id="sub2api"),
+        _role("scenario_analyst", "情景分析员", "neutral", "建立基准、上行、下行和尾部情景。", 20, "xhigh", site_id="sub2api"),
         _role("deep_bull_advocate", "深度多方委员", "bullish", "提出强论证并明确证伪条件。", 30, "high"),
         _role("deep_bear_advocate", "深度空方委员", "bearish", "提出最强反证与拥挤风险。", 40, "high", site_id="mimo"),
-        _role("portfolio_risk_member", "组合风险委员", "risk", "检查相关性、敞口、流动性和极端风险。", 50, "high", site_id="sub2api"),
+        _role("portfolio_risk_member", "组合风险委员", "risk", "检查相关性、敞口、流动性和极端风险。", 50, "xhigh", site_id="sub2api"),
     ]
     nodes = [
         _node("input_context", "input", 40, 280),
@@ -164,7 +180,7 @@ def _deep_investment_committee() -> dict[str, Any]:
             _phase("committee_debate", "委员辩论", "round_robin", "围绕最强论点和反证多轮质询。"),
             _phase("committee_revision", "最终修订", "round_robin", "在人工门禁前提交结构化最终意见。"),
         ],
-        _chair("deep_chair", "投委会主席", "high", site_id="mimo"),
+        _chair("deep_chair", "投委会主席", "high"),
         nodes,
         edges,
         cost_tier="deep",
@@ -180,7 +196,7 @@ def _deep_investment_committee() -> dict[str, Any]:
 def _event_impact_analysis() -> dict[str, Any]:
     roles = [
         _role("credibility_analyst", "事件可信度分析员", "neutral", "核查事件来源、时间与独立互证。", 10, "medium"),
-        _role("impact_chain_analyst", "影响链分析员", "neutral", "拆解一阶、二阶影响和时间窗口。", 20, "medium", site_id="sub2api"),
+        _role("impact_chain_analyst", "影响链分析员", "neutral", "拆解一阶、二阶影响和时间窗口。", 20, "xhigh", site_id="sub2api"),
         _role("event_market_analyst", "市场确认分析员", "market", "检查价格、成交和跨市场是否确认事件。", 30, "medium"),
         _role("counterfactual_analyst", "反事实分析员", "bearish", "构造事件无效、已定价或方向相反的解释。", 40, "high", site_id="mimo"),
         _role("event_risk_controller", "事件风险控制员", "risk", "输出失效条件和建议降级原因。", 50, "high"),
@@ -229,7 +245,15 @@ def _position_review() -> dict[str, Any]:
     roles = [
         _role("thesis_reviewer", "原逻辑复核员", "neutral", "对照原建议、证据和失效条件。", 10, "medium"),
         _role("current_market_reviewer", "当前市场复核员", "market", "检查当前行情与原判断的偏差。", 20, "medium", site_id="mimo"),
-        _role("risk_change_reviewer", "风险变化复核员", "risk", "识别风险、波动和相关性的变化。", 30, "high"),
+        _role(
+            "risk_change_reviewer",
+            "风险变化复核员",
+            "risk",
+            "识别风险、波动和相关性的变化。",
+            30,
+            "xhigh",
+            site_id="sub2api",
+        ),
         _role("exit_advocate", "退出论证员", "bearish", "优先寻找减仓、退出或观察的充分理由。", 40, "high", site_id="mimo"),
     ]
     nodes = [
@@ -345,13 +369,13 @@ def _role(
     }
 
 
-def _chair(role_id: str, display_name: str, reasoning_effort: str, *, site_id: str = "sub2api") -> dict[str, Any]:
+def _chair(role_id: str, display_name: str, reasoning_effort: str) -> dict[str, Any]:
     return {
         "role_id": role_id,
         "display_name": display_name,
         "site_id": "sub2api",
         "protocol": "responses",
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "reasoning_effort": reasoning_effort,
         "fallback_site_ids": ["mimo"],
         "system_prompt": "综合可追溯证据、主要分歧和风险门禁，输出面向人工复核的简体中文结论。",
