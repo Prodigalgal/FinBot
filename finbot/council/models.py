@@ -37,7 +37,8 @@ SUPPORTED_CONDITION_OPERATORS = {
     "falsy",
 }
 SUPPORTED_ACTIVATION_MODES = {"all", "any"}
-SUPPORTED_REASONING_EFFORTS = {"provider_default", "none", "minimal", "low", "medium", "high", "xhigh"}
+REASONING_EFFORT_ORDER = ("provider_default", "none", "minimal", "low", "medium", "high", "xhigh", "max")
+SUPPORTED_REASONING_EFFORTS = frozenset(REASONING_EFFORT_ORDER)
 SUPPORTED_COST_TIERS = {"quick", "standard", "deep"}
 SUPPORTED_FAILURE_POLICIES = {"stop", "continue", "replan"}
 COUNCIL_WORKFLOW_VERSION = 1

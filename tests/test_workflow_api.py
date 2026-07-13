@@ -123,6 +123,7 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(schema.json()["latest_version"], 2)
         self.assertEqual(len(schema.json()["node_types"]), 9)
         self.assertEqual(len(schema.json()["templates"]), 6)
+        self.assertEqual(schema.json()["reasoning_efforts"][-2:], ["xhigh", "max"])
         self.assertFalse(schema.json()["credential_policy"]["raw_key_in_workflow_allowed"])
         self.assertEqual(plan.status_code, 200)
         self.assertEqual(plan.json()["template_id"], "event_impact_analysis")

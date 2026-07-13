@@ -188,7 +188,7 @@ function NodeInspector({
             {models.map((model) => <MenuItem key={model} value={model}>{model}</MenuItem>)}
           </TextField>
           <TextField select label="思考等级" value={binding.reasoning_effort || 'provider_default'} onChange={(event) => updateBinding({ reasoning_effort: event.target.value as CouncilRoleConfig['reasoning_effort'] })} sx={inputSx}>
-            {(schema?.reasoning_efforts || ['provider_default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh']).map((effort) => <MenuItem key={effort} value={effort}>{reasoningLabel(effort)}</MenuItem>)}
+            {(schema?.reasoning_efforts || ['provider_default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']).map((effort) => <MenuItem key={effort} value={effort}>{reasoningLabel(effort)}</MenuItem>)}
           </TextField>
           <TextField label="备用站点 ID" value={(binding.fallback_site_ids || []).join(', ')} onChange={(event) => updateBinding({ fallback_site_ids: splitCsv(event.target.value) })} sx={inputSx} />
           {role && <TextField label="职责目标" value={role.objective} onChange={(event) => updateRole({ objective: event.target.value })} multiline minRows={2} sx={inputSx} />}

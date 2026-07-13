@@ -336,9 +336,9 @@ class AISitesConfigTests(unittest.TestCase):
         )
 
         with patch("finbot.ai.openai_compatible.httpx.Client", FakeCompletionHttpClient):
-            OpenAICompatibleClient().complete(provider, "responses", "system", "user", reasoning_effort="medium")
+            OpenAICompatibleClient().complete(provider, "responses", "system", "user", reasoning_effort="max")
 
-        self.assertEqual(FakeCompletionHttpClient.last_payload["reasoning"], {"effort": "medium"})
+        self.assertEqual(FakeCompletionHttpClient.last_payload["reasoning"], {"effort": "max"})
 
     def test_role_presets_use_existing_sites_without_exposing_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

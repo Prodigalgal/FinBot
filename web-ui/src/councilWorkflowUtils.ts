@@ -312,7 +312,7 @@ export function operationLabel(operation: string): string {
 }
 
 export function reasoningLabel(reasoning: string): string {
-  const labels: Record<string, string> = { provider_default: '厂商默认', none: '关闭', minimal: '极低', low: '低', medium: '中', high: '高', xhigh: '极高' };
+  const labels: Record<string, string> = { provider_default: '厂商默认', none: '关闭', minimal: '极低', low: '低', medium: '中', high: '高', xhigh: '极高', max: '最高' };
   return labels[reasoning] || reasoning;
 }
 

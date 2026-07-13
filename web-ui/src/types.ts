@@ -1019,7 +1019,7 @@ export interface CouncilChairConfig {
   user_prompt_template?: string | null;
 }
 
-export type CouncilReasoningEffort = 'provider_default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type CouncilReasoningEffort = 'provider_default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export type CouncilWorkflowNodeType =
   | 'input'

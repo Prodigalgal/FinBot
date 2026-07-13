@@ -190,6 +190,7 @@ function VariantEditor({
           <MenuItem value="medium">中</MenuItem>
           <MenuItem value="high">高</MenuItem>
           <MenuItem value="xhigh">极高</MenuItem>
+          <MenuItem value="max">最高</MenuItem>
         </TextField>
         <TextField label="Prompt 附加指令" value={variant.system_prompt_append || ''} onChange={(event) => onChange({ system_prompt_append: event.target.value })} multiline minRows={2} sx={{ gridColumn: { md: 'span 2' }, ...inputSx }} />
       </Box>

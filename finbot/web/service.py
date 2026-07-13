@@ -34,6 +34,7 @@ from finbot.council.director import WORKFLOW_DEPTH_POLICIES
 from finbot.council.learning import CouncilLearningService
 from finbot.council.models import (
     COUNCIL_WORKFLOW_LATEST_VERSION,
+    REASONING_EFFORT_ORDER,
     SUPPORTED_ACTIVATION_MODES,
     SUPPORTED_CONDITION_OPERATORS,
     SUPPORTED_CONTEXT_MODES,
@@ -504,7 +505,7 @@ class FinBotWebApp:
             "context_modes": sorted(SUPPORTED_CONTEXT_MODES),
             "edge_context_modes": sorted(SUPPORTED_EDGE_CONTEXT_MODES),
             "scheduling_modes": sorted(SUPPORTED_SCHEDULING_MODES),
-            "reasoning_efforts": ["provider_default", "none", "minimal", "low", "medium", "high", "xhigh"],
+            "reasoning_efforts": list(REASONING_EFFORT_ORDER),
             "depth_policies": WORKFLOW_DEPTH_POLICIES,
             "templates": [
                 {

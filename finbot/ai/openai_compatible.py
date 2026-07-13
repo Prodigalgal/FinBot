@@ -9,11 +9,11 @@ import httpx
 
 from finbot.config.env_file import read_env_file
 from finbot.config.paths import runtime_root
+from finbot.council.models import SUPPORTED_REASONING_EFFORTS
 
 
 DEFAULT_PROVIDER_KEYS_FILE = Path(os.getenv("AI_PROVIDER_KEYS_FILE", "config/ai-provider-keys.env"))
 SUPPORTED_PROTOCOLS = {"chat", "responses"}
-SUPPORTED_REASONING_EFFORTS = {"provider_default", "none", "minimal", "low", "medium", "high", "xhigh"}
 
 
 @dataclass(frozen=True)

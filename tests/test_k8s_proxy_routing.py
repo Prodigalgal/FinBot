@@ -59,6 +59,24 @@ class KubernetesProxyRoutingTests(unittest.TestCase):
         self.assertEqual(values["SING_BOX_PATH"], "/usr/local/bin/sing-box")
         self.assertEqual(values["PROXY_RUNTIME_DIR"], "/tmp/finbot-proxy")
 
+    def test_sse_routes_disable_gateway_request_timeout(self) -> None:
+        resources = list(
+            yaml.safe_load_all(
+                (ROOT / "deploy" / "k8s" / "oracle" / "routes.yaml").read_text(encoding="utf-8")
+            )
+        )
+        https_route = next(resource for resource in resources if resource["metadata"]["name"] == "finbot")
+        rules_by_prefix = {
+            rule["matches"][0]["path"]["value"]: rule
+            for rule in https_route["spec"]["rules"]
+        }
+
+        for prefix in ("/api/v1/stream/", "/api/v1/instant-research/"):
+            self.assertEqual(
+                rules_by_prefix[prefix]["timeouts"],
+                {"request": "0s", "backendRequest": "0s"},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

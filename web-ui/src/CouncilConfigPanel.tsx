@@ -385,6 +385,7 @@ function ReasoningEffortField({
       <MenuItem value="medium">中</MenuItem>
       <MenuItem value="high">高</MenuItem>
       <MenuItem value="xhigh">极高</MenuItem>
+      <MenuItem value="max">最高</MenuItem>
     </TextField>
   );
 }

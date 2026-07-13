@@ -47,6 +47,32 @@ spec:
     - matches:
         - path:
             type: PathPrefix
+            value: /api/v1/stream/
+      timeouts:
+        request: 0s
+        backendRequest: 0s
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: finbot-web
+          port: 8780
+          weight: 1
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1/instant-research/
+      timeouts:
+        request: 0s
+        backendRequest: 0s
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: finbot-web
+          port: 8780
+          weight: 1
+    - matches:
+        - path:
+            type: PathPrefix
             value: /
       backendRefs:
         - group: ""

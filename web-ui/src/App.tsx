@@ -926,6 +926,7 @@ function AIBindingsPanel({
                     <MenuItem value="medium">中</MenuItem>
                     <MenuItem value="high">高</MenuItem>
                     <MenuItem value="xhigh">极高</MenuItem>
+                    <MenuItem value="max">最高</MenuItem>
                   </TextField>
                 </SimpleConfigField>
                 <SimpleConfigField label="备用站点" helper="多个站点用逗号分隔，主站点失败后依次尝试">
