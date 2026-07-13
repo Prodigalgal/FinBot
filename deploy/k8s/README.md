@@ -2,7 +2,8 @@
 
 ## 架构边界
 
-- 当前存储是 SQLite，因此 Web 与 Worker 放在同一个 Pod、共享同一个 `ReadWriteOnce` PVC。
+- 生产数据库是 FinBot 独立 PostgreSQL；原 PVC 继续保存 reports、配置和迁移前 SQLite 快照。
+- `FINBOT_DATABASE_URL` 是 breaking migration 后的生产必填项，必须从 `finbot-secrets` 注入。
 - `replicas` 必须保持 `1`，更新策略必须保持 `Recreate`。在迁移 PostgreSQL 前，不允许横向扩 Pod。
 - `/app` 是只读镜像内容；`/var/lib/finbot` 保存 SQLite、报告、运行时配置和 AI Workflow 配置。
 - Oracle 生产 overlay 允许 Gate TestNet / Bybit Demo 自动提交模拟订单，并通过执行机器人、组合风险、AI Governance、OMS 环境校验和 100 USDT 名义上限约束；真实盘 host 与 Mainnet 私有 API 仍由代码硬禁止。

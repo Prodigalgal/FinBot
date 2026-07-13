@@ -92,6 +92,7 @@ export const api = {
   }),
   status: () => request<StatusPayload>('/api/v1/status'),
   autonomousStatus: () => request<AutonomousStatusPayload>('/api/v1/autonomous/status'),
+  operationsStreamUrl: () => `${API_BASE}/api/v1/stream/operations`,
   products: (params: {
     search?: string;
     provider?: string;
@@ -153,6 +154,8 @@ export const api = {
     request<InstantResearchListPayload>(`/api/v1/instant-research${queryString({ limit })}`),
   instantResearchSession: (sessionId: string) =>
     request<InstantResearchSession>(`/api/v1/instant-research/${encodeURIComponent(sessionId)}`),
+  instantResearchStreamUrl: (sessionId: string) =>
+    `${API_BASE}/api/v1/instant-research/${encodeURIComponent(sessionId)}/events`,
   decisionReviews: (status?: DecisionReviewStatus, limit = 100) =>
     request<DecisionReviewInbox>(`/api/v1/decision-reviews${queryString({ status, limit })}`),
   decisionReview: (decisionId: string) =>

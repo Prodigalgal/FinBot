@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import Any
 
 from finbot.config.settings import Settings
+from finbot.storage.factory import create_runtime_store
 from finbot.storage.sqlite_store import SQLiteStore
 
 
 def build_store(data_dir: str = "data") -> tuple[Settings, SQLiteStore]:
     settings = Settings.from_env(project_root=Path.cwd(), data_dir=Path(data_dir))
     settings.ensure_dirs()
-    store = SQLiteStore(settings.sqlite_path)
-    store.init_schema()
+    store = create_runtime_store(settings)
     return settings, store
 
 

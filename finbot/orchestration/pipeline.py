@@ -34,6 +34,7 @@ from finbot.research.freshness import FreshnessGate
 from finbot.research.research_cards import ResearchCardBuildConfig, ResearchCardBuilder
 from finbot.research.review_council import ResearchReviewCouncil
 from finbot.storage.evidence_store import EvidenceStore
+from finbot.storage.factory import create_runtime_store
 from finbot.storage.sqlite_store import SQLiteStore
 
 
@@ -876,8 +877,7 @@ def build_pipeline_runner(
 ) -> tuple[Settings, ResearchPipelineRunner]:
     settings = Settings.from_env(project_root=Path.cwd(), data_dir=Path(data_dir))
     settings.ensure_dirs()
-    store = SQLiteStore(settings.sqlite_path)
-    store.init_schema()
+    store = create_runtime_store(settings)
     catalog = SourceCatalog.load(catalog_path)
     topics = TopicWatchlists.load(topics_path)
     return settings, ResearchPipelineRunner(settings=settings, store=store, catalog=catalog, topics=topics)

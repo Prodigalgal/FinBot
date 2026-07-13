@@ -191,9 +191,42 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    refresh();
-    const timer = window.setInterval(refresh, 6000);
-    return () => window.clearInterval(timer);
+    let lastSnapshotAt = 0;
+    let lastFallbackAt = 0;
+    const source = new EventSource(api.operationsStreamUrl(), { withCredentials: true });
+    const onSnapshot = (event: Event) => {
+      const payload = JSON.parse((event as MessageEvent<string>).data) as {
+        status: StatusPayload;
+        autonomous: AutonomousStatusPayload;
+        jobs: JobRecord[];
+      };
+      lastSnapshotAt = Date.now();
+      setStatus(payload.status);
+      setAutonomous(payload.autonomous);
+      setJobs(payload.jobs);
+      setLoading(false);
+      setError(null);
+    };
+    source.addEventListener('snapshot', onSnapshot);
+    source.onerror = () => {
+      const now = Date.now();
+      if (now - lastSnapshotAt > 15_000 && now - lastFallbackAt > 30_000) {
+        lastFallbackAt = now;
+        void refresh();
+      }
+    };
+    const fallbackTimer = window.setInterval(() => {
+      const now = Date.now();
+      if (now - lastSnapshotAt > 30_000 && now - lastFallbackAt > 30_000) {
+        lastFallbackAt = now;
+        void refresh();
+      }
+    }, 10_000);
+    return () => {
+      window.clearInterval(fallbackTimer);
+      source.removeEventListener('snapshot', onSnapshot);
+      source.close();
+    };
   }, [refresh]);
 
   useEffect(() => {

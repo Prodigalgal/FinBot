@@ -18,6 +18,7 @@ from finbot.research.followup_dispatch import FETCH_JOB_STATUS
 from finbot.research.freshness import FreshnessGate
 from finbot.research.research_cards import ResearchCardBuildConfig, ResearchCardBuilder
 from finbot.storage.evidence_store import EvidenceStore
+from finbot.storage.factory import create_runtime_store
 from finbot.storage.sqlite_store import SQLiteStore
 
 
@@ -246,7 +247,7 @@ def build_runner(
 ) -> tuple[Settings, ResearchFollowupRunner]:
     settings = Settings.from_env(project_root=Path.cwd(), data_dir=Path(data_dir))
     settings.ensure_dirs()
-    store = SQLiteStore(settings.sqlite_path)
+    store = create_runtime_store(settings)
     catalog = SourceCatalog.load(catalog_path)
     topics = TopicWatchlists.load(topics_path)
     return settings, ResearchFollowupRunner(settings, store, catalog, topics, timeout_seconds=timeout_seconds)

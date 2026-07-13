@@ -13,7 +13,7 @@ from finbot.ingestion.dispatcher import Dispatcher
 from finbot.ingestion.models import AdapterResult, FetchJob, SourceConfig
 from finbot.ingestion.scheduler import SourceScheduler
 from finbot.storage.evidence_store import EvidenceStore
-from finbot.storage.sqlite_store import SQLiteStore
+from finbot.storage.factory import create_runtime_store
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,8 +37,7 @@ async def run() -> int:
     catalog = SourceCatalog.load(args.catalog)
     topics = TopicWatchlists.load(args.topics)
     scheduler = SourceScheduler(topics)
-    store = SQLiteStore(settings.sqlite_path)
-    store.init_schema()
+    store = create_runtime_store(settings)
     store.prune_catalog_sources({source.id for source in catalog.sources})
     evidence_store = EvidenceStore(settings.evidence_dir)
     dispatcher = Dispatcher(settings, evidence_store, topics, timeout_seconds=args.timeout_seconds)

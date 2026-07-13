@@ -1,0 +1,137 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: finbot-postgres
+  labels:
+    app.kubernetes.io/name: finbot-postgres
+    app.kubernetes.io/part-of: finbot
+spec:
+  selector:
+    app.kubernetes.io/name: finbot-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: finbot-postgres
+  labels:
+    app.kubernetes.io/name: finbot-postgres
+    app.kubernetes.io/part-of: finbot
+spec:
+  serviceName: finbot-postgres
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-postgres
+        app.kubernetes.io/part-of: finbot
+    spec:
+      terminationGracePeriodSeconds: 60
+      nodeSelector:
+        infra.mnnu/node-class: core-public
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", "finbot", "-d", "finbot"]
+            periodSeconds: 3
+            timeoutSeconds: 3
+            failureThreshold: 100
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "finbot", "-d", "finbot"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "finbot", "-d", "finbot"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app.kubernetes.io/name: finbot-postgres
+          app.kubernetes.io/part-of: finbot
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: finbot-postgres-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: finbot
+      ports:
+        - port: 5432
+          protocol: TCP

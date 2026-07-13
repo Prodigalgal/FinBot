@@ -62,10 +62,10 @@ class HealthService:
             with store.connect() as connection:
                 result = connection.execute("select 1").fetchone()
             if result is None or int(result[0]) != 1:
-                return ReadinessCheck("sqlite", "failed", "探针结果无效")
+                return ReadinessCheck("database", "failed", "探针结果无效")
         except Exception as exc:
-            return ReadinessCheck("sqlite", "failed", type(exc).__name__)
-        return ReadinessCheck("sqlite", "passed", str(store.path))
+            return ReadinessCheck("database", "failed", type(exc).__name__)
+        return ReadinessCheck("database", "passed", str(getattr(store, "backend", "sqlite")))
 
     def _production_safety_check(self) -> ReadinessCheck:
         if os.getenv("FINBOT_DEPLOYMENT_MODE", "local").strip().lower() != "production":

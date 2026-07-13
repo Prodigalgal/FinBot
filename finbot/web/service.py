@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -73,6 +73,7 @@ from finbot.web.auth import (
 )
 from finbot.web.health import HealthService
 from finbot.web.quant_api import quant_router
+from finbot.web.sse import SSE_HEADERS, snapshot_event_stream
 
 
 REPORT_FILES = {
@@ -343,12 +344,15 @@ class FinBotWebApp:
     ai_config_store: AISitesConfigStore | None = None
     autonomous_scheduler: AutonomousLoopScheduler | None = None
     auth_manager: AuthManager | None = None
+    runtime_store: Any | None = None
 
     def __post_init__(self) -> None:
         if self.config_store is None:
             self.config_store = RuntimeConfigStore(runtime_root(Path.cwd()))
         if self.ai_config_store is None:
             self.ai_config_store = AISitesConfigStore(runtime_root(Path.cwd()))
+        if self.runtime_store is None:
+            self.runtime_store = build_store(self.autonomous_config().data_dir)[1]
         if self.autonomous_scheduler is None and bool(self.config_store.value("worker.embedded_scheduler", False)):
             self.autonomous_scheduler = AutonomousLoopScheduler(
                 config_loader=self.autonomous_config,
@@ -372,7 +376,7 @@ class FinBotWebApp:
             self.autonomous_scheduler.stop()
 
     def autonomous_store(self) -> Any:
-        return build_store(self.autonomous_config().data_dir)[1]
+        return self.runtime_store
 
     def decision_review_service(self) -> DecisionReviewService:
         return DecisionReviewService(self.autonomous_store())
@@ -724,6 +728,13 @@ class FinBotWebApp:
                 "simulated_execution_allowed": True,
                 "human_confirmation_required": self.autonomous_config().paper_execution_require_human_review,
             },
+        }
+
+    def operations_stream_payload(self) -> dict[str, Any]:
+        return {
+            "status": self.status_payload(),
+            "autonomous": self.autonomous_status_payload(),
+            "jobs": self.jobs.list_jobs(limit=50),
         }
 
     def paper_execution_status_payload(self) -> dict[str, Any]:
@@ -1252,6 +1263,19 @@ def create_fastapi_app(
     async def autonomous_status() -> dict[str, Any]:
         return app_state.autonomous_status_payload()
 
+    @app.get("/api/v1/stream/operations")
+    async def operations_stream(request: Request) -> StreamingResponse:
+        return StreamingResponse(
+            snapshot_event_stream(
+                request,
+                app_state.operations_stream_payload,
+                event_name="snapshot",
+                poll_seconds=6.0,
+            ),
+            media_type="text/event-stream",
+            headers=SSE_HEADERS,
+        )
+
     @app.get("/api/v1/paper-execution/status")
     async def paper_execution_status() -> dict[str, Any]:
         return app_state.paper_execution_status_payload()
@@ -1393,6 +1417,24 @@ def create_fastapi_app(
             return app_state.instant_research_payload(request_id)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/instant-research/{request_id}/events")
+    async def instant_research_events(request_id: str, request: Request) -> StreamingResponse:
+        try:
+            app_state.instant_research_payload(request_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return StreamingResponse(
+            snapshot_event_stream(
+                request,
+                lambda: app_state.instant_research_payload(request_id),
+                event_name="session",
+                poll_seconds=2.0,
+                terminal_statuses=frozenset({"succeeded", "partial", "failed", "cancelled"}),
+            ),
+            media_type="text/event-stream",
+            headers=SSE_HEADERS,
+        )
 
     @app.get("/api/v1/decision-reviews")
     async def decision_reviews(status: str | None = None, limit: int = 100) -> dict[str, Any]:

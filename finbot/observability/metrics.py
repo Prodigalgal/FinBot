@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 from prometheus_client.core import GaugeMetricFamily
+from psycopg import Error as PostgresError
 
 from finbot.storage.sqlite_store import SQLiteStore
 
@@ -20,7 +21,7 @@ class FinBotMetricsCollector:
         collector_errors = GaugeMetricFamily("finbot_metrics_collector_errors", "Metrics collection errors")
         try:
             metrics = self.snapshot()
-        except (OSError, sqlite3.Error, ValueError, TypeError):
+        except (OSError, RuntimeError, ValueError, TypeError, sqlite3.Error, PostgresError):
             up.add_metric([], 0)
             collector_errors.add_metric([], 1)
             yield up
@@ -40,8 +41,9 @@ class FinBotMetricsCollector:
 
     def snapshot(self) -> dict[str, Any]:
         now = float(self.clock())
-        connection = _connect_readonly(self.store)
-        try:
+        if getattr(self.store, "backend", "sqlite") == "sqlite" and not self.store.path.exists():
+            raise sqlite3.OperationalError(f"Database does not exist: {self.store.path}")
+        with self.store.connect() as connection:
             queue_depth = _count(
                 connection,
                 "select count(*) from autonomous_run_requests where status in ('queued', 'claimed', 'running')",
@@ -62,10 +64,8 @@ class FinBotMetricsCollector:
                 connection,
                 "select max(heartbeat_at) from autonomous_worker_heartbeats",
             )
-            oms_orders = _group_counts(connection, "oms_orders") if _table_exists(connection, "oms_orders") else {}
+            oms_orders = _group_counts(connection, "oms_orders") if _table_exists(self.store, connection, "oms_orders") else {}
             paper_executions = _group_counts(connection, "paper_executions")
-        finally:
-            connection.close()
         return {
             "queue_depth": queue_depth,
             "running_loops": running_loops,
@@ -75,14 +75,6 @@ class FinBotMetricsCollector:
             "oms_orders": oms_orders,
             "paper_executions": paper_executions,
         }
-
-
-def _connect_readonly(store: SQLiteStore) -> sqlite3.Connection:
-    database_uri = f"{store.path.resolve().as_uri()}?mode=ro"
-    connection = sqlite3.connect(database_uri, timeout=10.0, uri=True)
-    connection.row_factory = sqlite3.Row
-    connection.execute("pragma busy_timeout = 10000")
-    return connection
 
 
 def _gauge(name: str, documentation: str, value: float) -> GaugeMetricFamily:
@@ -113,7 +105,12 @@ def _group_counts(connection: Any, table: str) -> dict[str, int]:
     }
 
 
-def _table_exists(connection: Any, table: str) -> bool:
+def _table_exists(store: SQLiteStore, connection: Any, table: str) -> bool:
+    if getattr(store, "backend", "sqlite") == "postgresql":
+        return connection.execute(
+            "select 1 from information_schema.tables where table_schema = current_schema() and table_name = ?",
+            (table,),
+        ).fetchone() is not None
     return connection.execute(
         "select 1 from sqlite_master where type = 'table' and name = ?",
         (table,),

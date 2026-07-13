@@ -5,8 +5,8 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from finbot.cli.common import build_store
 from finbot.config.settings import Settings
-from finbot.storage.sqlite_store import SQLiteStore
 
 
 def parse_args() -> argparse.Namespace:
@@ -17,9 +17,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    settings = Settings.from_env(project_root=Path.cwd(), data_dir=Path(args.data_dir))
-    store = SQLiteStore(settings.sqlite_path)
-    store.init_schema()
+    settings, store = build_store(args.data_dir)
     with store.connect() as conn:
         health_rows = conn.execute("select * from source_health order by source_id").fetchall()
         counts = {

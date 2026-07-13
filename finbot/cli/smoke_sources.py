@@ -13,8 +13,8 @@ from finbot.config.topic_watchlist import TopicWatchlists
 from finbot.ingestion.dispatcher import Dispatcher
 from finbot.ingestion.models import AdapterResult, SmokeReport
 from finbot.research.package_builder import build_research_input
+from finbot.storage.factory import create_runtime_store
 from finbot.storage.evidence_store import EvidenceStore
-from finbot.storage.sqlite_store import SQLiteStore
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,11 +37,10 @@ async def run() -> int:
     catalog = SourceCatalog.load(args.catalog)
     topics = TopicWatchlists.load(args.topics)
     evidence_store = EvidenceStore(settings.evidence_dir)
-    sqlite_store = SQLiteStore(settings.sqlite_path)
-    sqlite_store.init_schema()
-    sqlite_store.prune_catalog_sources({source.id for source in catalog.sources})
+    store = create_runtime_store(settings)
+    store.prune_catalog_sources({source.id for source in catalog.sources})
     for source in catalog.sources:
-        sqlite_store.upsert_source(source)
+        store.upsert_source(source)
 
     selected = set(args.source or [])
     sources = [source for source in catalog.sources if not selected or source.id in selected]
@@ -52,7 +51,7 @@ async def run() -> int:
 
     try:
         for source in sources:
-            sqlite_store.upsert_source(source)
+            store.upsert_source(source)
             try:
                 result = await dispatcher.dispatch(source, force_disabled=args.force_disabled)
             except Exception as exc:
@@ -60,8 +59,8 @@ async def run() -> int:
             result.metadata.setdefault("asset_scope", source.asset_scope)
             results.append(result)
             if result.evidence is not None:
-                sqlite_store.insert_evidence(result.evidence)
-            sqlite_store.upsert_health(result)
+                store.insert_evidence(result.evidence)
+            store.upsert_health(result)
             print(f"{source.id:38} {result.status:24} {result.detail}")
     finally:
         dispatcher.close()

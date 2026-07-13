@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from finbot.instruments.models import stable_id
+from finbot.storage.errors import StoreIntegrityError
 from finbot.storage.sqlite_store import SQLiteStore
 
 
@@ -116,7 +117,7 @@ class ProductCatalogService:
         }
         try:
             self.store.insert_watchlist(record)
-        except sqlite3.IntegrityError as exc:
+        except (sqlite3.IntegrityError, StoreIntegrityError) as exc:
             raise ValueError(f"关注列表名称已存在：{normalized_name}") from exc
         return self.get_watchlist(str(record["watchlist_id"]))
 
@@ -130,7 +131,7 @@ class ProductCatalogService:
         )
         try:
             self.store.update_watchlist(watchlist_id, self.owner_id, name, description, _now())
-        except sqlite3.IntegrityError as exc:
+        except (sqlite3.IntegrityError, StoreIntegrityError) as exc:
             raise ValueError(f"关注列表名称已存在：{name}") from exc
         return self.get_watchlist(watchlist_id)
 
@@ -374,4 +375,3 @@ def _optional_bool(value: Any) -> bool | None:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-

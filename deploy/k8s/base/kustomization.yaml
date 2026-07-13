@@ -4,6 +4,7 @@ namespace: finbot
 resources:
   - namespace.yaml
   - pvc.yaml
+  - postgres.yaml
   - service.yaml
   - egress-proxy.yaml
   - deployment.yaml

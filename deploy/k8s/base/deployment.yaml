@@ -62,6 +62,37 @@ spec:
             - name: private-bootstrap
               mountPath: /private-bootstrap
               readOnly: true
+        - name: migrate-sqlite-to-postgres
+          image: ghcr.io/example/finbot:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "finbot.cli.migrate_postgres"]
+          args:
+            - --sqlite-path
+            - /var/lib/finbot/data/finbot.sqlite3
+            - --report
+            - /var/lib/finbot/data/reports/postgresql-migration.json
+          envFrom:
+            - configMapRef:
+                name: finbot-env
+            - secretRef:
+                name: finbot-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/finbot
+            - name: migration-tmp
+              mountPath: /tmp
       containers:
         - name: web
           image: ghcr.io/example/finbot:latest
@@ -176,6 +207,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: finbot-env
+            - secretRef:
+                name: finbot-secrets
           ports:
             - name: metrics
               containerPort: 9090
@@ -224,3 +257,6 @@ spec:
         - name: worker-tmp
           emptyDir:
             sizeLimit: 1Gi
+        - name: migration-tmp
+          emptyDir:
+            sizeLimit: 256Mi

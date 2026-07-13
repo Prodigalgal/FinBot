@@ -111,12 +111,47 @@ export function InstantResearchPanel({
   }, [initialRequest?.seed_id]);
 
   useEffect(() => {
-    if (!session || TERMINAL_STATUSES.has(session.status)) {
+    if (!selectedSessionId || (session && TERMINAL_STATUSES.has(session.status))) {
       return undefined;
     }
-    const timer = window.setInterval(() => void refresh(true), 2000);
-    return () => window.clearInterval(timer);
-  }, [refresh, session]);
+    let lastEventAt = Date.now();
+    let lastFallbackAt = 0;
+    const source = new EventSource(api.instantResearchStreamUrl(selectedSessionId), { withCredentials: true });
+    const applySession = (event: Event) => {
+      const nextSession = JSON.parse((event as MessageEvent<string>).data) as InstantResearchSession;
+      lastEventAt = Date.now();
+      setSession(nextSession);
+      setSessions((current) => [nextSession, ...current.filter((item) => item.session_id !== nextSession.session_id)]);
+      setError(null);
+    };
+    const complete = (event: Event) => {
+      applySession(event);
+      source.close();
+      void refresh(true);
+    };
+    source.addEventListener('session', applySession);
+    source.addEventListener('complete', complete);
+    source.onerror = () => {
+      const now = Date.now();
+      if (now - lastEventAt > 15_000 && now - lastFallbackAt > 30_000) {
+        lastFallbackAt = now;
+        void refresh(true);
+      }
+    };
+    const fallbackTimer = window.setInterval(() => {
+      const now = Date.now();
+      if (now - lastEventAt > 30_000 && now - lastFallbackAt > 30_000) {
+        lastFallbackAt = now;
+        void refresh(true);
+      }
+    }, 10_000);
+    return () => {
+      window.clearInterval(fallbackTimer);
+      source.removeEventListener('session', applySession);
+      source.removeEventListener('complete', complete);
+      source.close();
+    };
+  }, [refresh, selectedSessionId, session?.status]);
 
   const submit = useCallback(async () => {
     const normalized = query.trim();

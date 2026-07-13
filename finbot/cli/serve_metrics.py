@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import argparse
 import time
-from pathlib import Path
 
 from prometheus_client import CollectorRegistry, start_http_server
 
+from finbot.cli.common import build_store
 from finbot.observability.metrics import FinBotMetricsCollector
-from finbot.storage.sqlite_store import SQLiteStore
 
 
 def main() -> None:
@@ -16,7 +15,7 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", default=9090, type=int)
     args = parser.parse_args()
-    store = SQLiteStore(Path(args.data_dir) / "finbot.sqlite3")
+    _, store = build_store(args.data_dir)
     registry = CollectorRegistry(auto_describe=True)
     registry.register(FinBotMetricsCollector(store))
     start_http_server(args.port, addr=args.host, registry=registry)

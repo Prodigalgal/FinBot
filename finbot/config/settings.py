@@ -14,6 +14,7 @@ class Settings:
     evidence_dir: Path
     reports_dir: Path
     sqlite_path: Path
+    database_url: str | None
     http_user_agent: str
     firecrawl_api_base: str
     firecrawl_api_key: str | None
@@ -58,6 +59,7 @@ class Settings:
             evidence_dir=evidence,
             reports_dir=reports,
             sqlite_path=data / "finbot.sqlite3",
+            database_url=os.getenv("FINBOT_DATABASE_URL") or None,
             http_user_agent=os.getenv("HTTP_USER_AGENT", "FinBot research bot"),
             firecrawl_api_base=os.getenv("FIRECRAWL_API_BASE", "https://api.firecrawl.dev/v2"),
             firecrawl_api_key=os.getenv("FIRECRAWL_API_KEY") or None,
