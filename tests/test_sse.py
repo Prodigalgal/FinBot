@@ -43,15 +43,59 @@ class ServerSentEventTests(unittest.TestCase):
         payload = json.loads(messages[1].split("data: ", 1)[1])
         self.assertEqual(payload["session_id"], "session-1")
 
+    def test_subsequent_snapshot_uses_compact_update_factory(self) -> None:
+        snapshots = iter(
+            (
+                {"status": "running", "count": 1},
+                {"status": "succeeded", "count": 2},
+            )
+        )
+
+        async def collect() -> list[str]:
+            return [
+                message
+                async for message in snapshot_event_stream(
+                    FakeRequest(),
+                    lambda: next(snapshots),
+                    event_name="session",
+                    poll_seconds=0.1,
+                    heartbeat_seconds=0.1,
+                    terminal_statuses=frozenset({"succeeded"}),
+                    update_payload_factory=lambda current, previous: {
+                        "partial": True,
+                        "status": current["status"],
+                        "previous_count": previous["count"],
+                    },
+                )
+            ]
+
+        messages = asyncio.run(collect())
+        session_messages = [message for message in messages if "event: session" in message]
+        first_payload = json.loads(session_messages[0].split("data: ", 1)[1])
+        second_payload = json.loads(session_messages[1].split("data: ", 1)[1])
+
+        self.assertEqual(first_payload, {"status": "running", "count": 1})
+        self.assertEqual(second_payload, {"partial": True, "status": "succeeded", "previous_count": 1})
+
     def test_snapshot_digest_ignores_heartbeat_fields_but_not_business_state(self) -> None:
         first = {
             "generated_at": "2026-07-13T01:00:00Z",
-            "worker": {"heartbeat_at": "2026-07-13T01:00:00Z", "status": "idle"},
+            "worker": {
+                "heartbeat_at": "2026-07-13T01:00:00Z",
+                "status": "idle",
+                "leases": [{"expires_at": "2026-07-13T01:00:30Z"}],
+                "recent_requests": [{"lease_expires_at": "2026-07-13T01:00:30Z"}],
+            },
             "runs": [{"status": "running", "updated_at": "2026-07-13T00:59:00Z"}],
         }
         heartbeat_only = {
             "generated_at": "2026-07-13T01:00:06Z",
-            "worker": {"heartbeat_at": "2026-07-13T01:00:06Z", "status": "idle"},
+            "worker": {
+                "heartbeat_at": "2026-07-13T01:00:06Z",
+                "status": "idle",
+                "leases": [{"expires_at": "2026-07-13T01:00:36Z"}],
+                "recent_requests": [{"lease_expires_at": "2026-07-13T01:00:36Z"}],
+            },
             "runs": [{"status": "running", "updated_at": "2026-07-13T00:59:00Z"}],
         }
         completed = {

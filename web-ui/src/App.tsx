@@ -191,33 +191,44 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    let lastSnapshotAt = 0;
+    let lastEventAt = 0;
     let lastFallbackAt = 0;
     const source = new EventSource(api.operationsStreamUrl(), { withCredentials: true });
     const onSnapshot = (event: Event) => {
       const payload = JSON.parse((event as MessageEvent<string>).data) as {
-        status: StatusPayload;
-        autonomous: AutonomousStatusPayload;
+        partial?: boolean;
+        status: StatusPayload | Partial<StatusPayload>;
+        autonomous: AutonomousStatusPayload | Partial<AutonomousStatusPayload>;
         jobs: JobRecord[];
       };
-      lastSnapshotAt = Date.now();
-      setStatus(payload.status);
-      setAutonomous(payload.autonomous);
+      lastEventAt = Date.now();
+      if (payload.partial) {
+        setStatus((current) => ({ ...(current || {}), ...payload.status } as StatusPayload));
+        setAutonomous((current) => ({ ...(current || {}), ...payload.autonomous } as AutonomousStatusPayload));
+      } else {
+        setStatus(payload.status as StatusPayload);
+        setAutonomous(payload.autonomous as AutonomousStatusPayload);
+      }
       setJobs(payload.jobs);
       setLoading(false);
       setError(null);
     };
+    const onTransportEvent = () => {
+      lastEventAt = Date.now();
+    };
     source.addEventListener('snapshot', onSnapshot);
+    source.addEventListener('connected', onTransportEvent);
+    source.addEventListener('heartbeat', onTransportEvent);
     source.onerror = () => {
       const now = Date.now();
-      if (now - lastSnapshotAt > 15_000 && now - lastFallbackAt > 30_000) {
+      if (now - lastEventAt > 15_000 && now - lastFallbackAt > 30_000) {
         lastFallbackAt = now;
         void refresh();
       }
     };
     const fallbackTimer = window.setInterval(() => {
       const now = Date.now();
-      if (now - lastSnapshotAt > 30_000 && now - lastFallbackAt > 30_000) {
+      if (now - lastEventAt > 30_000 && now - lastFallbackAt > 30_000) {
         lastFallbackAt = now;
         void refresh();
       }
@@ -225,6 +236,8 @@ export function App() {
     return () => {
       window.clearInterval(fallbackTimer);
       source.removeEventListener('snapshot', onSnapshot);
+      source.removeEventListener('connected', onTransportEvent);
+      source.removeEventListener('heartbeat', onTransportEvent);
       source.close();
     };
   }, [refresh]);

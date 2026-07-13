@@ -16,6 +16,7 @@ SSE_HEADERS = {
     "X-Accel-Buffering": "no",
 }
 VOLATILE_SNAPSHOT_FIELDS = frozenset({"generated_at", "heartbeat_at", "last_heartbeat_at"})
+SnapshotUpdateFactory = Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]
 
 
 def encode_sse(event: str, payload: dict[str, Any], *, retry_ms: int | None = None) -> str:
@@ -36,9 +37,11 @@ async def snapshot_event_stream(
     poll_seconds: float,
     heartbeat_seconds: float = 15.0,
     terminal_statuses: frozenset[str] = frozenset(),
+    update_payload_factory: SnapshotUpdateFactory | None = None,
 ) -> AsyncIterator[str]:
     yield encode_sse("connected", {"at": _now()}, retry_ms=3000)
     last_digest: str | None = None
+    previous_snapshot: dict[str, Any] | None = None
 
     while not await request.is_disconnected():
         task = asyncio.create_task(asyncio.to_thread(snapshot_factory))
@@ -62,8 +65,14 @@ async def snapshot_event_stream(
 
         digest = snapshot_digest(snapshot)
         if digest != last_digest:
-            yield encode_sse(event_name, snapshot)
+            event_payload = (
+                update_payload_factory(snapshot, previous_snapshot)
+                if previous_snapshot is not None and update_payload_factory is not None
+                else snapshot
+            )
+            yield encode_sse(event_name, event_payload)
             last_digest = digest
+            previous_snapshot = snapshot
 
         status = str(snapshot.get("status") or "").lower()
         if status in terminal_statuses:
@@ -94,17 +103,19 @@ def snapshot_digest(snapshot: dict[str, Any]) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def _without_volatile_fields(value: Any) -> Any:
+def _without_volatile_fields(value: Any, parent_key: str | None = None) -> Any:
     if isinstance(value, dict):
         return {
-            key: _without_volatile_fields(item)
+            key: _without_volatile_fields(item, key)
             for key, item in value.items()
             if key not in VOLATILE_SNAPSHOT_FIELDS
+            and key != "lease_expires_at"
+            and not (parent_key == "leases" and key == "expires_at")
         }
     if isinstance(value, list):
-        return [_without_volatile_fields(item) for item in value]
+        return [_without_volatile_fields(item, parent_key) for item in value]
     if isinstance(value, tuple):
-        return tuple(_without_volatile_fields(item) for item in value)
+        return tuple(_without_volatile_fields(item, parent_key) for item in value)
     return value
 
 

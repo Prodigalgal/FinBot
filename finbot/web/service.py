@@ -82,6 +82,7 @@ from finbot.web.auth import (
     LoginRequest,
 )
 from finbot.web.health import HealthService
+from finbot.web.operations_stream import operations_update_payload
 from finbot.web.quant_api import quant_router
 from finbot.web.sse import SSE_HEADERS, snapshot_event_stream
 
@@ -1316,6 +1317,7 @@ def create_fastapi_app(
                 app_state.operations_stream_payload,
                 event_name="snapshot",
                 poll_seconds=6.0,
+                update_payload_factory=operations_update_payload,
             ),
             media_type="text/event-stream",
             headers=SSE_HEADERS,
