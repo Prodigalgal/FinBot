@@ -169,6 +169,40 @@ class AutonomousLoopTests(unittest.TestCase):
 
             self.assertEqual(config.providers, ("gate",))
 
+    def test_paper_execution_treats_empty_execution_robot_as_safe_noop(self) -> None:
+        runner = AutonomousResearchLoopRunner()
+        config = AutonomousLoopConfig(execution_robot_enabled=True, paper_execution_enabled=True)
+
+        report = runner._run_paper_execution(
+            config,
+            "loop-empty-robot",
+            {
+                "execution_robot": {
+                    "status": "empty",
+                    "summary": {"reasons": ["没有可供执行机器人复核的方向性候选"]},
+                }
+            },
+        )
+
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["summary"]["execution_count"], 0)
+        self.assertEqual(report["summary"]["reasons"], ["没有可供执行机器人复核的方向性候选"])
+        self.assertEqual(report["executions"], [])
+
+    def test_paper_execution_remains_fail_closed_when_execution_robot_fails(self) -> None:
+        runner = AutonomousResearchLoopRunner()
+        config = AutonomousLoopConfig(execution_robot_enabled=True, paper_execution_enabled=True)
+
+        report = runner._run_paper_execution(
+            config,
+            "loop-failed-robot",
+            {"execution_robot": {"status": "failed"}},
+        )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["summary"]["execution_count"], 0)
+        self.assertIn("fail-closed", report["summary"]["reasons"][0])
+
     def test_runner_links_instant_request_before_completion_and_persists_query(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = SQLiteStore(Path(temp_dir) / "finbot.sqlite3")

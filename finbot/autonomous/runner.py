@@ -15,6 +15,7 @@ from finbot.ai.openai_compatible import load_provider_configs
 from finbot.advisory.engine import AdvisoryConfig
 from finbot.autonomous.ai_debate import AIDebateConfig, AIDebateCouncilRunner
 from finbot.autonomous.config import AutonomousLoopConfig
+from finbot.autonomous.execution_handoff import resolve_paper_execution_handoff
 from finbot.autonomous.execution_robot import ExecutionRobot, ExecutionRobotConfig
 from finbot.autonomous.product_candidates import ProductCandidateBuilder, ProductCandidateConfig
 from finbot.autonomous.product_selector import ProductRecommendationSelector, ProductSelectionConfig
@@ -702,17 +703,9 @@ class AutonomousResearchLoopRunner:
     ) -> dict[str, Any]:
         if config.execution_robot_enabled:
             robot = context.get("execution_robot") or {}
-            if robot.get("status") != "passed":
-                return {
-                    "status": "blocked",
-                    "execution_run_id": None,
-                    "summary": {
-                        "execution_count": 0,
-                        "reasons": ["执行机器人未通过，按 fail-closed 禁止模拟下单"],
-                    },
-                    "executions": [],
-                }
-            decisions = [item for item in context.get("execution_decisions", []) if isinstance(item, dict)]
+            decisions, terminal_report = resolve_paper_execution_handoff(robot)
+            if terminal_report is not None:
+                return terminal_report
         else:
             decisions = [item for item in context.get("ai_decisions", []) if isinstance(item, dict)]
         return execute_paper_decisions(
