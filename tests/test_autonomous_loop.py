@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from finbot.autonomous.config import AutonomousLoopConfig
-from finbot.autonomous.runner import AutonomousResearchLoopRunner
-from finbot.autonomous.runner import ProxyRuntime as RunnerProxyRuntime
+from finbot.autonomous.runner import AutonomousResearchLoopRunner, ProxyRuntime as RunnerProxyRuntime
 from finbot.autonomous.scheduler import AutonomousLoopScheduler
+from finbot.autonomous.step_status import is_failed_step_output
 from finbot.autonomous.worker import INSTANT_RESEARCH_TRIGGER, AutonomousRequestQueue
 from finbot.config.runtime_config import RuntimeConfigStore
 from finbot.storage.sqlite_store import SQLiteStore
@@ -202,6 +202,35 @@ class AutonomousLoopTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["execution_count"], 0)
         self.assertIn("fail-closed", report["summary"]["reasons"][0])
+
+    def test_policy_blocks_are_successful_no_trade_outcomes(self) -> None:
+        runner = AutonomousResearchLoopRunner()
+        config = AutonomousLoopConfig(execution_robot_enabled=True, paper_execution_enabled=True)
+        robot_report = {
+            "status": "blocked",
+            "summary": {"reasons": ["Portfolio Risk 门禁未通过"]},
+        }
+
+        paper_report = runner._run_paper_execution(
+            config,
+            "loop-risk-blocked",
+            {"execution_robot": robot_report},
+        )
+
+        self.assertEqual(paper_report["status"], "blocked")
+        self.assertEqual(paper_report["summary"]["execution_count"], 0)
+        self.assertFalse(is_failed_step_output("execution_robot", robot_report))
+        self.assertFalse(is_failed_step_output("paper_execution", paper_report))
+        self.assertTrue(
+            is_failed_step_output(
+                "paper_execution",
+                {
+                    "status": "blocked",
+                    "summary": {"execution_count": 1, "reasons": []},
+                    "executions": [{"status": "blocked_adapter"}],
+                },
+            )
+        )
 
     def test_runner_links_instant_request_before_completion_and_persists_query(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

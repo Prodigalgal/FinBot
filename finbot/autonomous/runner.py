@@ -19,6 +19,7 @@ from finbot.autonomous.execution_handoff import resolve_paper_execution_handoff
 from finbot.autonomous.execution_robot import ExecutionRobot, ExecutionRobotConfig
 from finbot.autonomous.product_candidates import ProductCandidateBuilder, ProductCandidateConfig
 from finbot.autonomous.product_selector import ProductRecommendationSelector, ProductSelectionConfig
+from finbot.autonomous.step_status import is_failed_step_output
 from finbot.cli.common import build_store, write_report
 from finbot.config.ai_sites import AISitesConfigStore
 from finbot.config.paths import runtime_root
@@ -217,7 +218,7 @@ class AutonomousResearchLoopRunner:
             finished_at = _now()
             duration_ms = int((perf_counter() - timer) * 1000)
             compact_output = _compact_output(output)
-            if _failed_output(output):
+            if is_failed_step_output(step_name, output):
                 error = str(output.get("error") or output.get("reason") or f"{step_name} reported failed")
                 store.update_autonomous_loop_step(
                     step_id=step_id,
@@ -1146,10 +1147,6 @@ def _artifact_ref(output: dict[str, Any]) -> str | None:
         if output.get(key):
             return str(output[key])
     return None
-
-
-def _failed_output(output: dict[str, Any]) -> bool:
-    return str(output.get("status") or "").strip().lower() in {"failed", "error", "blocked"}
 
 
 def _research_assets(store: Any, context: dict[str, Any]) -> tuple[str, ...]:
