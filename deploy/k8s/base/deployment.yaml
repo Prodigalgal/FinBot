@@ -240,6 +240,8 @@ spec:
           volumeMounts:
             - name: state
               mountPath: /var/lib/finbot
+            - name: metrics-tmp
+              mountPath: /tmp
       volumes:
         - name: state
           persistentVolumeClaim:
@@ -260,3 +262,6 @@ spec:
         - name: migration-tmp
           emptyDir:
             sizeLimit: 256Mi
+        - name: metrics-tmp
+          emptyDir:
+            sizeLimit: 64Mi
