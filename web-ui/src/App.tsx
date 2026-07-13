@@ -149,7 +149,7 @@ const configSubmenuItems = [
 const pageMeta: Record<string, { title: string; subtitle: string }> = {
   overview: { title: '研究决策工作台', subtitle: '先看系统与待办，再进入产品研究、复核和模拟账户' },
   products: { title: '产品与自选', subtitle: '筛选交易产品、维护关注列表，并从产品直接发起研究' },
-  accounts: { title: '模拟账户与盈亏', subtitle: '查看 Gate TestNet 与 Bybit Demo 的账户、持仓和区间盈亏' },
+  accounts: { title: '模拟账户与交易审计', subtitle: '查看 Gate TestNet 与 Bybit Demo 的账户、持仓、盈亏和真实操作历史' },
   instant: { title: '发起即时研究', subtitle: '输入问题并跟踪信息收集、AI 分析、多轮辩论与最终结论' },
   reviews: { title: '复核、历史与效果', subtitle: '审批方向性建议，回放运行记录并评估建议表现' },
   autonomous: { title: '自动研究', subtitle: '查看或手动触发完整的采集、分析、辩论、筛选与风控流程' },

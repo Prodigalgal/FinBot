@@ -18,6 +18,16 @@ from finbot.exchange.account_snapshot import (
     PnlWindow,
     position_roe_pct,
 )
+from finbot.exchange.account_activity import (
+    AccountActivityQuery,
+    activity_matches,
+    exchange_source,
+)
+from finbot.exchange.account_activity_normalizers import (
+    gate_account_activity,
+    gate_fill_activity,
+    gate_order_activity,
+)
 from finbot.exchange.paper_execution import (
     PaperExecutionBlocked,
     PaperSubmissionResult,
@@ -142,6 +152,77 @@ class GateTestnetClient:
                 break
             offset += limit
         if len(rows) >= max_records and len(payload) >= limit:
+            complete = False
+        return rows[:max_records], complete
+
+    def list_order_history(
+        self,
+        settle: str,
+        *,
+        from_timestamp: int | None,
+        to_timestamp: int,
+        page_size: int = 100,
+        max_records: int = 500,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        return self._list_time_range_rows(
+            f"/futures/{settle}/orders_timerange",
+            from_timestamp=from_timestamp,
+            to_timestamp=to_timestamp,
+            page_size=page_size,
+            max_records=max_records,
+        )
+
+    def list_trade_history(
+        self,
+        settle: str,
+        *,
+        from_timestamp: int | None,
+        to_timestamp: int,
+        page_size: int = 100,
+        max_records: int = 500,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        return self._list_time_range_rows(
+            f"/futures/{settle}/my_trades_timerange",
+            from_timestamp=from_timestamp,
+            to_timestamp=to_timestamp,
+            page_size=page_size,
+            max_records=max_records,
+        )
+
+    def _list_time_range_rows(
+        self,
+        path: str,
+        *,
+        from_timestamp: int | None,
+        to_timestamp: int,
+        page_size: int,
+        max_records: int,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        limit = max(1, min(page_size, 100))
+        complete = True
+        last_page_size = 0
+        while len(rows) < max_records:
+            payload = self._request(
+                "GET",
+                path,
+                query={
+                    "from": from_timestamp,
+                    "to": to_timestamp,
+                    "limit": limit,
+                    "offset": offset,
+                },
+            )
+            if not isinstance(payload, list):
+                raise GateTestnetApiError(502, "INVALID_RESPONSE", "交易历史响应不是数组")
+            page = [row for row in payload if isinstance(row, dict)]
+            rows.extend(page)
+            last_page_size = len(payload)
+            if len(payload) < limit:
+                break
+            offset += limit
+        if len(rows) >= max_records and last_page_size >= limit:
             complete = False
         return rows[:max_records], complete
 
@@ -354,6 +435,75 @@ class GateTestnetAdapter:
                 "dual_mode": bool(account.get("in_dual_mode")),
             },
         )
+
+    def fetch_account_activity(self, *, query: AccountActivityQuery) -> dict[str, Any]:
+        if self.client is None:
+            raise PaperExecutionBlocked("Gate TestNet client 未配置")
+        from_timestamp = int(query.start_at.timestamp()) if query.start_at else None
+        to_timestamp = int(query.end_at.timestamp())
+        errors: list[str] = []
+        orders: list[dict[str, Any]] = []
+        fills: list[dict[str, Any]] = []
+        ledger: list[dict[str, Any]] = []
+        orders_complete = False
+        fills_complete = False
+        ledger_complete = False
+        try:
+            orders, orders_complete = self.client.list_order_history(
+                "usdt",
+                from_timestamp=from_timestamp,
+                to_timestamp=to_timestamp,
+                max_records=query.fetch_limit,
+            )
+        except (GateTestnetApiError, httpx.HTTPError) as exc:
+            errors.append(f"订单历史读取失败：{_safe_warning(exc)}")
+        try:
+            fills, fills_complete = self.client.list_trade_history(
+                "usdt",
+                from_timestamp=from_timestamp,
+                to_timestamp=to_timestamp,
+                max_records=query.fetch_limit,
+            )
+        except (GateTestnetApiError, httpx.HTTPError) as exc:
+            errors.append(f"成交历史读取失败：{_safe_warning(exc)}")
+        try:
+            ledger, ledger_complete = self.client.list_account_book(
+                "usdt",
+                from_timestamp=from_timestamp,
+                to_timestamp=to_timestamp,
+                max_records=query.fetch_limit,
+            )
+        except (GateTestnetApiError, httpx.HTTPError) as exc:
+            errors.append(f"账户流水读取失败：{_safe_warning(exc)}")
+        if len(errors) == 3:
+            raise GateTestnetApiError(502, "HISTORY_UNAVAILABLE", "; ".join(errors))
+        activities = [gate_order_activity(row) for row in orders]
+        activities.extend(gate_fill_activity(row) for row in fills)
+        activities.extend(gate_account_activity(row) for row in ledger)
+        matched = [activity for activity in activities if activity_matches(activity, query)]
+        complete = bool(query.start_at) and orders_complete and fills_complete and ledger_complete and not errors
+        message = (
+            "Gate TestNet 只读订单、成交与账户流水"
+            if query.start_at
+            else "全部模式返回 Gate 当前可检索的最近记录，不代表永久完整归档"
+        )
+        return {
+            "sources": [
+                exchange_source(
+                    adapter_id=self.adapter_id,
+                    display_name=self.display_name,
+                    status="partial" if errors else "ready",
+                    complete=complete,
+                    fetched_record_count=len(activities),
+                    matched_record_count=len(matched),
+                    coverage_start_at=query.start_at,
+                    coverage_end_at=query.end_at,
+                    message=message,
+                    error="; ".join(errors) if errors else None,
+                )
+            ],
+            "activities": matched,
+        }
 
     def submit_order(self, order: PreparedPaperOrder) -> PaperSubmissionResult:
         if self.client is None:

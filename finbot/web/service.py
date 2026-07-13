@@ -53,7 +53,16 @@ from finbot.config.setup_profiles import (
     setup_readiness,
 )
 from finbot.exchange.account_snapshot import resolve_pnl_window
-from finbot.exchange.runtime import execute_paper_decisions, fetch_exchange_accounts
+from finbot.exchange.account_activity import (
+    local_account_activity_payload,
+    merge_account_activity_payload,
+    resolve_activity_query,
+)
+from finbot.exchange.runtime import (
+    execute_paper_decisions,
+    fetch_exchange_account_activity,
+    fetch_exchange_accounts,
+)
 from finbot.instruments.product_center import ProductCatalogService
 from finbot.market.public_exchanges import PublicExchangeMarketDataClient
 from finbot.network.proxy_policy import load_proxy_policy
@@ -841,6 +850,41 @@ class FinBotWebApp:
             pnl_window=pnl_window,
         )
 
+    def exchange_account_activity_payload(
+        self,
+        *,
+        range_mode: str = "7d",
+        start_at: str | None = None,
+        end_at: str | None = None,
+        adapter_id: str = "all",
+        stage: str = "all",
+        status: str = "all",
+        symbol: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        query = resolve_activity_query(
+            range_mode=range_mode,
+            start_at=start_at,
+            end_at=end_at,
+            adapter_id=adapter_id,
+            stage=stage,
+            status=status,
+            symbol=symbol,
+            offset=offset,
+            limit=limit,
+        )
+        local_payload = local_account_activity_payload(self.autonomous_store(), query)
+        exchange_payload = fetch_exchange_account_activity(
+            config=self.autonomous_config(),
+            query=query,
+        )
+        return merge_account_activity_payload(
+            query=query,
+            local_payload=local_payload,
+            exchange_payload=exchange_payload,
+        )
+
     def instrument_catalog_payload(self, limit: int = 200) -> dict[str, Any]:
         store = self.autonomous_store()
         rows = [dict(row) for row in store.list_venue_instruments(active_only=False)[: max(1, min(limit, 1000))]]
@@ -1292,6 +1336,33 @@ def create_fastapi_app(
                 pnl_range=pnl_range,
                 start_at=start_at,
                 end_at=end_at,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/v1/exchange-account-activity")
+    def exchange_account_activity(
+        range_mode: str = "7d",
+        start_at: str | None = None,
+        end_at: str | None = None,
+        adapter_id: str = "all",
+        stage: str = "all",
+        status: str = "all",
+        symbol: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        try:
+            return app_state.exchange_account_activity_payload(
+                range_mode=range_mode,
+                start_at=start_at,
+                end_at=end_at,
+                adapter_id=adapter_id,
+                stage=stage,
+                status=status,
+                symbol=symbol,
+                offset=offset,
+                limit=limit,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

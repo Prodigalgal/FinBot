@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from finbot.cli.common import build_store, write_report
+from finbot.exchange.account_activity import AccountActivityQuery, exchange_source
 from finbot.exchange.account_snapshot import (
     ExchangeAccountSnapshot,
     PnlWindow,
@@ -32,32 +33,7 @@ def fetch_exchange_accounts(
 ) -> dict[str, Any]:
     generated_at = utc_now()
     enabled_adapters = set(config.paper_execution_adapters)
-    descriptors = (
-        {
-            "adapter_id": "gate_testnet",
-            "display_name": "Gate TestNet",
-            "provider": "gate",
-            "environment": "testnet",
-            "route_name": "exchange:gate",
-            "target_url": GATE_TESTNET_API_BASE,
-            "api_key": config.gate_testnet_api_key,
-            "api_secret": config.gate_testnet_api_secret,
-            "client": GateTestnetClient,
-            "adapter": GateTestnetAdapter,
-        },
-        {
-            "adapter_id": "bybit_demo",
-            "display_name": "Bybit Demo",
-            "provider": "bybit",
-            "environment": "demo",
-            "route_name": "exchange:bybit",
-            "target_url": BYBIT_DEMO_API_BASE,
-            "api_key": config.bybit_demo_api_key,
-            "api_secret": config.bybit_demo_api_secret,
-            "client": BybitDemoClient,
-            "adapter": BybitDemoAdapter,
-        },
-    )
+    descriptors = _exchange_descriptors(config)
     snapshots: dict[str, ExchangeAccountSnapshot] = {}
     pending: list[dict[str, Any]] = []
     for descriptor in descriptors:
@@ -142,6 +118,98 @@ def fetch_exchange_accounts(
     )
 
 
+def fetch_exchange_account_activity(
+    *,
+    config: Any,
+    query: AccountActivityQuery,
+    max_routes: int = 2,
+) -> dict[str, Any]:
+    selected_adapters = set(query.selected_exchange_adapters)
+    descriptors = tuple(
+        descriptor
+        for descriptor in _exchange_descriptors(config)
+        if descriptor["adapter_id"] in selected_adapters
+    )
+    if not descriptors:
+        return {"sources": [], "activities": []}
+
+    enabled_adapters = set(config.paper_execution_adapters)
+    sources: list[dict[str, Any]] = []
+    activities: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
+    for descriptor in descriptors:
+        adapter_id = str(descriptor["adapter_id"])
+        if adapter_id not in enabled_adapters:
+            sources.append(_unavailable_activity_source(descriptor, query, "disabled", "该模拟交易所未启用"))
+        elif not descriptor["api_key"] or not descriptor["api_secret"]:
+            sources.append(_unavailable_activity_source(descriptor, query, "blocked", "缺少模拟环境 API key/secret"))
+        else:
+            pending.append(descriptor)
+
+    if not pending:
+        return {"sources": sources, "activities": activities}
+
+    settings, _store = build_store(config.data_dir)
+    proxy_runtime = None
+    try:
+        proxy_runtime = ProxyRuntime.from_settings(
+            settings,
+            start_bridges=bool(config.start_bridges),
+            start_firecrawl_bridges=False,
+            start_exchange_bridges=bool(config.start_bridges),
+        )
+        routed = [
+            (
+                descriptor,
+                list(
+                    proxy_runtime.router.candidate_decisions(
+                        str(descriptor["route_name"]),
+                        str(descriptor["target_url"]),
+                        attempts=max(1, min(max_routes, 5)),
+                    )
+                ),
+            )
+            for descriptor in pending
+        ]
+        with ThreadPoolExecutor(max_workers=min(2, len(routed)), thread_name_prefix="finbot-account-history") as executor:
+            future_map = {
+                executor.submit(_fetch_activity_with_routes, descriptor, routes, query): descriptor
+                for descriptor, routes in routed
+            }
+            for future in as_completed(future_map):
+                descriptor = future_map[future]
+                try:
+                    payload = future.result()
+                except Exception as exc:
+                    payload = {
+                        "sources": [
+                            _unavailable_activity_source(
+                                descriptor,
+                                query,
+                                "failed",
+                                _safe_account_error(exc, descriptor),
+                            )
+                        ],
+                        "activities": [],
+                    }
+                sources.extend(payload.get("sources", []))
+                activities.extend(payload.get("activities", []))
+    except Exception as exc:
+        for descriptor in pending:
+            sources.append(
+                _unavailable_activity_source(
+                    descriptor,
+                    query,
+                    "failed",
+                    f"代理运行时初始化失败：{_safe_account_error(exc, descriptor)}",
+                )
+            )
+    finally:
+        if proxy_runtime is not None:
+            proxy_runtime.close()
+    return {"sources": sources, "activities": activities}
+
+
 def execute_paper_decisions(
     *,
     config: Any,
@@ -218,6 +286,96 @@ def execute_paper_decisions(
         proxy_runtime.close()
     report["output"] = str(write_report(settings, "paper-execution-latest.json", report))
     return report
+
+
+def _exchange_descriptors(config: Any) -> tuple[dict[str, Any], ...]:
+    return (
+        {
+            "adapter_id": "gate_testnet",
+            "display_name": "Gate TestNet",
+            "provider": "gate",
+            "environment": "testnet",
+            "route_name": "exchange:gate",
+            "target_url": GATE_TESTNET_API_BASE,
+            "api_key": config.gate_testnet_api_key,
+            "api_secret": config.gate_testnet_api_secret,
+            "client": GateTestnetClient,
+            "adapter": GateTestnetAdapter,
+        },
+        {
+            "adapter_id": "bybit_demo",
+            "display_name": "Bybit Demo",
+            "provider": "bybit",
+            "environment": "demo",
+            "route_name": "exchange:bybit",
+            "target_url": BYBIT_DEMO_API_BASE,
+            "api_key": config.bybit_demo_api_key,
+            "api_secret": config.bybit_demo_api_secret,
+            "client": BybitDemoClient,
+            "adapter": BybitDemoAdapter,
+        },
+    )
+
+
+def _fetch_activity_with_routes(
+    descriptor: dict[str, Any],
+    routes: list[Any],
+    query: AccountActivityQuery,
+) -> dict[str, Any]:
+    errors: list[str] = []
+    attempted = False
+    for route in routes:
+        if not route.ok:
+            if route.reason:
+                errors.append(str(route.reason))
+            continue
+        attempted = True
+        client = None
+        try:
+            client = descriptor["client"](
+                str(descriptor["api_key"]),
+                str(descriptor["api_secret"]),
+                proxy=route.proxy,
+                timeout_seconds=15,
+            )
+            adapter = descriptor["adapter"](client)
+            return adapter.fetch_account_activity(query=query)
+        except Exception as exc:
+            errors.append(_safe_account_error(exc, descriptor))
+        finally:
+            if client is not None:
+                client.close()
+    return {
+        "sources": [
+            _unavailable_activity_source(
+                descriptor,
+                query,
+                "failed" if attempted else "blocked",
+                errors[-1] if errors else "没有可用的交易所代理路由",
+            )
+        ],
+        "activities": [],
+    }
+
+
+def _unavailable_activity_source(
+    descriptor: dict[str, Any],
+    query: AccountActivityQuery,
+    status: str,
+    error: str,
+) -> dict[str, Any]:
+    return exchange_source(
+        adapter_id=str(descriptor["adapter_id"]),
+        display_name=str(descriptor["display_name"]),
+        status=status,
+        complete=False,
+        fetched_record_count=0,
+        matched_record_count=0,
+        coverage_start_at=query.start_at,
+        coverage_end_at=query.end_at,
+        message="交易所只读订单与成交历史不可用",
+        error=error,
+    )
 
 
 def _fetch_account_with_routes(

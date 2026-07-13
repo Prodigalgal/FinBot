@@ -15,6 +15,7 @@ SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
+VOLATILE_SNAPSHOT_FIELDS = frozenset({"generated_at", "heartbeat_at", "last_heartbeat_at"})
 
 
 def encode_sse(event: str, payload: dict[str, Any], *, retry_ms: int | None = None) -> str:
@@ -59,8 +60,7 @@ async def snapshot_event_stream(
             await _wait_or_disconnect(request, poll_seconds)
             continue
 
-        serialized = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"), sort_keys=True, default=str)
-        digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        digest = snapshot_digest(snapshot)
         if digest != last_digest:
             yield encode_sse(event_name, snapshot)
             last_digest = digest
@@ -86,6 +86,26 @@ async def _wait_or_disconnect(request: Request, seconds: float) -> bool:
 
 def _public_error(error: Exception) -> str:
     return f"{type(error).__name__}: 状态暂时不可用，连接将自动重试"
+
+
+def snapshot_digest(snapshot: dict[str, Any]) -> str:
+    stable = _without_volatile_fields(snapshot)
+    serialized = json.dumps(stable, ensure_ascii=False, separators=(",", ":"), sort_keys=True, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _without_volatile_fields(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_volatile_fields(item)
+            for key, item in value.items()
+            if key not in VOLATILE_SNAPSHOT_FIELDS
+        }
+    if isinstance(value, list):
+        return [_without_volatile_fields(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_without_volatile_fields(item) for item in value)
+    return value
 
 
 def _now() -> str:

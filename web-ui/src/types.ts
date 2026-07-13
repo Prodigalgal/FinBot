@@ -591,6 +591,100 @@ export interface ExchangeAccountsPayload {
   };
 }
 
+export type AccountActivityStage = 'all' | 'decision' | 'proposal' | 'execution' | 'order' | 'fill' | 'account';
+export type AccountActivityAdapter = 'all' | 'local' | 'gate_testnet' | 'bybit_demo';
+
+export interface ExchangeAccountActivitySource {
+  source_id: string;
+  source_type: 'local' | 'exchange';
+  display_name: string;
+  adapter_id: string;
+  status: string;
+  complete: boolean;
+  truncated: boolean;
+  fetched_record_count: number;
+  matched_record_count: number;
+  coverage_start_at?: string | null;
+  coverage_end_at: string;
+  message: string;
+  error?: string | null;
+}
+
+export interface ExchangeAccountActivity {
+  activity_id: string;
+  source_type: 'local' | 'exchange';
+  source_id: string;
+  adapter_id?: string | null;
+  provider?: string | null;
+  environment?: string | null;
+  stage: Exclude<AccountActivityStage, 'all'>;
+  event_type: string;
+  occurred_at: string;
+  status: string;
+  title: string;
+  detail?: string | null;
+  symbol?: string | null;
+  side?: 'BUY' | 'SELL' | string | null;
+  order_type?: string | null;
+  quantity?: number | null;
+  filled_quantity?: number | null;
+  remaining_quantity?: number | null;
+  price?: number | null;
+  average_fill_price?: number | null;
+  fee?: number | null;
+  realized_pnl?: number | null;
+  client_order_id?: string | null;
+  exchange_order_id?: string | null;
+  oms_order_id?: string | null;
+  paper_execution_id?: string | null;
+  decision_id?: string | null;
+  loop_run_id?: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface ExchangeAccountActivityPayload {
+  status: string;
+  generated_at: string;
+  query: {
+    mode: AccountPnlRange;
+    start_at?: string | null;
+    end_at: string;
+    adapter_id: AccountActivityAdapter;
+    stage: AccountActivityStage;
+    status: string;
+    symbol?: string | null;
+    offset: number;
+    limit: number;
+  };
+  summary: {
+    returned_count: number;
+    matched_count: number;
+    decision_count: number;
+    proposal_count: number;
+    local_execution_count: number;
+    exchange_order_count: number;
+    exchange_fill_count: number;
+    account_change_count: number;
+    counts_by_stage: Record<string, number>;
+    counts_by_status: Record<string, number>;
+  };
+  sources: ExchangeAccountActivitySource[];
+  activities: ExchangeAccountActivity[];
+  page: {
+    offset: number;
+    limit: number;
+    returned: number;
+    has_more: boolean;
+  };
+  policy: {
+    read_only: true;
+    simulated_accounts_only: true;
+    mainnet_private_api_allowed: false;
+    write_requests_allowed: false;
+    local_status_is_not_exchange_confirmation: true;
+  };
+}
+
 export type DecisionReviewStatus = 'pending' | 'approved' | 'rejected' | 'changes_requested';
 
 export interface DecisionReview {

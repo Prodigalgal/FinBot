@@ -1,4 +1,4 @@
-import type { AccountPnlRange, AIConfigPayload, AIModelRefreshResponse, AutonomousStatusPayload, CouncilTemplateConfig, DecisionReviewInbox, DecisionReviewItem, DecisionReviewStatus, ExchangeAccountsPayload, ExecutionRiskGateResult, InstantProductContext, InstantResearchListPayload, InstantResearchSession, JobRecord, JobSubmitResponse, LeveragePreviewResult, PaperExecutionReport, PaperExecutionStatusPayload, ProductDetailPayload, ProductListPayload, ProxyDiagnostics, ResearchFeedbackPayload, ResearchHistoryComparison, ResearchHistoryList, ResearchHistoryRunDetail, ResearchNotification, SetupPayload, StatusPayload, SystemConfigPayload, WatchlistResearchMode, WatchlistsPayload, WorkflowDirectorPlan, WorkflowEstimate, WorkflowLearningPayload, WorkflowNodeTestRecord, WorkflowRunDetail, WorkflowRunSummary, WorkflowSchemaPayload, WorkflowVersionRecord, WorkflowVersionsPayload } from './types';
+import type { AccountActivityAdapter, AccountActivityStage, AccountPnlRange, AIConfigPayload, AIModelRefreshResponse, AutonomousStatusPayload, CouncilTemplateConfig, DecisionReviewInbox, DecisionReviewItem, DecisionReviewStatus, ExchangeAccountActivityPayload, ExchangeAccountsPayload, ExecutionRiskGateResult, InstantProductContext, InstantResearchListPayload, InstantResearchSession, JobRecord, JobSubmitResponse, LeveragePreviewResult, PaperExecutionReport, PaperExecutionStatusPayload, ProductDetailPayload, ProductListPayload, ProxyDiagnostics, ResearchFeedbackPayload, ResearchHistoryComparison, ResearchHistoryList, ResearchHistoryRunDetail, ResearchNotification, SetupPayload, StatusPayload, SystemConfigPayload, WatchlistResearchMode, WatchlistsPayload, WorkflowDirectorPlan, WorkflowEstimate, WorkflowLearningPayload, WorkflowNodeTestRecord, WorkflowRunDetail, WorkflowRunSummary, WorkflowSchemaPayload, WorkflowVersionRecord, WorkflowVersionsPayload } from './types';
 
 const API_BASE = import.meta.env.VITE_FINBOT_API_BASE || '';
 export const AUTH_REQUIRED_EVENT = 'finbot:authentication-required';
@@ -130,6 +130,17 @@ export const api = {
   paperExecutionStatus: () => request<PaperExecutionStatusPayload>('/api/v1/paper-execution/status'),
   exchangeAccounts: (params: { pnl_range: AccountPnlRange; start_at?: string; end_at?: string }) =>
     request<ExchangeAccountsPayload>(`/api/v1/exchange-accounts${queryString(params)}`),
+  exchangeAccountActivity: (params: {
+    range_mode: AccountPnlRange;
+    start_at?: string;
+    end_at?: string;
+    adapter_id?: AccountActivityAdapter;
+    stage?: AccountActivityStage;
+    status?: string;
+    symbol?: string;
+    offset?: number;
+    limit?: number;
+  }) => request<ExchangeAccountActivityPayload>(`/api/v1/exchange-account-activity${queryString(params)}`),
   leveragePreview: (payload: Record<string, unknown>) =>
     request<LeveragePreviewResult>('/api/v1/quant/risk/leverage-preview', {
       method: 'POST',

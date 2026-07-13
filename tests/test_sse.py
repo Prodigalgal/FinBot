@@ -4,7 +4,7 @@ import asyncio
 import json
 import unittest
 
-from finbot.web.sse import encode_sse, snapshot_event_stream
+from finbot.web.sse import encode_sse, snapshot_digest, snapshot_event_stream
 
 
 class FakeRequest:
@@ -42,6 +42,25 @@ class ServerSentEventTests(unittest.TestCase):
         self.assertIn("event: complete", messages[2])
         payload = json.loads(messages[1].split("data: ", 1)[1])
         self.assertEqual(payload["session_id"], "session-1")
+
+    def test_snapshot_digest_ignores_heartbeat_fields_but_not_business_state(self) -> None:
+        first = {
+            "generated_at": "2026-07-13T01:00:00Z",
+            "worker": {"heartbeat_at": "2026-07-13T01:00:00Z", "status": "idle"},
+            "runs": [{"status": "running", "updated_at": "2026-07-13T00:59:00Z"}],
+        }
+        heartbeat_only = {
+            "generated_at": "2026-07-13T01:00:06Z",
+            "worker": {"heartbeat_at": "2026-07-13T01:00:06Z", "status": "idle"},
+            "runs": [{"status": "running", "updated_at": "2026-07-13T00:59:00Z"}],
+        }
+        completed = {
+            **heartbeat_only,
+            "runs": [{"status": "passed", "updated_at": "2026-07-13T01:00:05Z"}],
+        }
+
+        self.assertEqual(snapshot_digest(first), snapshot_digest(heartbeat_only))
+        self.assertNotEqual(snapshot_digest(first), snapshot_digest(completed))
 
 
 if __name__ == "__main__":

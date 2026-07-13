@@ -1,5 +1,11 @@
 # 当前任务
 
+## S2：交易账户操作审计与真实历史
+
+- 目标：在交易账户页串联 AI 执行、本地 OMS 与 Gate TestNet / Bybit Demo 的真实只读订单、成交历史。
+- 范围与验收：见 `docs/requirements/28-trading-account-activity-audit.md`。
+- 状态：进行中（2026-07-13）。
+
 ## S2：Firecrawl IPv4 订阅池与代理抽象加固
 
 - 目标：Firecrawl keyless 使用独立 IPv4 VLESS 订阅池；Bybit 保持现有 IPv4 交易所代理；代理候选具备健康反馈、冷却和脱敏观测。

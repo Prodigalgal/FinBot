@@ -5,7 +5,7 @@ import hmac
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from typing import Any, Callable
 from urllib.parse import urlencode, urlparse
@@ -17,6 +17,17 @@ from finbot.exchange.account_snapshot import (
     ExchangePositionSnapshot,
     PnlWindow,
     position_roe_pct,
+)
+from finbot.exchange.account_activity import (
+    AccountActivityQuery,
+    activity_matches,
+    exchange_source,
+    history_windows,
+)
+from finbot.exchange.account_activity_normalizers import (
+    bybit_closed_pnl_activity,
+    bybit_fill_activity,
+    bybit_order_activity,
 )
 from finbot.exchange.paper_execution import (
     PaperExecutionBlocked,
@@ -113,6 +124,48 @@ class BybitDemoClient:
             "/v5/position/closed-pnl",
             query={
                 "category": "linear",
+                "startTime": start_time_ms,
+                "endTime": end_time_ms,
+            },
+            page_size=page_size,
+            max_records=max_records,
+        )
+
+    def list_order_history(
+        self,
+        *,
+        start_time_ms: int | None,
+        end_time_ms: int | None,
+        symbol: str | None = None,
+        page_size: int = 50,
+        max_records: int = 500,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        return self._list_result_pages(
+            "/v5/order/history",
+            query={
+                "category": "linear",
+                "symbol": symbol,
+                "startTime": start_time_ms,
+                "endTime": end_time_ms,
+            },
+            page_size=page_size,
+            max_records=max_records,
+        )
+
+    def list_execution_history(
+        self,
+        *,
+        start_time_ms: int | None,
+        end_time_ms: int | None,
+        symbol: str | None = None,
+        page_size: int = 100,
+        max_records: int = 500,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        return self._list_result_pages(
+            "/v5/execution/list",
+            query={
+                "category": "linear",
+                "symbol": symbol,
                 "startTime": start_time_ms,
                 "endTime": end_time_ms,
             },
@@ -345,6 +398,125 @@ class BybitDemoAdapter:
             fetched_at=fetched_at.isoformat(),
             metadata={"account_type": account.get("accountType") or "UNIFIED"},
         )
+
+    def fetch_account_activity(self, *, query: AccountActivityQuery) -> dict[str, Any]:
+        if self.client is None:
+            raise PaperExecutionBlocked("Bybit Demo client 未配置")
+        windows = history_windows(query.start_at, query.end_at, max_days=7)
+        orders: list[dict[str, Any]] = []
+        fills: list[dict[str, Any]] = []
+        closed_pnl: list[dict[str, Any]] = []
+        errors: list[str] = []
+        successful_sources: set[str] = set()
+        orders_complete = True
+        fills_complete = True
+        pnl_complete = True
+
+        for window_start, window_end in windows:
+            effective_start = window_start or window_end - timedelta(days=7)
+            start_ms = int(effective_start.timestamp() * 1000) if window_start else None
+            end_ms = int(window_end.timestamp() * 1000) if window_start else None
+            remaining_orders = query.fetch_limit - len(orders)
+            if remaining_orders > 0:
+                try:
+                    page, complete = self.client.list_order_history(
+                        start_time_ms=start_ms,
+                        end_time_ms=end_ms,
+                        symbol=query.symbol,
+                        max_records=remaining_orders,
+                    )
+                    orders.extend(page)
+                    orders_complete = orders_complete and complete
+                    successful_sources.add("orders")
+                except (BybitDemoApiError, httpx.HTTPError) as exc:
+                    orders_complete = False
+                    errors.append(f"订单历史读取失败：{_safe_warning(exc)}")
+            else:
+                orders_complete = False
+
+            remaining_fills = query.fetch_limit - len(fills)
+            if remaining_fills > 0:
+                try:
+                    page, complete = self.client.list_execution_history(
+                        start_time_ms=start_ms,
+                        end_time_ms=end_ms,
+                        symbol=query.symbol,
+                        max_records=remaining_fills,
+                    )
+                    fills.extend(page)
+                    fills_complete = fills_complete and complete
+                    successful_sources.add("fills")
+                except (BybitDemoApiError, httpx.HTTPError) as exc:
+                    fills_complete = False
+                    errors.append(f"成交历史读取失败：{_safe_warning(exc)}")
+            else:
+                fills_complete = False
+
+            remaining_pnl = query.fetch_limit - len(closed_pnl)
+            if remaining_pnl > 0:
+                try:
+                    page, complete = self.client.list_closed_pnl(
+                        start_time_ms=int(effective_start.timestamp() * 1000),
+                        end_time_ms=int(window_end.timestamp() * 1000),
+                        max_records=remaining_pnl,
+                    )
+                    closed_pnl.extend(page)
+                    pnl_complete = pnl_complete and complete
+                    successful_sources.add("pnl")
+                except (BybitDemoApiError, httpx.HTTPError) as exc:
+                    pnl_complete = False
+                    errors.append(f"平仓盈亏读取失败：{_safe_warning(exc)}")
+            else:
+                pnl_complete = False
+
+        if errors and not successful_sources:
+            raise BybitDemoApiError(502, -1, "; ".join(dict.fromkeys(errors)))
+        orders = list(
+            {
+                str(row.get("orderId") or stable_id("bybit-order", row)): row
+                for row in orders
+            }.values()
+        )
+        fills = list(
+            {
+                str(row.get("execId") or stable_id("bybit-fill", row)): row
+                for row in fills
+            }.values()
+        )
+        closed_pnl = list(
+            {
+                str(row.get("orderId") or stable_id("bybit-closed-pnl", row)): row
+                for row in closed_pnl
+            }.values()
+        )
+        activities = [bybit_order_activity(row) for row in orders]
+        activities.extend(bybit_fill_activity(row) for row in fills)
+        activities.extend(bybit_closed_pnl_activity(row) for row in closed_pnl)
+        matched = [activity for activity in activities if activity_matches(activity, query)]
+        complete = bool(query.start_at) and orders_complete and fills_complete and pnl_complete and not errors
+        coverage_start_at = query.start_at if query.start_at else query.end_at - timedelta(days=7)
+        message = (
+            "Bybit Demo 按官方 7 天窗口分片读取订单、成交与平仓盈亏"
+            if query.start_at
+            else "全部模式受 Bybit 默认范围限制，仅覆盖最近 7 天"
+        )
+        return {
+            "sources": [
+                exchange_source(
+                    adapter_id=self.adapter_id,
+                    display_name=self.display_name,
+                    status="partial" if errors else "ready",
+                    complete=complete,
+                    fetched_record_count=len(activities),
+                    matched_record_count=len(matched),
+                    coverage_start_at=coverage_start_at,
+                    coverage_end_at=query.end_at,
+                    message=message,
+                    error="; ".join(dict.fromkeys(errors)) if errors else None,
+                )
+            ],
+            "activities": matched,
+        }
 
     def _closed_pnl_for_window(self, pnl_window: PnlWindow) -> tuple[list[dict[str, Any]], bool]:
         if self.client is None or pnl_window.start_at is None:

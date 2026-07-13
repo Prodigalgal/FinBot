@@ -8,12 +8,14 @@ import {
   CircularProgress,
   Divider,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -26,6 +28,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from './api';
+import { ExchangeAccountActivityPanel } from './ExchangeAccountActivityPanel';
 import type {
   AccountPnlRange,
   ExchangeAccountSnapshot,
@@ -43,6 +46,7 @@ const RANGE_OPTIONS: Array<{ value: AccountPnlRange; label: string }> = [
 ];
 
 export function ExchangeAccountsPanel() {
+  const [activeView, setActiveView] = useState<'overview' | 'activity'>('overview');
   const [pnlRange, setPnlRange] = useState<AccountPnlRange>('all');
   const [customStart, setCustomStart] = useState(() => localDateOffset(-7));
   const [customEnd, setCustomEnd] = useState(() => localDateOffset(0));
@@ -106,6 +110,18 @@ export function ExchangeAccountsPanel() {
 
   return (
     <Stack spacing={2} data-testid="exchange-accounts-panel">
+      <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1 }}>
+        <Tabs
+          value={activeView}
+          onChange={(_, value: 'overview' | 'activity') => setActiveView(value)}
+          aria-label="交易账户视图"
+        >
+          <Tab value="overview" label="账户概览" />
+          <Tab value="activity" label="操作历史" />
+        </Tabs>
+      </Box>
+      {activeView === 'overview' ? (
+        <>
       <Card>
         <CardContent>
           <Stack
@@ -194,6 +210,10 @@ export function ExchangeAccountsPanel() {
             ))}
           </Stack>
         </>
+      )}
+        </>
+      ) : (
+        <ExchangeAccountActivityPanel />
       )}
     </Stack>
   );
