@@ -138,6 +138,10 @@ class LiquibasePostgresIntegrationTest {
                            where execution_enabled = false) as research_only_instrument_count,
                           (select proxy_route_type from information_source
                            where source_id = 'source_x_market_search') as x_route,
+                          (select count(*) from trade_execution_ai_stage
+                           where version = 1
+                             and user_prompt_template like '%UNSPECIFIED%')
+                            as execution_contract_stage_count,
                           (select count(*) from information_schema.columns
                            where table_schema = 'public'
                              and (table_name, column_name) in (
@@ -182,6 +186,7 @@ class LiquibasePostgresIntegrationTest {
                 assertTrue(result.getBoolean("workflow_active"));
                 assertEquals(7, result.getInt("research_only_instrument_count"));
                 assertEquals("FIRECRAWL", result.getString("x_route"));
+                assertEquals(2, result.getInt("execution_contract_stage_count"));
                 assertEquals(6, result.getInt("new_control_column_count"));
             }
         }
@@ -238,7 +243,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(23, result.getInt("changeset_count"));
+                    assertEquals(24, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

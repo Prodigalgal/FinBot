@@ -41,3 +41,5 @@ databaseChangeLog:
       file: db/changelog/releases/020-workflow-activation.sql
   - include:
       file: db/changelog/releases/021-exchange-product-controls.sql
+  - include:
+      file: db/changelog/releases/022-execution-ai-output-contract.sql

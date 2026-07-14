@@ -1,7 +1,6 @@
 package io.omnnu.finbot.infrastructure.trading;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.omnnu.finbot.application.trading.ParsedTradeDecision;
@@ -24,6 +23,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public final class JacksonTradeDecisionOutputParser implements TradeDecisionOutputParser {
+    private static final String UNSPECIFIED_SYMBOL = "UNSPECIFIED";
     private static final Set<String> DECISION_FIELDS = Set.of(
             "action", "symbol", "confidence", "entry_reference", "target_price",
             "invalidation_price", "rationale", "evidence_refs");
@@ -46,7 +46,7 @@ public final class JacksonTradeDecisionOutputParser implements TradeDecisionOutp
         var root = parseObject(output);
         requireExactFields(root, REFLECTION_FIELDS, "reflection");
         var verdict = requiredText(root, "verdict");
-        var reasons = strings(root.get("reasons"), "reasons");
+        var reasons = strings(root, "reasons");
         return switch (verdict) {
             case "APPROVE" -> {
                 if (!(root.get("decision") instanceof ObjectNode decisionNode)) {
@@ -74,13 +74,13 @@ public final class JacksonTradeDecisionOutputParser implements TradeDecisionOutp
         var directional = action instanceof DirectionalAction;
         return new TradeDecisionDraft(
                 action,
-                new InstrumentSymbol(requiredText(node, "symbol")),
+                symbol(node, directional),
                 new Confidence(requiredDecimal(node, "confidence")),
                 directional ? new Price(requiredDecimal(node, "entry_reference")) : requireNull(node, "entry_reference"),
                 directional ? new Price(requiredDecimal(node, "target_price")) : requireNull(node, "target_price"),
                 directional ? new Price(requiredDecimal(node, "invalidation_price")) : requireNull(node, "invalidation_price"),
-                strings(node.get("rationale"), "rationale"),
-                strings(node.get("evidence_refs"), "evidence_refs"));
+                strings(node, "rationale"),
+                strings(node, "evidence_refs"));
     }
 
     private ObjectNode parseObject(String output) {
@@ -144,7 +144,26 @@ public final class JacksonTradeDecisionOutputParser implements TradeDecisionOutp
         return value.textValue();
     }
 
-    private static List<String> strings(JsonNode node, String field) {
+    private static InstrumentSymbol symbol(ObjectNode node, boolean directional) {
+        var value = node.get("symbol");
+        if (!directional && (value == null || value.isNull()
+                || (value.isTextual() && value.textValue().isBlank()))) {
+            node.put("symbol", UNSPECIFIED_SYMBOL);
+            return new InstrumentSymbol(UNSPECIFIED_SYMBOL);
+        }
+        return new InstrumentSymbol(requiredText(node, "symbol"));
+    }
+
+    private static List<String> strings(ObjectNode object, String field) {
+        var node = object.get(field);
+        if (node != null && node.isTextual()) {
+            var value = node.textValue().strip();
+            if (value.isEmpty()) {
+                throw new IllegalArgumentException(field + " contains an invalid value");
+            }
+            object.putArray(field).add(value);
+            node = object.get(field);
+        }
         if (node == null || !node.isArray() || node.isEmpty()) {
             throw new IllegalArgumentException(field + " must be a non-empty string array");
         }
