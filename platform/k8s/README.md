@@ -1,6 +1,6 @@
 # FinBot Oracle K8S deployment
 
-> Breaking change：本清单会先把旧 `Deployment/finbot` 缩容到 `0`，再迁移 Schema 与历史，最后启动 Java/quant/Web。首次同步前必须确认 `finbot-state` PVC、PostgreSQL 和 `finbot-secrets` 均已备份；不要绕过 ArgoCD 直接长期维护生产资源。
+> 当前清单是 Java/quant/Web 稳态生产拓扑。旧 `Deployment/finbot` 与一次性 SQLite 导入 Hook 已在历史迁移核验完成后退役；`finbot-state` PVC 仅作为受控回滚证据保留。不要绕过 ArgoCD 长期维护生产资源。
 
 ## 准备运行 Secret
 
@@ -26,26 +26,25 @@ kubectl -n finbot create secret docker-registry finbot-dockerhub `
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-## 理解首次切流
+## 理解同步顺序
 
 ArgoCD 按以下 Sync Waves 执行，任一步失败都会阻止新服务接管流量：
 
 | Wave | 资源 | 门禁 |
 | --- | --- | --- |
 | `-50` | PostgreSQL | StatefulSet 与保留 PVC Ready |
-| `-40` | `finbot` legacy freeze | 旧 Python Web/Worker 缩到 0，SQLite 停止写入 |
-| `-30` | `finbot-schema-migration` | Java Liquibase 12 个 changeset 成功 |
-| `-20` | `finbot-legacy-import` | 旧 SQLite 只读导入、逐表计数与 SHA-256 核对 |
+| `-40` | `finbot-database-bootstrap` | 目标 PostgreSQL database 已存在 |
+| `-30` | `finbot-schema-migration` | Java Liquibase 全部 changeset 成功 |
 | `-10` | 两个 proxy gateway | Firecrawl 与交易所 HTTP proxy Ready |
 | `0` | Java、quant、Web | 所有 Deployment 与探针 Ready |
 
-历史导入把每一张旧表逐行保存到 `legacy_archive_row`，并把产品、Gate/Bybit 合约、别名和 Kline 转换进新强类型表。相同 SQLite SHA-256 再次执行会直接返回已完成结果，不重复写入。
+历史导入已把每一张旧表逐行保存到 `legacy_archive_row`，并把产品、Gate/Bybit 合约、别名和 Kline 转换进新强类型表。导入 manifest、逐表计数和 SHA-256 继续保存在 PostgreSQL，日常发布不再挂载或扫描旧 SQLite 卷。
 
 ## 部署策略
 
 当前生产环境按成本和集群容量选择单副本：Backend、Quant、Web、Firecrawl Proxy 和 Exchange Proxy 的 `replicas` 均为 `1`，PostgreSQL 为单 StatefulSet Pod。系统不声明高可用，发布期间允许短暂中断；所有单副本 Deployment 统一使用 `maxSurge: 0` 和 `maxUnavailable: 1`，避免 rollout 因集群容量不足永久等待新 Pod 调度。PostgreSQL 与 bootstrap Job 使用已在 ARM64 生产节点验证的固定 image digest。
 
-三个迁移 Job 是 Argo CD Hook，成功后通过 `HookSucceeded` 自动删除，`ttlSecondsAfterFinished` 是兜底。Hook 定义保留在 GitOps 中以便下次 Schema 变更继续执行；运行完成的 Job/Pod 不作为长期资源保留。
+database bootstrap 与 schema migration 是 Argo CD Hook，成功后通过 `HookSucceeded` 自动删除，`ttlSecondsAfterFinished` 是兜底。Hook 定义保留在 GitOps 中以便后续 Schema 变更继续执行；运行完成的 Job/Pod 不作为长期资源保留。
 
 ## 发布
 
@@ -75,7 +74,6 @@ kubectl -n finbot rollout status deployment/finbot-exchange-proxy --timeout=5m
 
 ```powershell
 kubectl -n finbot logs job/finbot-schema-migration --tail=200
-kubectl -n finbot logs job/finbot-legacy-import --tail=200
 kubectl -n finbot port-forward service/finbot-firecrawl-proxy 18081:8081
 curl.exe -fsS http://127.0.0.1:18081/health
 ```
@@ -84,7 +82,7 @@ curl.exe -fsS http://127.0.0.1:18081/health
 
 ```powershell
 kubectl -n finbot delete job `
-  finbot-database-bootstrap finbot-schema-migration finbot-legacy-import `
+  finbot-database-bootstrap finbot-schema-migration `
   --ignore-not-found=true
 kubectl -n finbot delete pod `
   -l app.kubernetes.io/component=migration `
@@ -110,11 +108,11 @@ ORDER BY source_table;
 
 ## 回滚
 
-首次迁移保留 `finbot-state` PVC、旧 `Deployment/finbot` 定义和旧 PostgreSQL 表。若新版本未通过门禁：
+当前稳态只保留 `finbot-state` PVC 和 PostgreSQL 内的历史归档证据，不再保留旧 `Deployment/finbot` 或自动导入 Hook。若新版本未通过门禁：
 
-1. 在 `ircs-prod-config` 回退到迁移前 revision，让 ArgoCD 恢复旧镜像与路由。
-2. 确认 Java Deployment 已停止后，再恢复旧 `finbot` replicas；禁止新旧 Worker 同时运行。
+1. 在 `ircs-prod-config` 回退到已验证的上一版 Java revision，让 ArgoCD 恢复镜像与路由。
+2. 只有必须恢复旧 Python runtime 时，才回退到包含 legacy freeze 的历史 revision；确认 Java Deployment 已停止并核验 `finbot-state` 后再恢复旧 replicas，禁止新旧 Worker 同时运行。
 3. Java 新表保留事故快照，不自动反写旧 SQLite/旧表。
 4. 核对旧 `/health/ready`、Worker 心跳和 TestNet/Demo 开关后再恢复流量。
 
-完成回滚证据核验后，才可在后续 GitOps revision 移除 `legacy-freeze.yaml`、历史导入 Hook 和 `finbot-state` PVC；这与每次发布后清理已完成 Job/Pod 是两个不同操作。PVC 或快照删除必须单独授权。
+`finbot-state` PVC 与 Longhorn 快照的删除仍需单独授权；从 GitOps 清单移除 PVC 会触发持久卷回收，不能与普通 Job/Pod 清场混为一谈。

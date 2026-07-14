@@ -5,7 +5,6 @@ resources:
   - namespace.yaml
   - pvc.yaml
   - postgres.yaml
-  - legacy-freeze.yaml
   - migration-jobs.yaml
   - proxy-gateways.yaml
   - deployments.yaml

@@ -82,7 +82,6 @@ jobs:
       - uses: imranismail/setup-kustomize@v2
       - name: Render production Kubernetes manifests
         run: |
-          sh -n platform/k8s/scripts/import-and-cleanup.sh
           kustomize build platform/k8s/oracle >/tmp/finbot-rendered.yaml
           test -s /tmp/finbot-rendered.yaml
           ! grep -q 'python -m finbot.cli.serve_' /tmp/finbot-rendered.yaml
