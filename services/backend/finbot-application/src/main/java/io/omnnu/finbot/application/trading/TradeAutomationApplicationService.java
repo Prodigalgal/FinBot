@@ -154,7 +154,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             store.fail(
                     automationRunId,
                     "TRADE_AUTOMATION_FAILED",
-                    "Trade automation failed: " + exception.getClass().getSimpleName(),
+                    failureMessage(exception),
                     clock.instant());
             throw exception;
         }
@@ -367,9 +367,9 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                         "Required trade execution AI stage is disabled: " + required));
     }
 
-    private static WorkflowNodeDefinition executionNode(TradeExecutionAiStageConfig stage) {
+    static WorkflowNodeDefinition executionNode(TradeExecutionAiStageConfig stage) {
         return new WorkflowNodeDefinition(
-                new WorkflowNodeId("execution_" + stage.stage().name().toLowerCase(Locale.ROOT)),
+                new WorkflowNodeId("node_execution_" + stage.stage().name().toLowerCase(Locale.ROOT)),
                 WorkflowNodeType.EXECUTION_REVIEW,
                 stage.stage() == TradeExecutionAiStage.DRAFT ? "执行决策初审" : "执行决策反思",
                 stage.stage() == TradeExecutionAiStage.DRAFT ? "Execution Draft" : "Execution Reflection",
@@ -501,6 +501,18 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         return prompt.length() <= MAXIMUM_PROMPT_CHARACTERS
                 ? prompt
                 : prompt.substring(0, MAXIMUM_PROMPT_CHARACTERS);
+    }
+
+    private static String failureMessage(RuntimeException exception) {
+        var type = exception.getClass().getSimpleName();
+        var detail = Objects.requireNonNullElse(exception.getMessage(), "").strip()
+                .replaceAll(
+                        "(?i)(api[_-]?key|secret|token|password)\\s*[=:]\\s*[^\\s,;]+",
+                        "$1=[REDACTED]");
+        var message = detail.isEmpty()
+                ? "Trade automation failed: " + type
+                : "Trade automation failed: " + type + ": " + detail;
+        return message.substring(0, Math.min(message.length(), 500));
     }
 
     private static String deterministicId(String prefix, String input) {
