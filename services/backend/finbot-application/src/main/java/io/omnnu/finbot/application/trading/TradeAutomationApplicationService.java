@@ -93,12 +93,18 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         var existing = store.findTerminal(workflowRunId);
         if (existing.isPresent()) {
             var result = existing.orElseThrow();
-            return result.status() == TradeAutomationStatus.ORDER_PLANNED
-                    ? submitPlanned(result)
-                    : result;
+            if (result.status() == TradeAutomationStatus.ORDER_PLANNED) {
+                return submitPlanned(result);
+            }
+            if (result.status() != TradeAutomationStatus.FAILED) {
+                return result;
+            }
         }
         var automationRunId = deterministicId("automation_", workflowRunId.value());
-        store.start(automationRunId, workflowRunId, clock.instant());
+        if (!store.start(automationRunId, workflowRunId, clock.instant())) {
+            throw new IllegalStateException(
+                    "Trade automation is already running or cannot be retried after durable trading state was created");
+        }
         try {
             var workflow = completedWorkflow(workflowRunId);
             var chair = chairMessage(workflowRunId);

@@ -14,7 +14,7 @@ import io.omnnu.finbot.application.exchange.PaperOrderExecutionResult;
 public interface TradeAutomationStore {
     Optional<TradeAutomationResult> findTerminal(WorkflowRunId workflowRunId);
 
-    void start(String automationRunId, WorkflowRunId workflowRunId, Instant startedAt);
+    boolean start(String automationRunId, WorkflowRunId workflowRunId, Instant startedAt);
 
     List<TradeExecutionAiStageConfig> executionAiStages();
 

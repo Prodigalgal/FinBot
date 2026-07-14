@@ -25,3 +25,5 @@ databaseChangeLog:
       file: db/changelog/releases/012-operational-ai-routing.sql
   - include:
       file: db/changelog/releases/013-terminalize-exhausted-workflows.sql
+  - include:
+      file: db/changelog/releases/014-trade-automation-retry.sql

@@ -93,17 +93,29 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
     }
 
     @Override
-    public void start(String automationRunId, WorkflowRunId workflowRunId, Instant startedAt) {
-        jdbcClient.sql("""
+    public boolean start(String automationRunId, WorkflowRunId workflowRunId, Instant startedAt) {
+        return jdbcClient.sql("""
                 insert into trade_automation_run (
                   automation_run_id, workflow_run_id, status, started_at
                 ) values (:automationRunId, :workflowRunId, 'STARTED', :startedAt)
-                on conflict (workflow_run_id) do nothing
+                on conflict (workflow_run_id) do update
+                set status = 'STARTED',
+                    attempt_count = trade_automation_run.attempt_count + 1,
+                    error_code = null,
+                    error_message = null,
+                    completed_at = null
+                where trade_automation_run.status = 'FAILED'
+                  and trade_automation_run.decision_id is null
+                  and trade_automation_run.proposal_id is null
+                  and trade_automation_run.risk_assessment_id is null
+                  and trade_automation_run.intent_id is null
+                  and trade_automation_run.order_id is null
+                  and trade_automation_run.attempt_count < 20
                 """)
                 .param("automationRunId", automationRunId)
                 .param("workflowRunId", workflowRunId.value())
                 .param("startedAt", timestamp(startedAt))
-                .update();
+                .update() == 1;
     }
 
     @Override
@@ -212,7 +224,14 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 ) values (
                   :reviewId, :automationRunId, :workflowRunId, :stage, :invocationId,
                   'COMPLETED', cast(:output as jsonb), :outputHash, :createdAt
-                ) on conflict (automation_run_id, stage) do nothing
+                ) on conflict (automation_run_id, stage) do update
+                set invocation_id = excluded.invocation_id,
+                    status = 'COMPLETED',
+                    output = excluded.output,
+                    output_hash = excluded.output_hash,
+                    error_code = null,
+                    error_message = null,
+                    created_at = excluded.created_at
                 """)
                 .param("reviewId", review.reviewId())
                 .param("automationRunId", review.automationRunId())
@@ -241,7 +260,11 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 ) values (
                   :reviewId, :automationRunId, :workflowRunId, :stage, 'FAILED',
                   :errorCode, :errorMessage, :createdAt
-                ) on conflict (automation_run_id, stage) do nothing
+                ) on conflict (automation_run_id, stage) do update
+                set error_code = excluded.error_code,
+                    error_message = excluded.error_message,
+                    created_at = excluded.created_at
+                where trade_execution_ai_review.status = 'FAILED'
                 """)
                 .param("reviewId", reviewId)
                 .param("automationRunId", automationRunId)
