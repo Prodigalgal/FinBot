@@ -178,7 +178,7 @@ class LiquibasePostgresIntegrationTest {
                         .compareTo(result.getBigDecimal("maximum_leverage")));
                 assertTrue(result.getBoolean("workflow_active"));
                 assertEquals(7, result.getInt("research_only_instrument_count"));
-                assertEquals("firecrawl-ipv4", result.getString("x_route"));
+                assertEquals("FIRECRAWL", result.getString("x_route"));
                 assertEquals(6, result.getInt("new_control_column_count"));
             }
         }
