@@ -37,9 +37,9 @@ public final class InstantResearchTaskHandler implements BackgroundTaskHandler {
                 payload.workflowVersionId(),
                 payload.question(),
                 payload.workflowIdempotencyKey());
-        return researchPipeline.execute(new ResearchPipelineRequest(
+                return researchPipeline.execute(new ResearchPipelineRequest(
                         workflowCommand,
-                        payload.taskMode(),
+                        payload.taskMode().forAttempt(task.attemptCount()),
                         task.attemptCount(),
                         task.maximumAttempts()))
                 .thenApply(ignored -> null);

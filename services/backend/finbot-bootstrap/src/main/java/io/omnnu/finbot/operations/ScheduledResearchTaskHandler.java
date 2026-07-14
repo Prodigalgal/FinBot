@@ -38,9 +38,9 @@ public final class ScheduledResearchTaskHandler implements BackgroundTaskHandler
                 null,
                 payload.requestSummary(),
                 task.idempotencyKey());
-        return researchPipeline.execute(new ResearchPipelineRequest(
+                return researchPipeline.execute(new ResearchPipelineRequest(
                         workflowCommand,
-                        ResearchTaskMode.STANDARD,
+                        ResearchTaskMode.STANDARD.forAttempt(task.attemptCount()),
                         task.attemptCount(),
                         task.maximumAttempts()))
                 .thenApply(ignored -> null);
