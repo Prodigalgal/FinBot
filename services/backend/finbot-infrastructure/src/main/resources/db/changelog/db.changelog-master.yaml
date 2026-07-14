@@ -27,3 +27,5 @@ databaseChangeLog:
       file: db/changelog/releases/013-terminalize-exhausted-workflows.sql
   - include:
       file: db/changelog/releases/014-trade-automation-retry.sql
+  - include:
+      file: db/changelog/releases/015-operational-ai-timeouts.sql
