@@ -109,6 +109,7 @@ class WorkflowExecutionServiceTest {
             var service = new WorkflowExecutionService(
                     store,
                     events,
+                    new WorkflowRunFailureService(store, events),
                     invoker,
                     parser,
                     CLOCK,
@@ -427,8 +428,9 @@ class WorkflowExecutionServiceTest {
         }
 
         @Override
-        public void failRun(WorkflowRunId runId, String errorCode, String safeMessage, Instant failedAt) {
+        public boolean failRun(WorkflowRunId runId, String errorCode, String safeMessage, Instant failedAt) {
             status.set(WorkflowRunStatus.FAILED);
+            return true;
         }
 
         private WorkflowRunStatus status() {

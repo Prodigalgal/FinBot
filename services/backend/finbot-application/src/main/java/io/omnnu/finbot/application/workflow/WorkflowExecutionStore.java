@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-public interface WorkflowExecutionStore {
+public interface WorkflowExecutionStore extends WorkflowRunFailureStore {
     Optional<WorkflowExecutionContext> load(WorkflowRunId runId);
 
     boolean markRunning(WorkflowRunId runId, Instant startedAt);
@@ -35,5 +35,4 @@ public interface WorkflowExecutionStore {
 
     void completeRun(WorkflowRunId runId, boolean partial, Instant completedAt);
 
-    void failRun(WorkflowRunId runId, String errorCode, String safeMessage, Instant failedAt);
 }

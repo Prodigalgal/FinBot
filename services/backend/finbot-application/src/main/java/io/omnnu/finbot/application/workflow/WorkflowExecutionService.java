@@ -11,7 +11,6 @@ import io.omnnu.finbot.domain.workflow.DebateStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowCheckpointStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowCompleted;
 import io.omnnu.finbot.domain.workflow.WorkflowDefinitionVersion;
-import io.omnnu.finbot.domain.workflow.WorkflowFailed;
 import io.omnnu.finbot.domain.workflow.WorkflowFailurePolicy;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
@@ -41,6 +40,7 @@ import java.util.concurrent.Executor;
 public final class WorkflowExecutionService implements WorkflowExecutionUseCase {
     private final WorkflowExecutionStore executionStore;
     private final WorkflowEventPublisher eventPublisher;
+    private final WorkflowRunFailureUseCase workflowFailure;
     private final WorkflowAiInvoker aiInvoker;
     private final StructuredAiOutputParser outputParser;
     private final Clock clock;
@@ -50,12 +50,14 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
     public WorkflowExecutionService(
             WorkflowExecutionStore executionStore,
             WorkflowEventPublisher eventPublisher,
+            WorkflowRunFailureUseCase workflowFailure,
             WorkflowAiInvoker aiInvoker,
             StructuredAiOutputParser outputParser,
             Clock clock,
             Executor executor) {
         this.executionStore = Objects.requireNonNull(executionStore, "executionStore");
         this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
+        this.workflowFailure = Objects.requireNonNull(workflowFailure, "workflowFailure");
         this.aiInvoker = Objects.requireNonNull(aiInvoker, "aiInvoker");
         this.outputParser = Objects.requireNonNull(outputParser, "outputParser");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -535,16 +537,12 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 DebateStatus.FAILED,
                 session.completedRounds(),
                 failedAt));
-        executionStore.failRun(runId, failure.errorCode(), failure.getMessage(), failedAt);
-        eventPublisher.publish(runId, (eventId, sequence, occurredAt) ->
-                new WorkflowFailed(
-                        eventId,
-                        runId,
-                        sequence,
-                        failure.errorCode(),
-                        failure.getMessage(),
-                        failure.retryable(),
-                        occurredAt));
+        workflowFailure.fail(
+                runId,
+                failure.errorCode(),
+                failure.getMessage(),
+                failure.retryable(),
+                failedAt);
     }
 
     private static List<List<WorkflowNodeDefinition>> agentLayers(WorkflowDefinitionVersion version) {

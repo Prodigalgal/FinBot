@@ -66,6 +66,8 @@ import io.omnnu.finbot.application.workflow.WorkflowEventPublisher;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionService;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionStore;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionUseCase;
+import io.omnnu.finbot.application.workflow.WorkflowRunFailureService;
+import io.omnnu.finbot.application.workflow.WorkflowRunFailureUseCase;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.application.trading.TradeAutomationApplicationService;
 import io.omnnu.finbot.application.trading.TradeAutomationStore;
@@ -246,7 +248,9 @@ public class RuntimeConfiguration {
             MarketDataUseCase marketData,
             QuantResearchUseCase quantResearch,
             WorkflowExecutionUseCase workflowExecution,
-            TradeAutomationUseCase tradeAutomation) {
+            WorkflowRunFailureUseCase workflowFailure,
+            TradeAutomationUseCase tradeAutomation,
+            Clock clock) {
         return new ResearchPipelineService(
                 startWorkflow,
                 ingestion,
@@ -254,7 +258,9 @@ public class RuntimeConfiguration {
                 marketData,
                 quantResearch,
                 workflowExecution,
-                tradeAutomation);
+                workflowFailure,
+                tradeAutomation,
+                clock);
     }
 
     @Bean
@@ -284,9 +290,17 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    WorkflowRunFailureUseCase workflowRunFailureUseCase(
+            WorkflowExecutionStore executionStore,
+            WorkflowEventPublisher eventPublisher) {
+        return new WorkflowRunFailureService(executionStore, eventPublisher);
+    }
+
+    @Bean
     WorkflowExecutionUseCase workflowExecutionUseCase(
             WorkflowExecutionStore executionStore,
             WorkflowEventPublisher eventPublisher,
+            WorkflowRunFailureUseCase workflowFailure,
             WorkflowAiInvoker aiInvoker,
             StructuredAiOutputParser outputParser,
             Clock clock,
@@ -294,6 +308,7 @@ public class RuntimeConfiguration {
         return new WorkflowExecutionService(
                 executionStore,
                 eventPublisher,
+                workflowFailure,
                 aiInvoker,
                 outputParser,
                 clock,

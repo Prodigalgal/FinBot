@@ -382,8 +382,8 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
     }
 
     @Override
-    public void failRun(WorkflowRunId runId, String errorCode, String safeMessage, Instant failedAt) {
-        jdbcClient.sql("""
+    public boolean failRun(WorkflowRunId runId, String errorCode, String safeMessage, Instant failedAt) {
+        return jdbcClient.sql("""
                 update workflow_run
                 set status = 'FAILED', completed_at = :failedAt,
                     current_node_id = null, updated_at = :failedAt,
@@ -392,7 +392,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 """)
                 .param("runId", runId.value())
                 .param("failedAt", timestamp(failedAt))
-                .update();
+                .update() == 1;
     }
 
     private MessageRow messageRow(ResultSet resultSet) throws SQLException {
