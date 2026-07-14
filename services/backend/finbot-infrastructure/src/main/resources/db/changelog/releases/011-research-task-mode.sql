@@ -5,13 +5,13 @@ UPDATE background_task
 SET payload = payload || '{"taskMode":"STANDARD"}'::jsonb,
     updated_at = CURRENT_TIMESTAMP
 WHERE task_type = 'INSTANT_RESEARCH'
-  AND NOT payload ? 'taskMode';
+  AND NOT jsonb_exists(payload, 'taskMode');
 
 ALTER TABLE background_task
     ADD CONSTRAINT ck_background_task_research_mode CHECK (
         task_type <> 'INSTANT_RESEARCH'
         OR (
-            payload ? 'taskMode'
+            jsonb_exists(payload, 'taskMode')
             AND payload ->> 'taskMode' IN ('STANDARD', 'RESUME_FAILED')
         )
     ) NOT VALID;
