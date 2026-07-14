@@ -197,6 +197,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: docker.io/${{ matrix.image }}:${{ env.IMAGE_TAG }}
+          trivy-config: .trivy.yaml
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
