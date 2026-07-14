@@ -4,6 +4,15 @@ resources:
   - ../base
   - routes.yaml
 images:
-  - name: ghcr.io/example/finbot
-    newName: docker.io/speedproxy/finbot
-    newTag: p4-20260712-98838e0bd208
+  - name: ghcr.io/example/finbot-backend
+    newName: docker.io/speedproxy/finbot-backend
+    newTag: latest
+  - name: ghcr.io/example/finbot-quant
+    newName: docker.io/speedproxy/finbot-quant
+    newTag: latest
+  - name: ghcr.io/example/finbot-web
+    newName: docker.io/speedproxy/finbot-web
+    newTag: latest
+  - name: ghcr.io/example/finbot-proxy
+    newName: docker.io/speedproxy/finbot-proxy
+    newTag: latest

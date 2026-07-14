@@ -1,0 +1,428 @@
+openapi: 3.1.0
+info:
+  title: FinBot Quant Research Internal API
+  version: 1.0.0
+  description: Stateless HTTP/SSE boundary from the Java orchestrator to the Python quant engine.
+servers:
+  - url: http://finbot-quant-service:8081
+security:
+  - internalBearer: []
+paths:
+  /internal/v1/research-runs:stream:
+    post:
+      operationId: streamResearchRun
+      summary: Execute one deterministic quantitative research run and stream durable events to Java.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartResearchRequest'
+      responses:
+        '200':
+          description: Server-sent event stream. Closing the response cancels the Python computation.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-cache, no-transform`.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Each `data` field is exactly one ResearchEvent JSON object.
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+  /internal/v1/health:
+    get:
+      operationId: quantHealth
+      security: []
+      responses:
+        '200':
+          description: Process liveness only. Readiness is exposed separately by deployment probes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+components:
+  securitySchemes:
+    internalBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-service-token
+  responses:
+    Problem:
+      description: RFC 9457 problem detail without internal stack traces.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+  schemas:
+    StartResearchRequest:
+      type: object
+      additionalProperties: false
+      required: [researchRunId, workflowRunId, specification, requestedAt]
+      properties:
+        researchRunId:
+          type: string
+          pattern: '^research_[a-z0-9_-]{4,70}$'
+        workflowRunId:
+          type: string
+          pattern: '^run_[a-z0-9_-]{4,75}$'
+        specification:
+          $ref: '#/components/schemas/ResearchSpecification'
+        requestedAt:
+          type: string
+          format: date-time
+    ResearchSpecification:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - instruments
+        - timeRange
+        - marketData
+        - strategyId
+        - strategyVersion
+        - parameters
+        - deterministicSeed
+      properties:
+        kind:
+          $ref: '#/components/schemas/ResearchKind'
+        instruments:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Instrument'
+        timeRange:
+          $ref: '#/components/schemas/TimeRange'
+        marketData:
+          $ref: '#/components/schemas/ArtifactReference'
+        strategyId:
+          type: string
+          minLength: 1
+          maxLength: 120
+        strategyVersion:
+          type: string
+          minLength: 1
+          maxLength: 80
+        parameters:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/ResearchParameter'
+        deterministicSeed:
+          type: integer
+          format: int64
+          minimum: 0
+    ResearchKind:
+      type: string
+      enum: [BACKTEST, PARAMETER_SEARCH, PORTFOLIO_OPTIMIZATION, STATISTICAL_ANALYSIS, SIGNAL_EVALUATION]
+    Instrument:
+      type: object
+      additionalProperties: false
+      required: [exchange, symbol, marketType, quoteCurrency]
+      properties:
+        exchange:
+          type: string
+          enum: [GATE, BYBIT]
+        symbol:
+          type: string
+          pattern: '^[A-Z0-9_]{2,32}$'
+        marketType:
+          type: string
+          enum: [SPOT, PERPETUAL, FUTURE, OPTION]
+        quoteCurrency:
+          type: string
+          pattern: '^[A-Z0-9]{2,12}$'
+    TimeRange:
+      type: object
+      additionalProperties: false
+      required: [startInclusive, endExclusive]
+      properties:
+        startInclusive:
+          type: string
+          format: date-time
+        endExclusive:
+          type: string
+          format: date-time
+    ArtifactReference:
+      type: object
+      additionalProperties: false
+      required: [kind, uri, sha256Hex, mediaType, byteSize]
+      properties:
+        kind:
+          $ref: '#/components/schemas/ArtifactKind'
+        uri:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        sha256Hex:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        mediaType:
+          type: string
+          minLength: 1
+          maxLength: 120
+        byteSize:
+          type: integer
+          format: int64
+          minimum: 0
+    ArtifactKind:
+      type: string
+      enum: [INPUT_MARKET_DATA, EQUITY_CURVE, TRADE_LEDGER, PARAMETER_SURFACE, RESEARCH_REPORT]
+    ResearchParameter:
+      oneOf:
+        - $ref: '#/components/schemas/BooleanParameter'
+        - $ref: '#/components/schemas/IntegerParameter'
+        - $ref: '#/components/schemas/FloatingParameter'
+        - $ref: '#/components/schemas/DecimalParameter'
+        - $ref: '#/components/schemas/TextParameter'
+      discriminator:
+        propertyName: valueType
+    BooleanParameter:
+      type: object
+      additionalProperties: false
+      required: [name, valueType, value]
+      properties:
+        name:
+          $ref: '#/components/schemas/ParameterName'
+        valueType:
+          const: BOOLEAN
+        value:
+          type: boolean
+    IntegerParameter:
+      type: object
+      additionalProperties: false
+      required: [name, valueType, value]
+      properties:
+        name:
+          $ref: '#/components/schemas/ParameterName'
+        valueType:
+          const: INTEGER
+        value:
+          type: integer
+          format: int64
+    FloatingParameter:
+      type: object
+      additionalProperties: false
+      required: [name, valueType, value]
+      properties:
+        name:
+          $ref: '#/components/schemas/ParameterName'
+        valueType:
+          const: FLOATING
+        value:
+          type: number
+          format: double
+    DecimalParameter:
+      type: object
+      additionalProperties: false
+      required: [name, valueType, value]
+      properties:
+        name:
+          $ref: '#/components/schemas/ParameterName'
+        valueType:
+          const: DECIMAL
+        value:
+          type: string
+          pattern: '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$'
+    TextParameter:
+      type: object
+      additionalProperties: false
+      required: [name, valueType, value]
+      properties:
+        name:
+          $ref: '#/components/schemas/ParameterName'
+        valueType:
+          const: TEXT
+        value:
+          type: string
+          maxLength: 2000
+    ParameterName:
+      type: string
+      minLength: 1
+      maxLength: 120
+      pattern: '^[a-z][a-z0-9_.-]*$'
+    ResearchEventBase:
+      type: object
+      required: [eventId, researchRunId, sequence, occurredAt, eventType]
+      properties:
+        eventId:
+          type: string
+          pattern: '^quant_event_[a-f0-9]{32}$'
+        researchRunId:
+          type: string
+          pattern: '^research_[a-z0-9_-]{4,70}$'
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        occurredAt:
+          type: string
+          format: date-time
+        eventType:
+          type: string
+    ResearchAcceptedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: '#/components/schemas/ResearchEventBase'
+        - type: object
+          required: [engineVersion, inputFingerprint]
+          properties:
+            eventType:
+              const: research.accepted
+            engineVersion:
+              type: string
+              minLength: 1
+              maxLength: 120
+            inputFingerprint:
+              type: string
+              minLength: 1
+              maxLength: 200
+    ResearchProgressEvent:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: '#/components/schemas/ResearchEventBase'
+        - type: object
+          required: [stage, progressBasisPoints, safeSummary]
+          properties:
+            eventType:
+              const: research.progress
+            stage:
+              type: string
+              enum: [VALIDATING, LOADING_DATA, COMPUTING, EVALUATING, WRITING_ARTIFACTS]
+            progressBasisPoints:
+              type: integer
+              minimum: 0
+              maximum: 10000
+            safeSummary:
+              type: string
+              minLength: 1
+              maxLength: 2000
+    ResearchArtifactEvent:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: '#/components/schemas/ResearchEventBase'
+        - type: object
+          required: [artifact]
+          properties:
+            eventType:
+              const: research.artifact
+            artifact:
+              $ref: '#/components/schemas/ArtifactReference'
+    ResearchCompletedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: '#/components/schemas/ResearchEventBase'
+        - type: object
+          required: [metrics, artifacts, observationCount, resultFingerprint]
+          properties:
+            eventType:
+              const: research.completed
+            metrics:
+              type: array
+              items:
+                $ref: '#/components/schemas/QuantMetric'
+            artifacts:
+              type: array
+              items:
+                $ref: '#/components/schemas/ArtifactReference'
+            observationCount:
+              type: integer
+              format: int64
+              minimum: 0
+            resultFingerprint:
+              type: string
+              minLength: 1
+              maxLength: 200
+    ResearchFailedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: '#/components/schemas/ResearchEventBase'
+        - type: object
+          required: [code, safeMessage, retryable]
+          properties:
+            eventType:
+              const: research.failed
+            code:
+              type: string
+              enum:
+                - INVALID_REQUEST
+                - INPUT_ARTIFACT_UNAVAILABLE
+                - INPUT_CHECKSUM_MISMATCH
+                - INSUFFICIENT_DATA
+                - COMPUTATION_FAILED
+                - TIMEOUT
+                - CANCELLED
+                - INTERNAL
+            safeMessage:
+              type: string
+              minLength: 1
+              maxLength: 2000
+            retryable:
+              type: boolean
+    ResearchEvent:
+      oneOf:
+        - $ref: '#/components/schemas/ResearchAcceptedEvent'
+        - $ref: '#/components/schemas/ResearchProgressEvent'
+        - $ref: '#/components/schemas/ResearchArtifactEvent'
+        - $ref: '#/components/schemas/ResearchCompletedEvent'
+        - $ref: '#/components/schemas/ResearchFailedEvent'
+      discriminator:
+        propertyName: eventType
+    QuantMetric:
+      type: object
+      additionalProperties: false
+      required: [name, value, unit]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        value:
+          type: number
+          format: double
+        unit:
+          type: string
+          enum: [RATIO, PERCENT, CURRENCY, COUNT, DURATION_SECONDS]
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status, contractVersion]
+      properties:
+        status:
+          const: UP
+        contractVersion:
+          const: 1.0.0
+    ProblemDetail:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, detail]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string

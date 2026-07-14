@@ -1,0 +1,28 @@
+package io.omnnu.finbot.domain.workflow;
+
+public enum WorkflowNodeType {
+    INPUT,
+    ROUTER,
+    DETERMINISTIC,
+    COLLECTOR,
+    CLEANER,
+    COMPRESSOR,
+    AGENT,
+    GATE,
+    QUANT,
+    RISK,
+    SUBFLOW,
+    HUMAN_REVIEW,
+    AGGREGATOR,
+    CHAIR,
+    EXECUTION_REVIEW,
+    OUTPUT;
+
+    public boolean llmBacked() {
+        return switch (this) {
+            case COMPRESSOR, AGENT, AGGREGATOR, CHAIR, EXECUTION_REVIEW -> true;
+            case INPUT, ROUTER, DETERMINISTIC, COLLECTOR, CLEANER, GATE, QUANT,
+                    RISK, SUBFLOW, HUMAN_REVIEW, OUTPUT -> false;
+        };
+    }
+}

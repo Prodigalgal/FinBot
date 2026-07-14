@@ -1,0 +1,62 @@
+import SaveIcon from '@mui/icons-material/Save';
+import { Alert, Box, Button, Chip, FormControlLabel, MenuItem, Paper, Stack, Switch, TextField, Typography } from '@mui/material';
+import { useEffect, useState } from 'react';
+
+import { api } from './api';
+import type { AiModel, AiProvider, ConfigurationSnapshot, ExecutionAiStage, ReasoningEffort, RiskPolicy, TradeAutomationConfiguration } from './types';
+import { ErrorBlock, LoadingBlock, SectionTitle } from './ui';
+
+const efforts: ReasoningEffort[] = ['PROVIDER_DEFAULT', 'NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH', 'XHIGH', 'MAX'];
+
+export function SettingsPage() {
+  const [config, setConfig] = useState<ConfigurationSnapshot | null>(null);
+  const [trading, setTrading] = useState<TradeAutomationConfiguration | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [message, setMessage] = useState('');
+  const load = async () => { try { const [system, execution] = await Promise.all([api.configuration(), api.tradeAutomationConfiguration()]); setConfig(system); setTrading(execution); } catch (cause) { setError(cause); } };
+  useEffect(() => { void load(); }, []);
+  const saved = async (work: Promise<unknown>) => { setError(null); setMessage(''); try { await work; setMessage('配置已保存'); await load(); } catch (cause) { setError(cause); } };
+  if (error !== null && (!config || !trading)) return <ErrorBlock error={error} />;
+  if (!config || !trading) return <LoadingBlock label="正在读取默认配置与密钥状态" />;
+  return <Stack spacing={3}>
+    {error !== null && <ErrorBlock error={error} />}{message && <Alert severity="success">{message}</Alert>}
+    <Box><SectionTitle title="运行参数" /><Stack spacing={1}>{config.settings.map((setting) => <Paper key={setting.key} variant="outlined" sx={{ p: 1.5 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}><Box sx={{ flex: 1 }}><Typography fontWeight={700}>{setting.description}</Typography><Typography variant="caption" color="text.secondary">{setting.key} · {setting.source}</Typography></Box><TextField defaultValue={setting.value} onBlur={(event) => { if (event.target.value !== setting.value) void saved(api.updateSetting(setting, event.target.value)); }} sx={{ width: { md: 260 } }} /></Stack></Paper>)}</Stack></Box>
+    <Box><SectionTitle title="AI 厂商" /><Stack spacing={1.25}>{config.providers.map((provider) => <ProviderEditor key={provider.profileId} provider={provider} save={(next) => saved(api.updateProvider(next))} />)}</Stack></Box>
+    <Box><SectionTitle title="模型与默认费率" /><Stack spacing={1.25}>{config.models.map((model) => <ModelEditor key={model.modelProfileId} model={model} save={(next) => saved(api.updateModel(next))} />)}</Stack></Box>
+    <Box><SectionTitle title="最终交易机器人" /><Stack spacing={1.5}>{trading.aiStages.map((stage) => <ExecutionStageEditor key={stage.stage} stage={stage} providers={config.providers} models={config.models} save={(next) => {
+      const providerProfileId = profileId(next.providerProfileId);
+      void saved(api.updateExecutionStage(next.stage, { providerProfileId, modelName: next.modelName, reasoningEffort: next.reasoningEffort, systemPrompt: next.systemPrompt, userPromptTemplate: next.userPromptTemplate, maximumOutputTokens: next.maximumOutputTokens, timeoutSeconds: next.timeoutSeconds, enabled: next.enabled, expectedVersion: next.version }));
+    }} />)}</Stack></Box>
+    <RiskPolicyEditor policy={trading.activeRiskPolicy} save={(next) => saved(api.activateRiskPolicy(next))} />
+  </Stack>;
+}
+
+function ProviderEditor({ provider, save }: { provider: AiProvider; save: (value: AiProvider) => void }) {
+  const [value, setValue] = useState(provider);
+  useEffect(() => setValue(provider), [provider]);
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}><Box sx={{ flex: 1 }}><Stack direction="row" spacing={1} alignItems="center"><Typography fontWeight={700}>{value.displayName}</Typography><Chip size="small" color={value.apiKeyConfigured ? 'success' : 'warning'} label={value.apiKeyConfigured ? 'Key 已注入' : 'Key 未配置'} /></Stack><Typography variant="caption" color="text.secondary">{value.profileId} · {value.protocol} · {value.apiKeyEnv}</Typography></Box><TextField label="Base URL" value={value.baseUrl || ''} onChange={(event) => setValue({ ...value, baseUrl: event.target.value || null, baseUrlEnv: null })} sx={{ minWidth: 280 }} /><FormControlLabel control={<Switch checked={value.enabled} onChange={(event) => setValue({ ...value, enabled: event.target.checked })} />} label="启用" /><Button startIcon={<SaveIcon />} onClick={() => save(value)}>保存</Button></Stack></Paper>;
+}
+
+function ModelEditor({ model, save }: { model: AiModel; save: (value: AiModel) => void }) {
+  const [value, setValue] = useState(model);
+  useEffect(() => setValue(model), [model]);
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}><Box sx={{ flex: 1 }}><Typography fontWeight={700}>{value.modelName}</Typography><Typography variant="caption" color="text.secondary">{value.providerProfileId}</Typography></Box><TextField select label="默认思考强度" value={value.defaultReasoningEffort} onChange={(event) => setValue({ ...value, defaultReasoningEffort: event.target.value as ReasoningEffort })} sx={{ minWidth: 170 }}>{efforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField><TextField label="输入 $/M" type="number" value={value.inputUsdPerMillion} onChange={(event) => setValue({ ...value, inputUsdPerMillion: Number(event.target.value) })} sx={{ width: 120 }} /><TextField label="输出 $/M" type="number" value={value.outputUsdPerMillion} onChange={(event) => setValue({ ...value, outputUsdPerMillion: Number(event.target.value) })} sx={{ width: 120 }} /><Switch checked={value.enabled} onChange={(event) => setValue({ ...value, enabled: event.target.checked })} /><Button startIcon={<SaveIcon />} onClick={() => save(value)}>保存</Button></Stack></Paper>;
+}
+
+function ExecutionStageEditor({ stage, providers, models, save }: { stage: ExecutionAiStage; providers: AiProvider[]; models: AiModel[]; save: (value: ExecutionAiStage) => void }) {
+  const [value, setValue] = useState(stage);
+  useEffect(() => setValue(stage), [stage]);
+  const provider = profileId(value.providerProfileId);
+  const availableModels = models.filter((model) => model.providerProfileId === provider);
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}><Stack direction="row" justifyContent="space-between"><Box><Typography fontWeight={700}>{value.stage === 'DRAFT' ? '初稿决策' : '反思终审'}</Typography><Typography variant="caption" color="text.secondary">执行前结构化判断，不输出隐藏思维链</Typography></Box><FormControlLabel control={<Switch checked={value.enabled} onChange={(event) => setValue({ ...value, enabled: event.target.checked })} />} label="启用" /></Stack><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><TextField select label="厂商" value={provider} onChange={(event) => setValue({ ...value, providerProfileId: event.target.value })} sx={{ minWidth: 220 }}>{providers.map((item) => <MenuItem key={item.profileId} value={item.profileId}>{item.displayName}</MenuItem>)}</TextField><TextField select label="模型" value={value.modelName} onChange={(event) => setValue({ ...value, modelName: event.target.value })} sx={{ minWidth: 220 }}>{availableModels.map((item) => <MenuItem key={item.modelProfileId} value={item.modelName}>{item.modelName}</MenuItem>)}{!availableModels.some((item) => item.modelName === value.modelName) && <MenuItem value={value.modelName}>{value.modelName}</MenuItem>}</TextField><TextField select label="思考强度" value={value.reasoningEffort} onChange={(event) => setValue({ ...value, reasoningEffort: event.target.value as ReasoningEffort })} sx={{ minWidth: 150 }}>{efforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField><TextField label="最大 Token" type="number" value={value.maximumOutputTokens} onChange={(event) => setValue({ ...value, maximumOutputTokens: Number(event.target.value) })} /><TextField label="超时（秒）" type="number" value={value.timeoutSeconds} onChange={(event) => setValue({ ...value, timeoutSeconds: Number(event.target.value) })} /></Stack><TextField multiline minRows={3} label="系统提示词" value={value.systemPrompt} onChange={(event) => setValue({ ...value, systemPrompt: event.target.value })} /><TextField multiline minRows={2} label="用户提示模板" value={value.userPromptTemplate} onChange={(event) => setValue({ ...value, userPromptTemplate: event.target.value })} /><Button variant="contained" startIcon={<SaveIcon />} onClick={() => save(value)} sx={{ alignSelf: 'flex-end' }}>保存阶段</Button></Stack></Paper>;
+}
+
+function RiskPolicyEditor({ policy, save }: { policy: RiskPolicy; save: (value: RiskPolicy & { policyVersion: string }) => void }) {
+  const [value, setValue] = useState(policy);
+  const [version, setVersion] = useState(`paper-custom-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-v1`);
+  useEffect(() => setValue(policy), [policy]);
+  const fields: Array<[keyof RiskPolicy, string]> = [['minimumConfidence', '最低置信度'], ['riskBudgetUsdt', '单次风险预算 USDT'], ['maximumNotionalUsdt', '最大名义价值 USDT'], ['maximumLeverage', '最大杠杆'], ['maximumOpenPositions', '最大持仓数'], ['maximumStopDistance', '最大止损距离'], ['takerFeeRate', 'Taker 费率'], ['slippageRate', '滑点率'], ['liquidationBufferRate', '强平缓冲率']];
+  return <Box><SectionTitle title="模拟交易风险策略" /><Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} flexWrap={{ md: 'wrap' }} useFlexGap><TextField label="新策略版本" value={version} onChange={(event) => setVersion(event.target.value)} sx={{ width: { xs: '100%', md: 260 } }} />{fields.map(([key, label]) => <TextField key={key} label={label} type="number" value={String(value[key])} onChange={(event) => setValue({ ...value, [key]: key === 'maximumOpenPositions' ? Number.parseInt(event.target.value, 10) : Number(event.target.value) })} sx={{ width: { xs: '100%', md: 170 } }} />)}</Stack><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }}><FormControlLabel control={<Switch checked={value.testEnvironmentOnly} onChange={(event) => setValue({ ...value, testEnvironmentOnly: event.target.checked })} />} label="仅 TestNet / Demo" /><Button variant="contained" startIcon={<SaveIcon />} onClick={() => save({ ...value, policyVersion: version })}>创建并启用版本</Button></Stack></Stack></Paper></Box>;
+}
+
+function profileId(value: ExecutionAiStage['providerProfileId']): string { return typeof value === 'string' ? value : value.value; }

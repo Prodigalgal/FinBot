@@ -1,0 +1,355 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finbot-backend
+  labels:
+    app.kubernetes.io/name: finbot-backend
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: backend
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-backend
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: backend
+    spec:
+      terminationGracePeriodSeconds: 45
+      automountServiceAccountToken: false
+      nodeSelector:
+        infra.mnnu/node-class: core-public
+      imagePullSecrets:
+        - name: finbot-dockerhub
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: finbot-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: ghcr.io/example/finbot-backend:latest
+          envFrom:
+            - configMapRef:
+                name: finbot-env
+          env:
+            - name: FINBOT_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: POSTGRES_PASSWORD
+            - name: FINBOT_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_ADMIN_USERNAME
+            - name: FINBOT_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_ADMIN_PASSWORD
+            - name: FINBOT_JAVA_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_JAVA_SERVICE_TOKEN
+            - name: FINBOT_QUANT_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_QUANT_SERVICE_TOKEN
+            - name: FINBOT_MIMO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: MIMO_API_KEY
+            - name: FINBOT_DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: DEEPSEEK_API_KEY
+            - name: FINBOT_SUB2API_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: SUB2API_API_KEY
+            - name: FINBOT_GATE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: GATE_TESTNET_API_KEY
+            - name: FINBOT_GATE_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: GATE_TESTNET_API_SECRET
+            - name: FINBOT_BYBIT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: BYBIT_DEMO_API_KEY
+            - name: FINBOT_BYBIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: BYBIT_DEMO_API_SECRET
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finbot-quant
+  labels:
+    app.kubernetes.io/name: finbot-quant
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: quant
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-quant
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-quant
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: quant
+    spec:
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      nodeSelector:
+        infra.mnnu/node-class: core-public
+      imagePullSecrets:
+        - name: finbot-dockerhub
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: finbot-quant
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: quant
+          image: ghcr.io/example/finbot-quant:latest
+          env:
+            - name: FINBOT_QUANT_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_QUANT_SERVICE_TOKEN
+            - name: FINBOT_JAVA_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_JAVA_SERVICE_TOKEN
+            - name: FINBOT_ARTIFACT_ALLOWED_HOSTS
+              value: finbot-backend,finbot-backend.finbot.svc,finbot-backend.finbot.svc.cluster.local
+          ports:
+            - name: http
+              containerPort: 8081
+          startupProbe:
+            httpGet:
+              path: /internal/v1/health
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /internal/v1/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /internal/v1/health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finbot-web
+  labels:
+    app.kubernetes.io/name: finbot-web
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: web
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-web
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: web
+    spec:
+      terminationGracePeriodSeconds: 20
+      automountServiceAccountToken: false
+      nodeSelector:
+        infra.mnnu/node-class: core-public
+      imagePullSecrets:
+        - name: finbot-dockerhub
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: finbot-web
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: ghcr.io/example/finbot-web:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: nginx-cache
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: nginx-run
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

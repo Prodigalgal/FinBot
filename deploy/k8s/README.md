@@ -1,102 +1,102 @@
-# FinBot Kubernetes 部署基线
+# FinBot Oracle K8S deployment
 
-## 架构边界
+> Breaking change：本清单会先把旧 `Deployment/finbot` 缩容到 `0`，再迁移 Schema 与历史，最后启动 Java/quant/Web。首次同步前必须确认 `finbot-state` PVC、PostgreSQL 和 `finbot-secrets` 均已备份；不要绕过 ArgoCD 直接长期维护生产资源。
 
-- 生产数据库是 FinBot 独立 PostgreSQL；原 PVC 继续保存 reports、配置和迁移前 SQLite 快照。
-- `FINBOT_DATABASE_URL` 是 breaking migration 后的生产必填项，必须从 `finbot-secrets` 注入。
-- `replicas` 必须保持 `1`，更新策略必须保持 `Recreate`。在迁移 PostgreSQL 前，不允许横向扩 Pod。
-- `/app` 是只读镜像内容；`/var/lib/finbot` 保存 SQLite、报告、运行时配置和 AI Workflow 配置。
-- Oracle 生产 overlay 允许 Gate TestNet / Bybit Demo 自动提交模拟订单，并通过执行机器人、组合风险、AI Governance、OMS 环境校验和 100 USDT 名义上限约束；真实盘 host 与 Mainnet 私有 API 仍由代码硬禁止。
-- Firecrawl keyless 从 Secret 读取 `FIRECRAWL_VLESS_SUBSCRIPTION_URL`，由应用内 sing-box bridge 将订阅节点转换为本地 HTTP 代理池；候选失败后进入指数冷却，禁止 direct fallback。订阅 URL、token、节点 UUID 和临时 sing-box 配置都不进入 GitOps。
-- Gate/Bybit 固定通过 `finbot-egress-proxy` 的 IPv4 出口。该代理调度到带有 `infra.mnnu/location=sg` 标签的新加坡节点，只接受同 namespace 的 FinBot Pod 访问，并且只开放 HTTPS `CONNECT:443`。
-- Firecrawl 与交易所使用独立 ProxyPool、路由策略和 bridge 生命周期；任一代理池不可用时只影响对应 provider，不允许跨池借道。
+## 准备运行 Secret
 
-## 准备镜像
+以 [`finbot-secrets.env.example`](./finbot-secrets.env.example) 为字段清单，在受控目录创建 `finbot-secrets.env`。真实 AI key、交易所 key、订阅 token、节点 URL、管理员密码和内部 token 不得进入源码或 GitOps 仓库。
 
-正式发布由 GitHub Actions 构建并推送 `docker.io/speedproxy/finbot:sha-<commit>`，
-随后更新私有 GitOps 仓库 `Prodigalgal/ircs-prod-config` 的 `finbot/` 目录。
-ArgoCD Application `finbot` 只从该仓库同步生产资源，CI 不直接修改集群。
-
-```bash
-docker build -t docker.io/speedproxy/finbot:VERSION .
-docker push docker.io/speedproxy/finbot:VERSION
-cd deploy/k8s/base
-kustomize edit set image ghcr.io/example/finbot=docker.io/speedproxy/finbot:VERSION
-```
-
-## 注入 Secret
-
-不要提交实际 Secret。先基于 `finbot-secrets.env.example` 创建私有文件，再由集群生成 Secret：
-
-`sub2api` 当前配置为公网 HTTP 开发网关。正式集群启用前必须把 `base_url` 替换为 HTTPS 地址或集群内私网 Service，避免 `SUB2API_API_KEY` 明文跨公网传输。
-
-```bash
+```powershell
+$env:KUBECONFIG = 'D:\WorkSpace\Project\服务器管理\private\kubeconfigs\mnnu-admin.conf'
 kubectl create namespace finbot --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n finbot create secret generic finbot-secrets \
-  --from-env-file=finbot-secrets.env \
+kubectl -n finbot create secret generic finbot-secrets `
+  --from-env-file=finbot-secrets.env `
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-DockerHub 拉取凭据使用只读 PAT 创建为 `finbot-dockerhub`；不要复用 CI 的 push PAT，
-也不要把生成的 `.dockerconfigjson` 写入 GitOps 仓库。
+`EXCHANGE_PROXY_NODES` 使用分号分隔 VLESS/Hysteria2 URL。Firecrawl 和交易所各自运行独立 proxy gateway，自动进行 sing-box `urltest` 健康选择并每 30 分钟刷新；任一池不可用时对应上游 fail-closed，不借用另一代理池，也不静默直连。
 
-认证保持单管理员模型。`FINBOT_ADMIN_USERNAME`、`FINBOT_ADMIN_PASSWORD`（或
-`FINBOT_ADMIN_PASSWORD_HASH`）和 `FINBOT_SESSION_SECRET` 由 `finbot-secrets` 注入；
-数学验证码 challenge 默认 120 秒过期，PoW 默认 16 bits，可分别通过
-`FINBOT_AUTH_CHALLENGE_TTL_SECONDS`、`FINBOT_AUTH_POW_DIFFICULTY_BITS` 调整。
+DockerHub 拉取凭据只使用 read-only PAT：
 
-## 部署与验证
-
-当前集群的新加坡节点是 `instance-20251229-0833`。首次部署前补齐语义化地域标签；代理 Deployment 故意不使用同时命中大阪和新加坡的 `infra.mnnu/egress=fixed-public`：
-
-```bash
-SG_NODE=instance-20251229-0833
-kubectl label node "$SG_NODE" infra.mnnu/location=sg --overwrite
-kubectl get nodes -l infra.mnnu/location=sg -o wide
+```powershell
+kubectl -n finbot create secret docker-registry finbot-dockerhub `
+  --docker-server=https://index.docker.io/v1/ `
+  --docker-username='<dockerhub-user>' `
+  --docker-password='<read-only-token>' `
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-```bash
-kubectl apply -k deploy/k8s/oracle
-kubectl -n finbot rollout status deployment/finbot --timeout=5m
-kubectl -n finbot rollout status deployment/finbot-egress-proxy --timeout=3m
-kubectl -n finbot get pod,svc,pvc
-kubectl -n finbot get pod -l app.kubernetes.io/name=finbot-egress-proxy -o wide
-kubectl -n finbot logs deployment/finbot -c web --tail=100
-kubectl -n finbot logs deployment/finbot -c worker --tail=100
-kubectl -n finbot logs deployment/finbot-egress-proxy --tail=100
-kubectl -n finbot port-forward service/finbot-web 8780:8780
-curl -fsS http://127.0.0.1:8780/health
-curl -fsS http://127.0.0.1:8780/api/v1/autonomous/status
+## 理解首次切流
+
+ArgoCD 按以下 Sync Waves 执行，任一步失败都会阻止新服务接管流量：
+
+| Wave | 资源 | 门禁 |
+| --- | --- | --- |
+| `-50` | PostgreSQL | StatefulSet 与保留 PVC Ready |
+| `-40` | `finbot` legacy freeze | 旧 Python Web/Worker 缩到 0，SQLite 停止写入 |
+| `-30` | `finbot-schema-migration` | Java Liquibase 9 个 changeset 成功 |
+| `-20` | `finbot-legacy-import` | 旧 SQLite 只读导入、逐表计数与 SHA-256 核对 |
+| `-10` | 两个 proxy gateway | Firecrawl 与交易所 HTTP proxy Ready |
+| `0` | Java、quant、Web | 所有 Deployment 与探针 Ready |
+
+历史导入把每一张旧表逐行保存到 `legacy_archive_row`，并把产品、Gate/Bybit 合约、别名和 Kline 转换进新强类型表。相同 SQLite SHA-256 再次执行会直接返回已完成结果，不重复写入。
+
+## 发布
+
+源码 `main` push 后，GitHub Actions 构建并签名以下 ARM64 镜像：
+
+- `speedproxy/finbot-backend:sha-<commit>`
+- `speedproxy/finbot-quant:sha-<commit>`
+- `speedproxy/finbot-web:sha-<commit>`
+- `speedproxy/finbot-proxy:sha-<commit>`
+
+Actions 将本目录同步到私有仓库 `Prodigalgal/ircs-prod-config/finbot` 并更新四个 tag。ArgoCD Application `finbot` 从 `finbot/oracle` 自动同步；CI 不持有 kubeconfig，也不直接写集群。
+
+## 验证运行态
+
+```powershell
+kubectl -n argocd get application finbot `
+  -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REV:.status.sync.revision
+kubectl -n finbot get deploy,statefulset,pod,svc,pvc,job -o wide
+kubectl -n finbot rollout status deployment/finbot-backend --timeout=10m
+kubectl -n finbot rollout status deployment/finbot-quant --timeout=5m
+kubectl -n finbot rollout status deployment/finbot-web --timeout=5m
+kubectl -n finbot rollout status deployment/finbot-firecrawl-proxy --timeout=5m
+kubectl -n finbot rollout status deployment/finbot-exchange-proxy --timeout=5m
 ```
 
-部署前确认交易所出口节点位于新加坡、Firecrawl 订阅已通过 Secret 注入，并分别执行订阅 bridge 与 Bybit smoke：
+检查迁移与代理，不输出 Secret：
 
-```bash
-kubectl get nodes -l infra.mnnu/location=sg -o wide
-kubectl -n finbot exec deployment/finbot -c worker -- \
-  python -m finbot.cli.proxy_diagnostics --data-dir /var/lib/finbot/data --smoke
+```powershell
+kubectl -n finbot logs job/finbot-schema-migration --tail=200
+kubectl -n finbot logs job/finbot-legacy-import --tail=200
+kubectl -n finbot port-forward service/finbot-firecrawl-proxy 18081:8081
+curl.exe -fsS http://127.0.0.1:18081/health
 ```
 
-若固定出口节点不可用，代理 Pod 会保持 `Pending` 或失去 Ready，交易所请求会显式失败；不要临时绕到未验证地区的公网出口。`runtime_config.json` 首次生成后保存在 PVC 中，修改 bootstrap 不会覆盖已有配置，升级时需通过系统设置或受控迁移同步 `exchange.proxy_pool`。
+登录 `https://finbot.mnnu.eu.org` 后，在“运行与调度 / 历史迁移核对”确认源行数等于归档行数。数据库层可进一步核对：
 
-## 备份与恢复
+```sql
+SELECT import_id, status, source_table_count, source_row_count,
+       archived_row_count, transformed_row_count, completed_at
+FROM legacy_import_manifest
+ORDER BY started_at DESC;
 
-备份使用 SQLite 原生 backup API，并同时保存运行配置和 SHA256 清单：
-
-```bash
-kubectl -n finbot exec deployment/finbot -c web -- \
-  python -m finbot.cli.runtime_backup backup --runtime-root /var/lib/finbot
+SELECT source_table, disposition, source_row_count, archived_row_count,
+       transformed_row_count, content_sha256, status
+FROM legacy_import_table
+ORDER BY source_table;
 ```
 
-将归档复制到集群外后必须执行校验。恢复时先停止 FinBot Deployment，恢复到空 PVC；已有数据库默认拒绝覆盖：
+完成登录、即时研究 SSE、三轮辩论、量化、风险拒绝或测试网下单、账户同步后，至少观察三个调度周期，确认没有重复交易、Worker 僵尸租约或 Pod 重启。
 
-```bash
-python -m finbot.cli.runtime_backup verify --archive finbot-BACKUP.tar.gz
-python -m finbot.cli.runtime_backup restore \
-  --archive finbot-BACKUP.tar.gz \
-  --runtime-root /var/lib/finbot
-```
+## 回滚
 
-只有已保存旧 PVC/文件备份且明确执行灾难恢复时才允许增加 `--overwrite`。恢复后依次检查 SQLite integrity、readiness、Worker 心跳、账户只读和模拟执行开关。
+首次迁移保留 `finbot-state` PVC、旧 `Deployment/finbot` 定义和旧 PostgreSQL 表。若新版本未通过门禁：
 
-Ingress、TLS、备份策略、StorageClass 和镜像仓库在目标集群 overlay 中配置，不写死在 base。首次上线前至少对 `/var/lib/finbot` 做 PVC 快照或文件级备份，并验证恢复到新 PVC。
+1. 在 `ircs-prod-config` 回退到迁移前 revision，让 ArgoCD 恢复旧镜像与路由。
+2. 确认 Java Deployment 已停止后，再恢复旧 `finbot` replicas；禁止新旧 Worker 同时运行。
+3. Java 新表保留事故快照，不自动反写旧 SQLite/旧表。
+4. 核对旧 `/health/ready`、Worker 心跳和 TestNet/Demo 开关后再恢复流量。
+
+通过三个完整调度周期和一次回滚演练后，才可在后续 GitOps revision 移除 `legacy-freeze.yaml`、历史导入 Hook 和 `finbot-state` PVC；PVC 删除必须单独审批并先完成快照。

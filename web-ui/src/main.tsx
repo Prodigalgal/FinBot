@@ -5,6 +5,7 @@ import { CssBaseline, ThemeProvider } from '@mui/material';
 import { App } from './App';
 import { AuthGate } from './AuthGate';
 import { theme } from './theme';
+import '@xyflow/react/dist/style.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

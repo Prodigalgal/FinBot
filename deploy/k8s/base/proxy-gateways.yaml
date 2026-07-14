@@ -1,0 +1,183 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finbot-firecrawl-proxy
+  labels:
+    app.kubernetes.io/name: finbot-firecrawl-proxy
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: proxy-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-firecrawl-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-firecrawl-proxy
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: proxy-gateway
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: finbot-dockerhub
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: proxy
+          image: ghcr.io/example/finbot-proxy:latest
+          env:
+            - name: PROXY_SUBSCRIPTION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FIRECRAWL_VLESS_SUBSCRIPTION_URL
+            - name: PROXY_MAXIMUM_NODES
+              value: "32"
+            - name: PROXY_SUBSCRIPTION_REFRESH_SECONDS
+              value: "1800"
+          ports:
+            - name: proxy
+              containerPort: 8080
+            - name: health
+              containerPort: 8081
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: health
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: health
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp
+      volumes:
+        - name: runtime
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finbot-exchange-proxy
+  labels:
+    app.kubernetes.io/name: finbot-exchange-proxy
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: proxy-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-exchange-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-exchange-proxy
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: proxy-gateway
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        infra.mnnu/location: sg
+      imagePullSecrets:
+        - name: finbot-dockerhub
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: proxy
+          image: ghcr.io/example/finbot-proxy:latest
+          env:
+            - name: PROXY_NODES
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: EXCHANGE_PROXY_NODES
+            - name: PROXY_PREFERRED_NAMES
+              value: "JP,OSAKA,SG"
+            - name: PROXY_MAXIMUM_NODES
+              value: "16"
+            - name: PROXY_SUBSCRIPTION_REFRESH_SECONDS
+              value: "1800"
+          ports:
+            - name: proxy
+              containerPort: 8080
+            - name: health
+              containerPort: 8081
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: health
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: health
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp
+      volumes:
+        - name: runtime
+          emptyDir:
+            sizeLimit: 128Mi

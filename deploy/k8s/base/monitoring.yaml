@@ -1,22 +1,21 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: finbot
+  name: finbot-backend
   labels:
-    app.kubernetes.io/name: finbot
+    app.kubernetes.io/name: finbot-backend
     environment: prod
     release: prometheus-stack
 spec:
   namespaceSelector:
-    matchNames:
-      - finbot
+    matchNames: [finbot]
   selector:
     matchLabels:
-      app.kubernetes.io/name: finbot
-      app.kubernetes.io/component: metrics
+      app.kubernetes.io/name: finbot-backend
+      app.kubernetes.io/component: backend
   endpoints:
-    - port: metrics
-      path: /metrics
+    - port: http
+      path: /actuator/prometheus
       interval: 30s
       scrapeTimeout: 10s
 ---
@@ -30,33 +29,34 @@ metadata:
     release: prometheus-stack
 spec:
   groups:
-    - name: finbot.operations
+    - name: finbot.runtime
       rules:
-        - alert: FinBotMetricsUnavailable
-          expr: up{namespace="finbot", service="finbot-metrics"} == 0
+        - alert: FinBotBackendUnavailable
+          expr: up{namespace="finbot", service="finbot-backend"} == 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: FinBot metrics endpoint is unavailable
-        - alert: FinBotAutonomousQueueBacklog
-          expr: finbot_autonomous_queue_depth > 10
+            summary: FinBot Java backend is unavailable
+        - alert: FinBotBackendHighErrorRate
+          expr: |
+            sum(rate(http_server_requests_seconds_count{namespace="finbot",status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_server_requests_seconds_count{namespace="finbot"}[5m])), 1)
+            > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: FinBot backend 5xx rate is above 5 percent
+        - alert: FinBotJvmHeapPressure
+          expr: |
+            sum(jvm_memory_used_bytes{namespace="finbot",area="heap"})
+            /
+            clamp_min(sum(jvm_memory_max_bytes{namespace="finbot",area="heap"}), 1)
+            > 0.90
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: FinBot autonomous request queue is backlogged
-        - alert: FinBotWorkerHeartbeatStale
-          expr: finbot_worker_heartbeat_age_seconds < 0 or finbot_worker_heartbeat_age_seconds > 180
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: FinBot worker heartbeat is stale
-        - alert: FinBotResearchDataStale
-          expr: finbot_data_freshness_seconds < 0 or finbot_data_freshness_seconds > 7200
-          for: 15m
-          labels:
-            severity: warning
-          annotations:
-            summary: FinBot successful evidence is stale
+            summary: FinBot JVM heap usage is above 90 percent

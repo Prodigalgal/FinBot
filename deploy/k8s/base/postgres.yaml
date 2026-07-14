@@ -5,6 +5,8 @@ metadata:
   labels:
     app.kubernetes.io/name: finbot-postgres
     app.kubernetes.io/part-of: finbot
+  annotations:
+    argocd.argoproj.io/sync-wave: "-50"
 spec:
   selector:
     app.kubernetes.io/name: finbot-postgres
@@ -21,6 +23,8 @@ metadata:
   labels:
     app.kubernetes.io/name: finbot-postgres
     app.kubernetes.io/part-of: finbot
+  annotations:
+    argocd.argoproj.io/sync-wave: "-50"
 spec:
   serviceName: finbot-postgres
   replicas: 1
@@ -116,22 +120,3 @@ spec:
         resources:
           requests:
             storage: 20Gi
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: finbot-postgres-ingress
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: finbot-postgres
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: finbot
-      ports:
-        - port: 5432
-          protocol: TCP

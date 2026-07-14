@@ -1,0 +1,158 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: finbot-schema-migration
+  labels:
+    app.kubernetes.io/name: finbot-schema-migration
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: migration
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "-30"
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-schema-migration
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: finbot-dockerhub
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: liquibase
+          image: ghcr.io/example/finbot-backend:latest
+          envFrom:
+            - configMapRef:
+                name: finbot-env
+          env:
+            - name: FINBOT_MIGRATION_ONLY
+              value: "true"
+            - name: FINBOT_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: POSTGRES_PASSWORD
+            - name: FINBOT_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_ADMIN_USERNAME
+            - name: FINBOT_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_ADMIN_PASSWORD
+            - name: FINBOT_JAVA_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_JAVA_SERVICE_TOKEN
+            - name: FINBOT_QUANT_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_QUANT_SERVICE_TOKEN
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: finbot-legacy-import
+  labels:
+    app.kubernetes.io/name: finbot-legacy-import
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: migration
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-legacy-import
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: finbot-dockerhub
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: importer
+          image: ghcr.io/example/finbot-backend:latest
+          command: ["/bin/sh", "/app/scripts/import-and-cleanup.sh"]
+          envFrom:
+            - configMapRef:
+                name: finbot-env
+          env:
+            - name: FINBOT_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: POSTGRES_PASSWORD
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: legacy-state
+              mountPath: /legacy
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: legacy-state
+          persistentVolumeClaim:
+            claimName: finbot-state
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

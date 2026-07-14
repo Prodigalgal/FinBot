@@ -1,0 +1,19 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/releases/001-foundation.sql
+  - include:
+      file: db/changelog/releases/002-platform-foundation.sql
+  - include:
+      file: db/changelog/releases/003-background-operations.sql
+  - include:
+      file: db/changelog/releases/004-ai-workflow.sql
+  - include:
+      file: db/changelog/releases/005-ingestion-research.sql
+  - include:
+      file: db/changelog/releases/006-market-quant.sql
+  - include:
+      file: db/changelog/releases/007-risk-execution.sql
+  - include:
+      file: db/changelog/releases/008-workflow-idempotency.sql
+  - include:
+      file: db/changelog/releases/009-legacy-archive.sql

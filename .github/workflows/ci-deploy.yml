@@ -7,87 +7,173 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: finbot-production
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: speedproxy/finbot
   IMAGE_TAG: sha-${{ github.sha }}
 
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: finbot
+          POSTGRES_USER: finbot
+          POSTGRES_PASSWORD: ci-database-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finbot -d finbot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "26"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Java clean build and PostgreSQL integration tests
+        working-directory: backend
+        run: ./gradlew --no-daemon clean test :finbot-bootstrap:bootJar :finbot-migration:bootJar
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           cache: pip
-      - name: Install backend
-        run: python -m pip install .
-      - name: Secret scan
-        run: python scripts/secret_scan.py
-      - name: Backend tests
+          cache-dependency-path: |
+            quant-service/pyproject.toml
+            proxy-gateway/pyproject.toml
+      - name: Install typed Python services
+        run: python -m pip install './quant-service[dev]' './proxy-gateway[dev]'
+      - name: Quant service quality gates
+        working-directory: quant-service
         run: |
-          python -m compileall finbot
-          python -m unittest discover -s tests -v
+          python -m ruff check src tests
+          python -m mypy src tests
+          python -m pytest -q
+          python -m openapi_spec_validator ../contracts/quant-research.openapi.yaml
+      - name: Proxy gateway quality gates
+        working-directory: proxy-gateway
+        run: |
+          python -m ruff check src tests
+          python -m mypy src tests
+          python -m pytest -q
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: web-ui/package-lock.json
-      - name: Frontend clean build and audit
+      - name: Frontend build and dependency audit
         working-directory: web-ui
         run: |
           npm ci
           npx tsc -b --clean
           npm run build
-          npm audit --audit-level=high
+          npm audit --audit-level=high --registry=https://registry.npmjs.org
+
+      - name: Repository secret scan
+        run: python scripts/secret_scan.py
+      - uses: imranismail/setup-kustomize@v2
+      - name: Render production Kubernetes manifests
+        run: |
+          sh -n deploy/k8s/scripts/import-and-cleanup.sh
+          kustomize build deploy/k8s/oracle >/tmp/finbot-rendered.yaml
+          test -s /tmp/finbot-rendered.yaml
+          ! grep -q 'python -m finbot.cli.serve_' /tmp/finbot-rendered.yaml
+          ! grep -q '/api/v1/' /tmp/finbot-rendered.yaml
+
       - name: Install browser runtime
         working-directory: web-ui
         run: npx playwright install --with-deps chromium
-      - name: Single-admin auth and quant component smoke
+      - name: Java, quant and React end-to-end smoke
         env:
-          FINBOT_URL: http://127.0.0.1:8790
-          FINBOT_AUTH_ENABLED: "true"
+          FINBOT_DATABASE_URL: jdbc:postgresql://127.0.0.1:5432/finbot
+          FINBOT_DATABASE_USERNAME: finbot
+          FINBOT_DATABASE_PASSWORD: ci-database-password
           FINBOT_ADMIN_USERNAME: admin
-          FINBOT_ADMIN_PASSWORD: ci-test-passphrase
-          FINBOT_SESSION_SECRET: ci-session-secret-with-at-least-32-characters
-          FINBOT_AUTH_COOKIE_SECURE: "false"
-          FINBOT_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:8790
-          FINBOT_AUTH_POW_DIFFICULTY_BITS: "16"
+          FINBOT_ADMIN_PASSWORD: ci-admin-password
+          FINBOT_AUTH_SECURE_COOKIE: "false"
+          FINBOT_JAVA_SERVICE_TOKEN: ci-java-service-token-at-least-thirty-two-characters
+          FINBOT_QUANT_SERVICE_TOKEN: ci-quant-service-token-at-least-thirty-two-characters
+          FINBOT_MIMO_API_KEY: ci-not-used
+          FINBOT_DEEPSEEK_API_KEY: ci-not-used
+          FINBOT_SUB2API_API_KEY: ci-not-used
+          FINBOT_SUB2API_BASE_URL: https://example.invalid/v1
+          FINBOT_GATE_API_KEY: ci-not-used
+          FINBOT_GATE_API_SECRET: ci-not-used
+          FINBOT_BYBIT_API_KEY: ci-not-used
+          FINBOT_BYBIT_API_SECRET: ci-not-used
+          FINBOT_FIRECRAWL_PROXY_URL: http://127.0.0.1:9999
+          FINBOT_BYBIT_PROXY_URL: http://127.0.0.1:9999
+          FINBOT_URL: http://127.0.0.1:4173
         run: |
-          mkdir -p tmp/ci-auth-smoke
-          python -m finbot.cli.serve_web \
-            --data-dir tmp/ci-auth-smoke/data \
-            --host 127.0.0.1 \
-            --port 8790 \
-            --frontend-dist web-ui/dist > tmp/ci-auth-smoke/server.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid"' EXIT
-          for attempt in {1..60}; do
-            if curl --fail --silent http://127.0.0.1:8790/health/ready >/dev/null; then break; fi
-            if [ "$attempt" = 60 ]; then cat tmp/ci-auth-smoke/server.log; exit 1; fi
+          mkdir -p tmp/ci-smoke
+          python -m finbot_quant.main >tmp/ci-smoke/quant.log 2>&1 &
+          quant_pid=$!
+          java -jar backend/finbot-bootstrap/build/libs/finbot-bootstrap-2.0.0-SNAPSHOT.jar >tmp/ci-smoke/backend.log 2>&1 &
+          backend_pid=$!
+          npm --prefix web-ui run preview -- --host 127.0.0.1 >tmp/ci-smoke/web.log 2>&1 &
+          web_pid=$!
+          trap 'kill "$quant_pid" "$backend_pid" "$web_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..90}; do
+            if curl --fail --silent http://127.0.0.1:8080/actuator/health/readiness >/dev/null \
+              && curl --fail --silent http://127.0.0.1:8081/internal/v1/health >/dev/null \
+              && curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            if [ "$attempt" = 90 ]; then
+              cat tmp/ci-smoke/backend.log tmp/ci-smoke/quant.log tmp/ci-smoke/web.log
+              exit 1
+            fi
             sleep 1
           done
-          npm --prefix web-ui run smoke:production-quant
+          npm --prefix web-ui run smoke:system
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: finbot-browser-smoke
+          name: finbot-verification-evidence
           path: |
             output/playwright/
-            tmp/ci-auth-smoke/server.log
+            tmp/ci-smoke/*.log
+            backend/**/build/test-results/test/*.xml
           if-no-files-found: ignore
           retention-days: 14
 
-  build-and-update-gitops:
+  build-images:
     needs: verify
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            image: speedproxy/finbot-backend
+            context: .
+            dockerfile: Dockerfile
+          - component: quant
+            image: speedproxy/finbot-quant
+            context: quant-service
+            dockerfile: quant-service/Dockerfile
+          - component: web
+            image: speedproxy/finbot-web
+            context: web-ui
+            dockerfile: web-ui/Dockerfile
+          - component: proxy
+            image: speedproxy/finbot-proxy
+            context: proxy-gateway
+            dockerfile: proxy-gateway/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -98,14 +184,32 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           platforms: linux/arm64
           push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: docker.io/${{ matrix.image }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
           provenance: mode=max
           sbom: true
+      - name: Scan published image
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: docker.io/${{ matrix.image }}:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+      - uses: sigstore/cosign-installer@v3.10.1
+      - name: Keyless sign image
+        run: cosign sign --yes docker.io/${{ matrix.image }}:${IMAGE_TAG}
+
+  update-gitops:
+    needs: build-images
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
           repository: Prodigalgal/ircs-prod-config
@@ -117,7 +221,12 @@ jobs:
           rsync -a --delete deploy/k8s/base/ gitops/finbot/base/
           rsync -a --delete deploy/k8s/oracle/ gitops/finbot/oracle/
           cd gitops/finbot/oracle
-          kustomize edit set image ghcr.io/example/finbot=${IMAGE_NAME}:${IMAGE_TAG}
+          kustomize edit set image \
+            ghcr.io/example/finbot-backend=docker.io/speedproxy/finbot-backend:${IMAGE_TAG} \
+            ghcr.io/example/finbot-quant=docker.io/speedproxy/finbot-quant:${IMAGE_TAG} \
+            ghcr.io/example/finbot-web=docker.io/speedproxy/finbot-web:${IMAGE_TAG} \
+            ghcr.io/example/finbot-proxy=docker.io/speedproxy/finbot-proxy:${IMAGE_TAG}
+          kustomize build . >/tmp/finbot-rendered.yaml
       - name: Commit GitOps revision
         working-directory: gitops
         run: |

@@ -5,43 +5,46 @@ resources:
   - namespace.yaml
   - pvc.yaml
   - postgres.yaml
-  - service.yaml
-  - egress-proxy.yaml
-  - deployment.yaml
+  - legacy-freeze.yaml
+  - migration-jobs.yaml
+  - proxy-gateways.yaml
+  - deployments.yaml
+  - services.yaml
   - network-policy.yaml
   - monitoring.yaml
 configMapGenerator:
-  - name: finbot-egress-proxy-config
-    files:
-      - tinyproxy.conf=tinyproxy.conf
   - name: finbot-env
     literals:
-      - FINBOT_RUNTIME_ROOT=/var/lib/finbot
-      - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1
-      - PROXY_POLICY_FILE=/var/lib/finbot/config/proxy_policy.json
-      - FINBOT_DEPLOYMENT_MODE=production
-      - FINBOT_AUTH_ENABLED=true
-      - FINBOT_AUTH_COOKIE_SECURE=true
-      - FINBOT_AUTH_TRUSTED_ORIGINS=https://finbot.mnnu.eu.org
-      - FINBOT_AUTH_CHALLENGE_TTL_SECONDS=120
-      - FINBOT_AUTH_POW_DIFFICULTY_BITS=16
-      - FINBOT_REQUIRE_PAPER_SUBMIT_DISABLED=false
-      - FINBOT_LOG_FORMAT=json
-      - FIRECRAWL_AUTH_MODE=keyless
-      - FIRECRAWL_PROXY_IP_FAMILY=ipv4
-      - FIRECRAWL_PROXY_DNS_MODE=remote
-      - FIRECRAWL_VLESS_MAX_NODES=8
-      - EXCHANGE_PROXY_POOL=http://finbot-egress-proxy:8888
-      - EXCHANGE_PROXY_IP_FAMILY=ipv4
-      - EXCHANGE_PROXY_DNS_MODE=remote
-      - SING_BOX_PATH=/usr/local/bin/sing-box
-      - PROXY_RUNTIME_DIR=/tmp/finbot-proxy
-  - name: finbot-runtime-bootstrap
-    files:
-      - runtime_config.json=runtime_config.bootstrap.json
-      - proxy_policy.json=proxy_policy.bootstrap.json
+      - FINBOT_DATABASE_URL=jdbc:postgresql://finbot-postgres:5432/finbot
+      - FINBOT_DATABASE_USERNAME=finbot
+      - FINBOT_DATABASE_POOL_SIZE=20
+      - FINBOT_DATABASE_MIN_IDLE=2
+      - FINBOT_INTERNAL_BASE_URL=http://finbot-backend:8080
+      - FINBOT_QUANT_SERVICE_URL=http://finbot-quant-service:8081
+      - FINBOT_SUB2API_BASE_URL=http://100.64.0.2:8181/v1
+      - FINBOT_ALLOW_INSECURE_AI_HTTP=true
+      - FINBOT_AUTH_SECURE_COOKIE=true
+      - FINBOT_AUTH_CHALLENGE_TTL=PT5M
+      - FINBOT_AUTH_POW_DIFFICULTY=3
+      - FINBOT_AUTH_SESSION_TTL=PT12H
+      - FINBOT_FIRECRAWL_PROXY_URL=http://finbot-firecrawl-proxy:8080
+      - FINBOT_GATE_PROXY_URL=http://finbot-exchange-proxy:8080
+      - FINBOT_BYBIT_PROXY_URL=http://finbot-exchange-proxy:8080
+      - FINBOT_WORKER_POLL_DELAY=PT2S
+      - FINBOT_WORKER_LEASE_DURATION=PT30S
+      - FINBOT_WORKER_HEARTBEAT_INTERVAL=PT5S
+      - FINBOT_SCHEDULER_POLL_DELAY=PT5S
+      - FINBOT_TRADING_LEDGER_STALE_AFTER=PT10M
 images:
-  - name: ghcr.io/example/finbot
-    newName: ghcr.io/example/finbot
+  - name: ghcr.io/example/finbot-backend
+    newName: docker.io/speedproxy/finbot-backend
+    newTag: latest
+  - name: ghcr.io/example/finbot-quant
+    newName: docker.io/speedproxy/finbot-quant
+    newTag: latest
+  - name: ghcr.io/example/finbot-web
+    newName: docker.io/speedproxy/finbot-web
+    newTag: latest
+  - name: ghcr.io/example/finbot-proxy
+    newName: docker.io/speedproxy/finbot-proxy
     newTag: latest

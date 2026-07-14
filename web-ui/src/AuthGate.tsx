@@ -1,201 +1,114 @@
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  IconButton,
-  Paper,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, CircularProgress, IconButton, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
-import { api, ApiError, AUTH_REQUIRED_EVENT } from './api';
-import type { AuthChallenge } from './api';
+import { AUTH_REQUIRED_EVENT, ApiError, api } from './api';
 import { solveProofOfWork } from './authPow';
-
-type AuthState = 'loading' | 'authenticated' | 'login';
+import type { AuthChallenge } from './types';
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>('loading');
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [challenge, setChallenge] = useState<AuthChallenge | null>(null);
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
-  const [challenge, setChallenge] = useState<AuthChallenge | null>(null);
   const [mathAnswer, setMathAnswer] = useState('');
-  const [challengeLoading, setChallengeLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [powCalculating, setPowCalculating] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadChallenge = useCallback(async (clearError = true) => {
-    setChallengeLoading(true);
-    setChallenge(null);
-    setMathAnswer('');
-    if (clearError) setError(null);
+  const loadChallenge = useCallback(async () => {
+    setBusy(true);
     try {
-      const payload = await api.authChallenge();
-      if (!payload.enabled || !payload.challenge) {
-        throw new Error('认证 Challenge 未启用');
-      }
-      setChallenge(payload.challenge);
-    } catch (requestError) {
-      setError(readableError(requestError));
+      setChallenge(await api.authChallenge());
+      setMathAnswer('');
+    } catch (cause) {
+      setError(readable(cause));
     } finally {
-      setChallengeLoading(false);
+      setBusy(false);
     }
   }, []);
 
-  const refresh = useCallback(async () => {
+  const check = useCallback(async () => {
     try {
       const status = await api.authStatus();
-      if (!status.enabled || status.authenticated) {
-        setState('authenticated');
-        return;
-      }
-      setState('login');
+      setAuthenticated(status.authenticated);
+      if (!status.authenticated) await loadChallenge();
+    } catch (cause) {
+      setAuthenticated(false);
+      setError(readable(cause));
       await loadChallenge();
-    } catch (requestError) {
-      setError(readableError(requestError));
-      setState('login');
     }
   }, [loadChallenge]);
 
   useEffect(() => {
-    refresh();
-    const requireLogin = () => {
-      setState('login');
+    void check();
+    const requireAuthentication = () => {
+      setAuthenticated(false);
       void loadChallenge();
     };
-    window.addEventListener(AUTH_REQUIRED_EVENT, requireLogin);
-    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, requireLogin);
-  }, [loadChallenge, refresh]);
+    window.addEventListener(AUTH_REQUIRED_EVENT, requireAuthentication);
+    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, requireAuthentication);
+  }, [check, loadChallenge]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!challenge || !mathAnswer.trim() || !Number.isInteger(Number(mathAnswer))) {
+    if (!challenge || !Number.isInteger(Number(mathAnswer))) {
       setError('请输入有效的数学验证码');
       return;
     }
-    setSubmitting(true);
+    setBusy(true);
     setError(null);
     try {
-      setPowCalculating(true);
-      const powNonce = await solveProofOfWork(challenge.pow_prefix, challenge.difficulty_bits);
-      setPowCalculating(false);
+      const proofOfWorkSolution = await solveProofOfWork(challenge.nonce, challenge.proofOfWorkDifficulty);
       await api.login({
         username: username.trim(),
         password,
-        challenge_id: challenge.challenge_id,
-        math_answer: Number(mathAnswer),
-        pow_nonce: powNonce,
+        challengeId: challenge.challengeId,
+        proofOfWorkSolution,
+        mathAnswer: Number(mathAnswer),
       });
       setPassword('');
-      setMathAnswer('');
-      setChallenge(null);
-      setState('authenticated');
-    } catch (requestError) {
-      setError(readableError(requestError));
-      await loadChallenge(false);
+      setAuthenticated(true);
+    } catch (cause) {
+      setError(readable(cause));
+      await loadChallenge();
     } finally {
-      setPowCalculating(false);
-      setSubmitting(false);
+      setBusy(false);
     }
   };
 
-  if (state === 'loading') {
-    return (
-      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', bgcolor: 'background.default' }}>
-        <CircularProgress size={28} />
-      </Box>
-    );
+  if (authenticated === null) {
+    return <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><CircularProgress size={28} /></Box>;
   }
-
-  if (state === 'authenticated') {
-    return children;
-  }
+  if (authenticated) return children;
 
   return (
-    <Box
-      component="main"
-      sx={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        bgcolor: 'background.default',
-        px: 2,
-      }}
-    >
-      <Paper component="form" onSubmit={submit} variant="outlined" sx={{ width: '100%', maxWidth: 380, p: 3 }}>
-        <Stack spacing={2.25}>
+    <Box component="main" sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', px: 2, bgcolor: 'background.default' }}>
+      <Paper component="form" onSubmit={submit} variant="outlined" sx={{ width: '100%', maxWidth: 390, p: 3 }}>
+        <Stack spacing={2}>
           <Stack direction="row" spacing={1.25} alignItems="center">
-            <Box sx={{ width: 36, height: 36, display: 'grid', placeItems: 'center', bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+            <Box sx={{ width: 38, height: 38, display: 'grid', placeItems: 'center', bgcolor: 'primary.main', color: 'white', borderRadius: 1 }}>
               <LockOutlinedIcon fontSize="small" />
             </Box>
             <Box>
               <Typography variant="h2">FinBot</Typography>
-              <Typography variant="caption" color="text.secondary">管理员登录</Typography>
+              <Typography variant="caption" color="text.secondary">管理员安全登录</Typography>
             </Box>
           </Stack>
           {error && <Alert severity="error">{error}</Alert>}
-          <TextField
-            label="用户名"
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            disabled={submitting}
-            required
-            fullWidth
-          />
-          <TextField
-            label="密码"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            disabled={submitting}
-            required
-            fullWidth
-          />
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Box sx={{ flex: 1, minWidth: 0, border: '1px solid', borderColor: 'divider', px: 1.5, py: 1.25 }}>
+          <TextField label="用户名" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required disabled={busy} />
+          <TextField label="密码" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required disabled={busy} />
+          <Stack direction="row" spacing={1} alignItems="stretch">
+            <Box sx={{ flex: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1 }}>
               <Typography variant="caption" color="text.secondary">数学验证码</Typography>
-              <Typography data-testid="auth-math-question" variant="subtitle1">
-                {challengeLoading ? '正在生成' : challenge?.math_question || '暂不可用'}
-              </Typography>
+              <Typography variant="subtitle1" data-testid="auth-math-question">{challenge?.mathExpression || '正在获取'}</Typography>
             </Box>
-            <Tooltip title="刷新数学验证码">
-              <span>
-                <IconButton
-                  aria-label="刷新数学验证码"
-                  onClick={() => void loadChallenge()}
-                  disabled={submitting || challengeLoading}
-                >
-                  {challengeLoading ? <CircularProgress size={20} /> : <RefreshIcon />}
-                </IconButton>
-              </span>
-            </Tooltip>
+            <Tooltip title="刷新验证码"><span><IconButton onClick={() => void loadChallenge()} disabled={busy}><RefreshIcon /></IconButton></span></Tooltip>
           </Stack>
-          <TextField
-            label="验证码答案"
-            type="number"
-            value={mathAnswer}
-            onChange={(event) => setMathAnswer(event.target.value)}
-            disabled={submitting || challengeLoading || !challenge}
-            slotProps={{ htmlInput: { inputMode: 'numeric', step: 1 } }}
-            required
-            fullWidth
-          />
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={submitting || challengeLoading || !challenge || !username.trim() || !password || !mathAnswer.trim()}
-          >
-            {powCalculating ? '正在计算 PoW' : submitting ? '正在登录' : '登录'}
+          <TextField label="验证码答案" type="number" value={mathAnswer} onChange={(event) => setMathAnswer(event.target.value)} required disabled={busy || !challenge} />
+          <Button type="submit" variant="contained" disabled={busy || !challenge || !username.trim() || !password || !mathAnswer}>
+            {busy ? '正在完成安全校验' : '登录'}
           </Button>
         </Stack>
       </Paper>
@@ -203,10 +116,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   );
 }
 
-function readableError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return '用户名或密码错误';
-    if (error.status === 429) return '登录尝试过于频繁，请稍后重试';
-  }
-  return error instanceof Error ? error.message : String(error);
+function readable(cause: unknown): string {
+  if (cause instanceof ApiError && cause.status === 401) return '用户名、密码或安全校验不正确';
+  return cause instanceof Error ? cause.message : String(cause);
 }

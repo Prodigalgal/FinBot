@@ -1,0 +1,23 @@
+package io.omnnu.finbot.api.configuration;
+
+import io.omnnu.finbot.domain.configuration.AiProtocol;
+import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
+
+public record UpdateProviderRequest(
+        @NotBlank @Size(max = 120) String displayName,
+        @NotNull AiProtocol protocol,
+        @NotNull ReasoningParameterStyle reasoningParameterStyle,
+        @Size(max = 1000) String baseUrl,
+        @Size(max = 120) String baseUrlEnv,
+        @NotBlank @Size(max = 120) String apiKeyEnv,
+        boolean enabled,
+        @Min(1) @Max(60) int connectTimeoutSeconds,
+        @Min(5) @Max(1800) int requestTimeoutSeconds,
+        @PositiveOrZero long expectedVersion) {
+}

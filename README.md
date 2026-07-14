@@ -1,54 +1,68 @@
 # FinBot
 
-FinBot 是一个面向研究与模拟交易的 AI 决策平台，主链路覆盖信息采集、清理与压缩、
-产品映射、多 Agent 多轮辩论、独立风险门禁、Gate TestNet / Bybit Demo 模拟执行和结果评估。
+FinBot 是面向自动研究与模拟交易的 AI 决策平台：定时或即时采集信息，清理和压缩证据，结合交易所行情与 Python 量化结果，执行可配置的多 Agent 多轮辩论，再由独立风控和执行机器人操作 Gate TestNet / Bybit Demo。
 
-当前版本禁止 Mainnet 私有写入。LLM 只能提供研究判断，不能绕过独立风险规则、控制凭据或决定最终下单数量。
+> Breaking change：生产主系统已经切换到 Java 26 + PostgreSQL + `/api/v2`。根目录旧 Python Web/Worker 和 SQLite 仅作为冻结回滚基线，不再是构建或部署入口。
 
-## 本地验证
+## 架构
+
+| 组件 | 技术 | 责任 |
+| --- | --- | --- |
+| `backend/finbot-bootstrap` | Java 26、Spring Boot 4.1 | Auth、API、常驻 Worker、SSE、业务装配 |
+| `backend/finbot-domain` | 纯 Java | 强类型领域状态、值对象和规则 |
+| `backend/finbot-application` | Java | 用例、端口、任务编排和事务边界 |
+| `backend/finbot-infrastructure` | Spring Data JDBC、`JdbcClient`、Liquibase | PostgreSQL、AI、交易所、Firecrawl 和 HTTP adapter |
+| `quant-service/` | Python 3.13、FastAPI | 无状态量化研究与 HTTP/SSE 输出 |
+| `proxy-gateway/` | Python 3.13、sing-box | VLESS/Hysteria2 订阅转 HTTP proxy、健康选择和定时刷新 |
+| `web-ui/` | React、TypeScript、Vite | 单管理员运营台和自由 DAG 工作流编辑器 |
+| `backend/finbot-migration` | Java 26 | 一次性只读历史导入，不进入在线运行时 |
+
+## 验证代码
 
 ```powershell
-python -m pip install .
-python -m compileall finbot
-python -m unittest discover -s tests -v
+$env:JAVA_HOME = 'D:\DevlopEnv\JDK\jdk-26.0.1'
+Set-Location backend
+.\gradlew.bat --no-daemon clean test :finbot-bootstrap:bootJar :finbot-migration:bootJar
 
-Set-Location web-ui
+Set-Location ..\quant-service
+python -m pip install -e ".[dev]"
+python -m ruff check src tests
+python -m mypy src tests
+python -m pytest -q
+
+Set-Location ..\proxy-gateway
+python -m pip install -e ".[dev]"
+python -m ruff check src tests
+python -m mypy src tests
+python -m pytest -q
+
+Set-Location ..\web-ui
 npm ci
-npx tsc -b --clean
 npm run build
 ```
 
-## 运行
+Testcontainers 需要本机 Docker；没有 Docker 时 PostgreSQL 集成测试会明确标记为 skipped，并由 GitHub Actions 的 Linux runner 强制执行。
 
-开发配置从 `config/*.example.*` 和 `.env.example` 创建。系统只保留一个管理员账户，
-账户名和密码通过 `FINBOT_ADMIN_USERNAME` / `FINBOT_ADMIN_PASSWORD` 或密码哈希 ENV 注入。
-登录还要求一次性数学验证码和 SHA-256 PoW challenge。实际 API key、管理员认证、
-交易所凭据、代理节点和运行时数据不得提交到 Git。
+## 本地运行
+
+先启动 PostgreSQL 18，并从 [`.env.example`](./.env.example) 注入必填变量。Java API 和常驻 Worker 是同一个可横向扩展的进程，Python 只启动 quant 服务。
 
 ```powershell
-python -m finbot.cli.serve_web --data-dir data --frontend-dist web-ui/dist
-python -m finbot.cli.serve_worker --data-dir data
+Set-Location quant-service
+python -m finbot_quant.main
+
+Set-Location ..\backend
+$env:JAVA_HOME = 'D:\DevlopEnv\JDK\jdk-26.0.1'
+.\gradlew.bat :finbot-bootstrap:bootRun
+
+Set-Location ..\web-ui
+npm run dev
 ```
 
-## CI/CD 与生产部署
+默认端口为 Java `8080`、quant `8081`、Vite `5173`。登录使用环境注入的单管理员账户，并要求一次性数学验证码和 SHA-256 PoW。
 
-- 源码仓库：`Prodigalgal/FinBot`，Private。
-- 镜像仓库：`docker.io/speedproxy/finbot`，使用不可变 `sha-<commit>` tag。
-- GitOps 仓库：`Prodigalgal/ircs-prod-config`，生产资源位于 `finbot/`。
-- 部署控制器：ArgoCD Application `finbot`。
+## 生产发布
 
-`main` 分支 push 会先执行 Secret scan、后端全量测试、前端干净构建和依赖审计；
-通过后构建 ARM64 镜像并推送 DockerHub，最后只更新 `ircs-prod-config` 中的资源和镜像 tag。
-ArgoCD 负责从 GitOps 仓库同步集群，CI 不直接执行生产 `kubectl apply`。
+`main` 分支通过 GitHub Actions 完成 Java/Python/React 测试、真实 PostgreSQL 集成测试、浏览器 smoke、Secret scan、K8S 渲染、四镜像构建、Trivy 扫描和 Cosign 签名。镜像推送至 `docker.io/speedproxy`，随后只更新私有 GitOps 仓库 `Prodigalgal/ircs-prod-config/finbot`；ArgoCD Application `finbot` 负责同步 Oracle K8S。
 
-GitHub Actions 仅引用以下加密 Secret：
-
-- `DOCKERHUB_USERNAME`
-- `DOCKERHUB_TOKEN`
-- `FINBOT_GITOPS_DEPLOY_KEY`
-
-Kubernetes Secret 由集群运行时创建，清单只引用 `finbot-secrets`、
-`finbot-bootstrap-files` 和 `finbot-dockerhub` 的名称。
-
-部署、备份和回滚细节见 `deploy/k8s/README.md`，长期架构约束见
-`docs/requirements/26-p4-quant-validation-oracle-k8s.md`。
+生产 Secret、首次历史导入、代理池、运行验收和回滚步骤见 [`deploy/k8s/README.md`](./deploy/k8s/README.md)。架构契约见 [`docs/decisions/012-java26-spring-data-jdbc-liquibase-python-quant.md`](./docs/decisions/012-java26-spring-data-jdbc-liquibase-python-quant.md)，迁移门禁见 [`docs/migrations/010-java-breaking-exec-plan.md`](./docs/migrations/010-java-breaking-exec-plan.md)。

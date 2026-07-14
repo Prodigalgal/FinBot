@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: finbot-backend
+  aop:
+    proxy-target-class: false
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${FINBOT_DATABASE_URL:jdbc:postgresql://localhost:5432/finbot}
+    username: ${FINBOT_DATABASE_USERNAME:finbot}
+    password: ${FINBOT_DATABASE_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${FINBOT_DATABASE_POOL_SIZE:20}
+      minimum-idle: ${FINBOT_DATABASE_MIN_IDLE:2}
+      connection-timeout: 10000
+      validation-timeout: 3000
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  shutdown: graceful
+  http2:
+    enabled: true
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+
+finbot:
+  internal:
+    base-url: ${FINBOT_INTERNAL_BASE_URL:http://finbot-backend:8080}
+    service-token: ${FINBOT_JAVA_SERVICE_TOKEN}
+  auth:
+    admin-username: ${FINBOT_ADMIN_USERNAME}
+    admin-password: ${FINBOT_ADMIN_PASSWORD}
+    challenge-ttl: ${FINBOT_AUTH_CHALLENGE_TTL:PT5M}
+    proof-of-work-difficulty: ${FINBOT_AUTH_POW_DIFFICULTY:3}
+    maximum-challenge-failures: ${FINBOT_AUTH_MAX_FAILURES:5}
+    session-ttl: ${FINBOT_AUTH_SESSION_TTL:PT12H}
+    touch-interval: ${FINBOT_AUTH_TOUCH_INTERVAL:PT1M}
+    secure-cookie: ${FINBOT_AUTH_SECURE_COOKIE:true}
+  quant:
+    base-url: ${FINBOT_QUANT_SERVICE_URL:http://finbot-quant-service:8081}
+    service-token: ${FINBOT_QUANT_SERVICE_TOKEN:}
+  workflow:
+    event-poll-interval: ${FINBOT_WORKFLOW_EVENT_POLL_INTERVAL:PT0.5S}
+  trading-ledger:
+    stale-after: ${FINBOT_TRADING_LEDGER_STALE_AFTER:PT10M}
+  worker:
+    instance-name: ${HOSTNAME:finbot-local}
+    poll-delay: ${FINBOT_WORKER_POLL_DELAY:PT2S}
+    lease-duration: ${FINBOT_WORKER_LEASE_DURATION:PT30S}
+    heartbeat-interval: ${FINBOT_WORKER_HEARTBEAT_INTERVAL:PT5S}
+    retry-delay: ${FINBOT_WORKER_RETRY_DELAY:PT10S}
+    scheduler-poll-delay: ${FINBOT_SCHEDULER_POLL_DELAY:PT5S}
+    maximum-due-schedules: ${FINBOT_MAXIMUM_DUE_SCHEDULES:10}
