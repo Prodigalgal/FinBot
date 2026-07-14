@@ -89,6 +89,13 @@ class LiquibasePostgresIntegrationTest {
                           (select count(*) from schedule_definition) as schedule_count,
                           (select count(*) from agent_role_template) as role_count,
                           (select count(*) from workflow_node_definition) as node_count,
+                          (select count(*)
+                           from workflow_node_definition node
+                           join workflow_definition_version version on version.version_id = node.version_id
+                           where version.status = 'PUBLISHED') as published_node_count,
+                          (select count(*) from workflow_definition_version) as workflow_version_count,
+                          (select version_id from workflow_definition_version
+                           where status = 'PUBLISHED') as published_version_id,
                           (select count(*) from information_source) as source_count,
                           (select count(*) from network_proxy_route) as proxy_route_count,
                           (select count(*) from watchlist_item) as watchlist_item_count,
@@ -101,7 +108,17 @@ class LiquibasePostgresIntegrationTest {
                           (select allow_direct from network_proxy_route
                            where route_type = 'EXCHANGE_BYBIT') as bybit_direct_allowed,
                           (select default_reasoning_effort from ai_model_profile
-                           where model_name = 'gpt-5.6-sol') as sol_effort
+                           where model_name = 'gpt-5.6-sol') as sol_effort,
+                          (select enabled from ai_provider_profile
+                           where profile_id = 'provider_deepseek_default') as deepseek_enabled,
+                          (select base_url from ai_provider_profile
+                           where profile_id = 'provider_mimo_default') as mimo_base_url,
+                          (select provider_profile_id from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v2'
+                             and node_id = 'node_bull_analyst') as bull_provider,
+                          (select provider_profile_id from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v2'
+                             and node_id = 'node_risk_controller') as risk_provider
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
@@ -110,7 +127,10 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(2, result.getInt("account_count"));
                 assertEquals(5, result.getInt("schedule_count"));
                 assertEquals(6, result.getInt("role_count"));
-                assertEquals(12, result.getInt("node_count"));
+                assertEquals(24, result.getInt("node_count"));
+                assertEquals(12, result.getInt("published_node_count"));
+                assertEquals(2, result.getInt("workflow_version_count"));
+                assertEquals("workflowversion_standard_v2", result.getString("published_version_id"));
                 assertEquals(10, result.getInt("source_count"));
                 assertEquals(4, result.getInt("proxy_route_count"));
                 assertEquals(3, result.getInt("watchlist_item_count"));
@@ -119,6 +139,12 @@ class LiquibasePostgresIntegrationTest {
                 assertFalse(result.getBoolean("bybit_proxy_required"));
                 assertTrue(result.getBoolean("bybit_direct_allowed"));
                 assertEquals("MAX", result.getString("sol_effort"));
+                assertFalse(result.getBoolean("deepseek_enabled"));
+                assertEquals(
+                        "http://mimo2api.mimo2api.svc.cluster.local:8080/v1",
+                        result.getString("mimo_base_url"));
+                assertEquals("provider_sub2api_default", result.getString("bull_provider"));
+                assertEquals("provider_mimo_default", result.getString("risk_provider"));
             }
         }
     }
