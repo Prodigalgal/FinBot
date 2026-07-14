@@ -31,7 +31,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: createdb
-          image: postgres:18-alpine
+          image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
           command: ["/bin/sh", "-ec"]
           args:
             - |

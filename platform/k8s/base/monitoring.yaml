@@ -60,3 +60,52 @@ spec:
             severity: warning
           annotations:
             summary: FinBot JVM heap usage is above 90 percent
+        - alert: FinBotDeploymentUnavailable
+          expr: |
+            kube_deployment_status_replicas_available{
+              namespace="finbot",
+              deployment=~"finbot-(backend|quant|web|firecrawl-proxy|exchange-proxy)"
+            } < 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "FinBot deployment {{ $labels.deployment }} has no available replica"
+        - alert: FinBotPostgresUnavailable
+          expr: |
+            kube_statefulset_status_replicas_ready{
+              namespace="finbot",
+              statefulset="finbot-postgres"
+            } < 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: FinBot PostgreSQL has no ready replica
+        - alert: FinBotContainerRestartLoop
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="finbot"}[15m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "FinBot container {{ $labels.container }} is restarting repeatedly"
+        - alert: FinBotPersistentVolumeNearlyFull
+          expr: |
+            kubelet_volume_stats_available_bytes{
+              namespace="finbot",
+              persistentvolumeclaim=~"finbot-state|postgres-data-finbot-postgres-0"
+            }
+            /
+            clamp_min(
+              kubelet_volume_stats_capacity_bytes{
+                namespace="finbot",
+                persistentvolumeclaim=~"finbot-state|postgres-data-finbot-postgres-0"
+              },
+              1
+            ) < 0.15
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "FinBot PVC {{ $labels.persistentvolumeclaim }} has less than 15 percent free"

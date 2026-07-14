@@ -10,6 +10,11 @@ metadata:
     argocd.argoproj.io/sync-wave: "-10"
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: finbot-firecrawl-proxy
