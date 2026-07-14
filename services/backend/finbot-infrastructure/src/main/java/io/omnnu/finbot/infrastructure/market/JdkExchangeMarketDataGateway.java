@@ -75,29 +75,48 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
                 + "&interval=" + encode(interval(intervalSeconds, ExchangeVenue.GATE))
                 + "&limit=" + limit);
         var root = get(endpoint, OutboundRoute.EXCHANGE_GATE);
+        return parseGateCandles(
+                root,
+                instrument,
+                intervalSeconds,
+                endpoint,
+                clock.instant());
+    }
+
+    static List<MarketCandle> parseGateCandles(
+            JsonNode root,
+            ResearchInstrument instrument,
+            int intervalSeconds,
+            URI endpoint,
+            Instant observedAt) {
+        Objects.requireNonNull(root, "root");
+        Objects.requireNonNull(instrument, "instrument");
+        Objects.requireNonNull(endpoint, "endpoint");
+        Objects.requireNonNull(observedAt, "observedAt");
         if (!root.isArray()) {
             throw new MarketDataFetchException(
                     "GATE_CANDLE_RESPONSE_INVALID",
                     "Gate candle response was not an array");
         }
-        var observedAt = clock.instant();
         var candles = new ArrayList<MarketCandle>();
         root.forEach(row -> {
-            if (!row.isArray() || row.size() < 6) {
-                return;
+            if (!row.isObject()) {
+                throw new MarketDataFetchException(
+                        "GATE_CANDLE_ROW_INVALID",
+                        "Gate candle response contained a non-object row");
             }
             candles.add(new MarketCandle(
                     instrument.instrumentId(),
                     ExchangeVenue.GATE,
                     instrument.symbol(),
                     intervalSeconds,
-                    Instant.ofEpochSecond(row.get(0).asLong()),
-                    decimal(row.get(5)),
-                    decimal(row.get(3)),
-                    decimal(row.get(4)),
-                    decimal(row.get(2)),
-                    decimal(row.get(1)),
-                    row.size() > 6 ? decimal(row.get(6)) : null,
+                    gateOpenTime(row.get("t")),
+                    decimal(row.get("o")),
+                    decimal(row.get("h")),
+                    decimal(row.get("l")),
+                    decimal(row.get("c")),
+                    decimal(row.get("v")),
+                    row.hasNonNull("sum") ? decimal(row.get("sum")) : null,
                     BigDecimal.ZERO,
                     endpoint.toString(),
                     observedAt));
@@ -223,6 +242,25 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
             throw new MarketDataFetchException(
                     "MARKET_CANDLE_VALUE_INVALID",
                     "Exchange candle contained an invalid decimal value");
+        }
+    }
+
+    private static Instant gateOpenTime(JsonNode value) {
+        if (value == null || (!value.isNumber() && !value.isTextual())) {
+            throw new MarketDataFetchException(
+                    "GATE_CANDLE_TIME_INVALID",
+                    "Gate candle contained a non-numeric timestamp");
+        }
+        try {
+            var epochSecond = Long.parseLong(value.asText());
+            if (epochSecond <= 0) {
+                throw new NumberFormatException("Timestamp must be positive");
+            }
+            return Instant.ofEpochSecond(epochSecond);
+        } catch (NumberFormatException exception) {
+            throw new MarketDataFetchException(
+                    "GATE_CANDLE_TIME_INVALID",
+                    "Gate candle contained an invalid timestamp");
         }
     }
 
