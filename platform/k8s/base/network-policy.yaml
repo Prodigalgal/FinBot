@@ -93,6 +93,22 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: mimo2api
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mimo2api
+      ports:
+        - port: 8080
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 100.64.0.2/32
+      ports:
+        - port: 8181
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
               kubernetes.io/metadata.name: kube-system
       ports:
         - port: 53

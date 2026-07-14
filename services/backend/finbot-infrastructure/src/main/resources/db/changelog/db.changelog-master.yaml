@@ -21,3 +21,5 @@ databaseChangeLog:
       file: db/changelog/releases/010-exchange-route-recovery.sql
   - include:
       file: db/changelog/releases/011-research-task-mode.sql
+  - include:
+      file: db/changelog/releases/012-operational-ai-routing.sql
