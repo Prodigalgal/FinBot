@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 
 public final class DomainText {
     private static final Pattern IDENTIFIER = Pattern.compile("[a-z][a-z0-9_-]{7,79}");
-    private static final Pattern SYMBOL = Pattern.compile("[A-Z0-9_]{2,32}");
+    private static final Pattern SYMBOL = Pattern.compile("[A-Z0-9_-]{2,48}");
 
     private DomainText() {
     }

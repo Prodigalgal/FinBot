@@ -56,15 +56,32 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
     @Transactional(readOnly = true)
     public List<ResearchInstrument> listResearchInstruments() {
         return jdbcClient.sql("""
-                select distinct instrument.instrument_id, instrument.exchange,
+                select instrument.instrument_id, instrument.exchange,
                        instrument.market_type, instrument.symbol, instrument.settlement_asset
                 from watchlist_item item
                 join watchlist list on list.watchlist_id = item.watchlist_id
-                join venue_instrument instrument on instrument.product_id = item.product_id
+                join lateral (
+                  select candidate.instrument_id, candidate.exchange, candidate.market_type,
+                         candidate.symbol, candidate.settlement_asset
+                  from venue_instrument candidate
+                  where candidate.product_id = item.product_id
+                    and candidate.status = 'ACTIVE'
+                  order by
+                    case when candidate.instrument_id = item.preferred_instrument_id then 0 else 1 end,
+                    case candidate.market_type
+                      when 'LINEAR_PERPETUAL' then 0
+                      when 'INVERSE_PERPETUAL' then 1
+                      when 'SPOT' then 2
+                      else 3
+                    end,
+                    case candidate.exchange when 'GATE' then 0 else 1 end,
+                    candidate.symbol,
+                    candidate.instrument_id
+                  limit 1
+                ) instrument on true
                 where list.owner_id = 'admin'
                   and list.is_default = true
                   and item.research_mode in ('RESEARCH', 'PINNED')
-                  and instrument.status = 'ACTIVE'
                 order by instrument.exchange, instrument.symbol, instrument.instrument_id
                 """)
                 .query((resultSet, rowNumber) -> new ResearchInstrument(
