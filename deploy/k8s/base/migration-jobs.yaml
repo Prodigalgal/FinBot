@@ -35,8 +35,9 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - |
-              if [ "$(psql --tuples-only --no-align \
-                --command "SELECT 1 FROM pg_database WHERE datname = 'finbot_v2')" != "1" ]; then
+              database_exists="$(psql --tuples-only --no-align \
+                --command "SELECT 1 FROM pg_database WHERE datname = 'finbot_v2'")"
+              if [ "$database_exists" != "1" ]; then
                 createdb --encoding=UTF8 --template=template0 finbot_v2
               fi
           env:
