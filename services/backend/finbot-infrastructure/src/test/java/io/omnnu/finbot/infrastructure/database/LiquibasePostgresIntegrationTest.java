@@ -13,6 +13,9 @@ import io.omnnu.finbot.infrastructure.operations.TaskPayloadCodec;
 import java.sql.DriverManager;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.UUID;
+import liquibase.Contexts;
+import liquibase.LabelExpression;
 import liquibase.Liquibase;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
@@ -185,6 +188,70 @@ class LiquibasePostgresIntegrationTest {
     }
 
     @Test
+    void upgradesLegacyTradFiCatalogWithoutReplacingStableIdentifiers() throws Exception {
+        var databaseName = "finbot_legacy_" + UUID.randomUUID().toString().replace("-", "");
+        createDatabase(databaseName);
+        var jdbcUrl = jdbcUrl(databaseName);
+
+        try {
+            updateSchema(jdbcUrl, 20);
+            seedLegacyTradFiCatalog(jdbcUrl);
+            updateSchema(jdbcUrl);
+
+            try (var connection = DriverManager.getConnection(
+                            jdbcUrl, POSTGRES.getUsername(), POSTGRES.getPassword());
+                    var statement = connection.prepareStatement("""
+                            SELECT
+                              (SELECT count(*) FROM databasechangelog) AS changeset_count,
+                              (SELECT count(*) FROM canonical_product) AS product_count,
+                              (SELECT count(*)
+                               FROM canonical_product
+                               WHERE product_id LIKE 'product_legacy_%'
+                                 AND quote_asset = 'USDT'
+                                 AND (
+                                   (base_asset IN ('XAU', 'XAG') AND category = 'COMMODITY')
+                                   OR (base_asset IN ('AAPL', 'META', 'MSFT', 'NVDA', 'TSLA')
+                                       AND category = 'EQUITY')
+                                 )) AS adopted_product_count,
+                              (SELECT count(*)
+                               FROM canonical_product
+                               WHERE product_id IN (
+                                 'product_commodity_xau_usdt', 'product_commodity_xag_usdt',
+                                 'product_equity_aapl_usdt', 'product_equity_meta_usdt',
+                                 'product_equity_msft_usdt', 'product_equity_nvda_usdt',
+                                 'product_equity_tsla_usdt'
+                               )) AS duplicate_seed_product_count,
+                              (SELECT count(*)
+                               FROM venue_instrument
+                               WHERE instrument_id LIKE 'instrument_legacy_%'
+                                 AND exchange = 'BYBIT'
+                                 AND market_type = 'LINEAR_PERPETUAL'
+                                 AND execution_enabled = FALSE) AS adopted_instrument_count,
+                              (SELECT count(*)
+                               FROM watchlist_item watchlist
+                               JOIN venue_instrument instrument
+                                 ON instrument.instrument_id = watchlist.preferred_instrument_id
+                                AND instrument.product_id = watchlist.product_id
+                               WHERE watchlist.watchlist_id = 'watchlist_admin_default'
+                                 AND instrument.symbol IN ('XAUUSDT', 'AAPLUSDT')
+                                 AND watchlist.research_mode = 'RESEARCH') AS mapped_watchlist_count
+                            """)) {
+                try (var result = statement.executeQuery()) {
+                    result.next();
+                    assertEquals(23, result.getInt("changeset_count"));
+                    assertEquals(10, result.getInt("product_count"));
+                    assertEquals(7, result.getInt("adopted_product_count"));
+                    assertEquals(0, result.getInt("duplicate_seed_product_count"));
+                    assertEquals(7, result.getInt("adopted_instrument_count"));
+                    assertEquals(2, result.getInt("mapped_watchlist_count"));
+                }
+            }
+        } finally {
+            dropDatabase(databaseName);
+        }
+    }
+
+    @Test
     void bindsDomainInstantsAsPostgresTimestampWithTimeZone() throws Exception {
         updateSchema();
         var dataSource = new DriverManagerDataSource(
@@ -244,14 +311,80 @@ class LiquibasePostgresIntegrationTest {
     }
 
     private static void updateSchema() throws Exception {
+        updateSchema(POSTGRES.getJdbcUrl());
+    }
+
+    private static void updateSchema(String jdbcUrl) throws Exception {
         var resourceAccessor = new ClassLoaderResourceAccessor();
         var connection = DriverManager.getConnection(
-                POSTGRES.getJdbcUrl(),
-                POSTGRES.getUsername(),
-                POSTGRES.getPassword());
+                jdbcUrl, POSTGRES.getUsername(), POSTGRES.getPassword());
         try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, new JdbcConnection(connection))) {
             liquibase.validate();
             liquibase.update();
         }
+    }
+
+    private static void updateSchema(String jdbcUrl, int changesetCount) throws Exception {
+        var resourceAccessor = new ClassLoaderResourceAccessor();
+        var connection = DriverManager.getConnection(
+                jdbcUrl, POSTGRES.getUsername(), POSTGRES.getPassword());
+        try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, new JdbcConnection(connection))) {
+            liquibase.validate();
+            liquibase.update(changesetCount, new Contexts(), new LabelExpression());
+        }
+    }
+
+    private static void seedLegacyTradFiCatalog(String jdbcUrl) throws Exception {
+        try (var connection = DriverManager.getConnection(
+                        jdbcUrl, POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    INSERT INTO canonical_product (
+                        product_id, base_asset, quote_asset, display_name, category, status
+                    ) VALUES
+                        ('product_legacy_xau', 'XAU', 'USDT', 'XAU/USDT', 'CRYPTO', 'ACTIVE'),
+                        ('product_legacy_xag', 'XAG', 'USDT', 'XAG/USDT', 'CRYPTO', 'ACTIVE'),
+                        ('product_legacy_aapl', 'AAPL', 'USDT', 'AAPL/USDT', 'CRYPTO', 'ACTIVE'),
+                        ('product_legacy_meta', 'META', 'USDT', 'META/USDT', 'CRYPTO', 'ACTIVE'),
+                        ('product_legacy_msft', 'MSFT', 'USDT', 'MSFT/USDT', 'CRYPTO', 'ACTIVE'),
+                        ('product_legacy_nvda', 'NVDA', 'USDT', 'NVDA/USDT', 'CRYPTO', 'ACTIVE'),
+                        ('product_legacy_tsla', 'TSLA', 'USDT', 'TSLA/USDT', 'CRYPTO', 'ACTIVE')
+                    """);
+            statement.executeUpdate("""
+                    INSERT INTO venue_instrument (
+                        instrument_id, product_id, exchange, market_type, symbol,
+                        settlement_asset, contract_size, price_tick, quantity_step,
+                        minimum_quantity, maximum_leverage, status, metadata_updated_at
+                    ) VALUES
+                        ('instrument_legacy_xau', 'product_legacy_xau', 'BYBIT', 'LINEAR_PERPETUAL', 'XAUUSDT', 'USDT', 1, 0.01, 0.001, 0.001, 100, 'ACTIVE', CURRENT_TIMESTAMP),
+                        ('instrument_legacy_xag', 'product_legacy_xag', 'BYBIT', 'LINEAR_PERPETUAL', 'XAGUSDT', 'USDT', 1, 0.01, 0.001, 0.001, 100, 'ACTIVE', CURRENT_TIMESTAMP),
+                        ('instrument_legacy_aapl', 'product_legacy_aapl', 'BYBIT', 'LINEAR_PERPETUAL', 'AAPLUSDT', 'USDT', 1, 0.01, 0.01, 0.01, 50, 'ACTIVE', CURRENT_TIMESTAMP),
+                        ('instrument_legacy_meta', 'product_legacy_meta', 'BYBIT', 'LINEAR_PERPETUAL', 'METAUSDT', 'USDT', 1, 0.01, 0.01, 0.01, 25, 'ACTIVE', CURRENT_TIMESTAMP),
+                        ('instrument_legacy_msft', 'product_legacy_msft', 'BYBIT', 'LINEAR_PERPETUAL', 'MSFTUSDT', 'USDT', 1, 0.01, 0.01, 0.01, 50, 'ACTIVE', CURRENT_TIMESTAMP),
+                        ('instrument_legacy_nvda', 'product_legacy_nvda', 'BYBIT', 'LINEAR_PERPETUAL', 'NVDAUSDT', 'USDT', 1, 0.01, 0.01, 0.01, 50, 'ACTIVE', CURRENT_TIMESTAMP),
+                        ('instrument_legacy_tsla', 'product_legacy_tsla', 'BYBIT', 'LINEAR_PERPETUAL', 'TSLAUSDT', 'USDT', 1, 0.01, 0.01, 0.01, 50, 'ACTIVE', CURRENT_TIMESTAMP)
+                    """);
+        }
+    }
+
+    private static void createDatabase(String databaseName) throws Exception {
+        try (var connection = DriverManager.getConnection(
+                        POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.createStatement()) {
+            statement.executeUpdate("CREATE DATABASE " + databaseName);
+        }
+    }
+
+    private static void dropDatabase(String databaseName) throws Exception {
+        try (var connection = DriverManager.getConnection(
+                        POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.createStatement()) {
+            statement.executeUpdate("DROP DATABASE IF EXISTS " + databaseName + " WITH (FORCE)");
+        }
+    }
+
+    private static String jdbcUrl(String databaseName) {
+        return "jdbc:postgresql://%s:%d/%s".formatted(
+                POSTGRES.getHost(), POSTGRES.getMappedPort(5432), databaseName);
     }
 }

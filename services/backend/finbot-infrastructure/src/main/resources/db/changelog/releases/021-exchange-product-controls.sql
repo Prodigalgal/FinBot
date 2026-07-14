@@ -11,15 +11,12 @@ ALTER TABLE exchange_account
 UPDATE venue_instrument
 SET execution_enabled = FALSE,
     updated_at = CURRENT_TIMESTAMP
-WHERE instrument_id IN (
-    'instrument_bybit_xauusdt',
-    'instrument_bybit_xagusdt',
-    'instrument_bybit_aaplusdt',
-    'instrument_bybit_metausdt',
-    'instrument_bybit_msftusdt',
-    'instrument_bybit_nvdausdt',
-    'instrument_bybit_tslausdt'
-);
+WHERE exchange = 'BYBIT'
+  AND market_type = 'LINEAR_PERPETUAL'
+  AND symbol IN (
+      'XAUUSDT', 'XAGUSDT', 'AAPLUSDT', 'METAUSDT',
+      'MSFTUSDT', 'NVDAUSDT', 'TSLAUSDT'
+  );
 
 CREATE INDEX ix_venue_instrument_execution
     ON venue_instrument (exchange, status, execution_enabled, symbol)
