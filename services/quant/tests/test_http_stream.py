@@ -21,6 +21,7 @@ from finbot_quant.models import (
 from finbot_quant.service import create_app
 
 SERVICE_TOKEN = "quant-contract-test-token"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
 class FakeResearchEngine:
@@ -88,9 +89,7 @@ async def test_internal_stream_requires_service_token() -> None:
 
 
 def test_openapi_contract_declares_the_runtime_path_and_event_union() -> None:
-    contract_path = (
-        Path(__file__).resolve().parents[2] / "contracts" / "quant-research.openapi.yaml"
-    )
+    contract_path = REPOSITORY_ROOT / "contracts" / "quant-research.openapi.yaml"
     contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
 
     assert contract["openapi"] == "3.1.0"

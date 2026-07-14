@@ -47,7 +47,7 @@
 
 - 数据与运行：`finbot/instruments/`、`finbot/operator/`、`finbot/autonomous/`、`finbot/storage/`、`finbot/web/`。
 - AI 与评估：`finbot/autonomous/ai_debate.py`、`finbot/evaluation/`、`finbot/exchange/`。
-- Web UI：`web-ui/src/App.tsx`、`ProductCenterPanel.tsx`、`InstantResearchPanel.tsx`、`OperationsPanels.tsx`、`CouncilWorkflowPanel.tsx`。
+- Web UI：`apps/web/src/App.tsx`及同目录的产品、研究、运维与工作流页面。
 - 契约与专案：`docs/requirements/`、`docs/decisions/`、`tasks/in-progress/`。
 
 ## 验收标准
@@ -65,7 +65,7 @@
 ```powershell
 python -m compileall finbot
 python -m unittest discover -s tests -v
-Set-Location web-ui
+Set-Location apps/web
 npm run build
 ```
 

@@ -17,9 +17,9 @@ Breaking-rewrite backend for FinBot v2.
 - `finbot-infrastructure`: PostgreSQL, provider, exchange and Python quant HTTP/SSE adapters.
 - `finbot-bootstrap`: Spring Boot composition, REST and SSE adapters.
 
-The root Python implementation is a migration oracle only. The new `../quant-service` is an isolated,
-typed research service reached through `../contracts/quant-research.openapi.yaml`; no Java module may
-depend on Python source code or the legacy database contract.
+The archived Python implementation is a migration oracle only. The sibling `../quant` service is an
+isolated, typed research boundary reached through `../../contracts/quant-research.openapi.yaml`; no
+Java module may depend on Python source code or the legacy database contract.
 
 `FINBOT_QUANT_SERVICE_TOKEN` is mandatory at runtime and must be injected from a K8S Secret. It has no
 source-controlled default.

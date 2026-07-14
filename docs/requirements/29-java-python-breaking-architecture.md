@@ -64,17 +64,21 @@
 ## 模块边界
 
 ```text
-backend/
-  finbot-domain/          # 纯 Java 领域模型
-  finbot-application/     # use case、port、异步契约
-  finbot-infrastructure/  # JDBC、Liquibase、HTTP、exchange、AI adapter
-  finbot-bootstrap/       # Spring Boot、REST、SSE、配置、装配
-  finbot-migration/       # 一次性只读历史导入器
+apps/
+  web/                    # React + TypeScript
+services/
+  backend/
+    finbot-domain/        # 纯 Java 领域模型
+    finbot-application/   # use case、port、异步契约
+    finbot-infrastructure/# JDBC、Liquibase、HTTP、exchange、AI adapter
+    finbot-bootstrap/     # Spring Boot、REST、SSE、配置、装配
+    finbot-migration/     # 一次性只读历史导入器
+  quant/                  # Python 量化研究服务
+  proxy-gateway/          # sing-box 代理控制面
 contracts/
   quant-research.openapi.yaml
-quant-service/            # Python 量化研究服务
-proxy-gateway/            # sing-box 代理控制面
-web-ui/                   # React + TypeScript
+platform/
+  k8s/                    # Kustomize 与 Argo CD 运行资源
 ```
 
 依赖方向固定为 `bootstrap -> infrastructure -> application -> domain`；Domain 不依赖 Spring、数据库、HTTP、AI SDK 或 Python。

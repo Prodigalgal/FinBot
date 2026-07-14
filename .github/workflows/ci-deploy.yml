@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - "proxy-gateway/**"
+      - "services/proxy-gateway/**"
       - ".github/workflows/proxy-deploy.yml"
   workflow_dispatch:
 
@@ -47,30 +47,30 @@ jobs:
           java-version: "26"
       - uses: gradle/actions/setup-gradle@v4
       - name: Java clean build and PostgreSQL integration tests
-        working-directory: backend
+        working-directory: services/backend
         run: ./gradlew --no-daemon clean test :finbot-bootstrap:bootJar :finbot-migration:bootJar
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: quant-service/pyproject.toml
+          cache-dependency-path: services/quant/pyproject.toml
       - name: Install typed Python services
-        run: python -m pip install './quant-service[dev]'
+        run: python -m pip install './services/quant[dev]'
       - name: Quant service quality gates
-        working-directory: quant-service
+        working-directory: services/quant
         run: |
           python -m ruff check src tests
           python -m mypy src tests
           python -m pytest -q
-          python -m openapi_spec_validator ../contracts/quant-research.openapi.yaml
+          python -m openapi_spec_validator ../../contracts/quant-research.openapi.yaml
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web-ui/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
       - name: Frontend build and dependency audit
-        working-directory: web-ui
+        working-directory: apps/web
         run: |
           npm ci
           npx tsc -b --clean
@@ -82,14 +82,14 @@ jobs:
       - uses: imranismail/setup-kustomize@v2
       - name: Render production Kubernetes manifests
         run: |
-          sh -n deploy/k8s/scripts/import-and-cleanup.sh
-          kustomize build deploy/k8s/oracle >/tmp/finbot-rendered.yaml
+          sh -n platform/k8s/scripts/import-and-cleanup.sh
+          kustomize build platform/k8s/oracle >/tmp/finbot-rendered.yaml
           test -s /tmp/finbot-rendered.yaml
           ! grep -q 'python -m finbot.cli.serve_' /tmp/finbot-rendered.yaml
           ! grep -q '/api/v1/' /tmp/finbot-rendered.yaml
 
       - name: Install browser runtime
-        working-directory: web-ui
+        working-directory: apps/web
         run: npx playwright install --with-deps chromium
       - name: Java, quant and React end-to-end smoke
         env:
@@ -116,9 +116,9 @@ jobs:
           mkdir -p tmp/ci-smoke
           python -m finbot_quant.main >tmp/ci-smoke/quant.log 2>&1 &
           quant_pid=$!
-          java -jar backend/finbot-bootstrap/build/libs/finbot-bootstrap-2.0.0-SNAPSHOT.jar >tmp/ci-smoke/backend.log 2>&1 &
+          java -jar services/backend/finbot-bootstrap/build/libs/finbot-bootstrap-2.0.0-SNAPSHOT.jar >tmp/ci-smoke/backend.log 2>&1 &
           backend_pid=$!
-          npm --prefix web-ui run preview -- --host 127.0.0.1 >tmp/ci-smoke/web.log 2>&1 &
+          npm --prefix apps/web run preview -- --host 127.0.0.1 >tmp/ci-smoke/web.log 2>&1 &
           web_pid=$!
           trap 'kill "$quant_pid" "$backend_pid" "$web_pid" 2>/dev/null || true' EXIT
           for attempt in {1..90}; do
@@ -133,7 +133,7 @@ jobs:
             fi
             sleep 1
           done
-          npm --prefix web-ui run smoke:system
+          npm --prefix apps/web run smoke:system
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -141,7 +141,7 @@ jobs:
           path: |
             output/playwright/
             tmp/ci-smoke/*.log
-            backend/**/build/test-results/test/*.xml
+            services/backend/**/build/test-results/test/*.xml
           if-no-files-found: ignore
           retention-days: 14
 
@@ -155,15 +155,15 @@ jobs:
           - component: backend
             image: speedproxy/finbot-backend
             context: .
-            dockerfile: Dockerfile
+            dockerfile: services/backend/Dockerfile
           - component: quant
             image: speedproxy/finbot-quant
-            context: quant-service
-            dockerfile: quant-service/Dockerfile
+            context: services/quant
+            dockerfile: services/quant/Dockerfile
           - component: web
             image: speedproxy/finbot-web
-            context: web-ui
-            dockerfile: web-ui/Dockerfile
+            context: apps/web
+            dockerfile: apps/web/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -222,8 +222,8 @@ jobs:
           echo "image=${proxy_image}" >> "$GITHUB_OUTPUT"
       - name: Update ArgoCD source of truth
         run: |
-          rsync -a --delete deploy/k8s/base/ gitops/finbot/base/
-          rsync -a --delete deploy/k8s/oracle/ gitops/finbot/oracle/
+          rsync -a --delete platform/k8s/base/ gitops/finbot/base/
+          rsync -a --delete platform/k8s/oracle/ gitops/finbot/oracle/
           cd gitops/finbot/oracle
           kustomize edit set image \
             ghcr.io/example/finbot-backend=docker.io/speedproxy/finbot-backend:${IMAGE_TAG} \

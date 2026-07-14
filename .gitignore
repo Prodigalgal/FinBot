@@ -6,11 +6,11 @@ config/proxy_policy.json
 config/runtime_config.json
 config/ai_sites.json
 data/
-web-ui/node_modules/
-web-ui/dist/
-web-ui/*.tsbuildinfo
-web-ui/vite.config.js
-web-ui/vite.config.d.ts
+apps/web/node_modules/
+apps/web/dist/
+apps/web/*.tsbuildinfo
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
 .agents/
 .codex/
 .playwright-cli/
