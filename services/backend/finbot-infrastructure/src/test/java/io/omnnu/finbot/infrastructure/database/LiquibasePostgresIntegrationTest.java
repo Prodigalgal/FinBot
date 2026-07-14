@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.domain.operations.WorkerId;
+import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
+import io.omnnu.finbot.infrastructure.exchange.JdbcExchangeAccountControlRepository;
 import io.omnnu.finbot.infrastructure.operations.JdbcBackgroundTaskStore;
 import io.omnnu.finbot.infrastructure.operations.TaskPayloadCodec;
 import java.sql.DriverManager;
@@ -114,26 +116,50 @@ class LiquibasePostgresIntegrationTest {
                           (select base_url from ai_provider_profile
                            where profile_id = 'provider_mimo_default') as mimo_base_url,
                           (select provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v2'
+                           where version_id = 'workflowversion_standard_v3'
                              and node_id = 'node_bull_analyst') as bull_provider,
-                          (select provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v2'
-                             and node_id = 'node_risk_controller') as risk_provider
+                          (select fallback_provider_profile_id from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v3'
+                             and node_id = 'node_bull_analyst') as bull_fallback_provider,
+                          (select fallback_model_name from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v3'
+                             and node_id = 'node_chair_arbiter') as chair_fallback_model,
+                          (select preferred_leverage from risk_policy where active = true)
+                            as preferred_leverage,
+                          (select maximum_leverage from risk_policy where active = true)
+                            as maximum_leverage,
+                          (select active from workflow_definition
+                           where definition_id = 'workflow_standard_product_research')
+                            as workflow_active,
+                          (select count(*) from venue_instrument
+                           where execution_enabled = false) as research_only_instrument_count,
+                          (select outbound_route from information_source
+                           where source_id = 'source_x_market_search') as x_route,
+                          (select count(*) from information_schema.columns
+                           where table_schema = 'public'
+                             and (table_name, column_name) in (
+                               ('workflow_node_definition', 'fallback_provider_profile_id'),
+                               ('trade_execution_ai_stage', 'fallback_provider_profile_id'),
+                               ('risk_policy', 'preferred_leverage'),
+                               ('workflow_definition', 'active'),
+                               ('venue_instrument', 'execution_enabled'),
+                               ('exchange_account', 'version')
+                             )) as new_control_column_count
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
                 assertEquals(15, result.getInt("setting_count"));
-                assertEquals(3, result.getInt("product_count"));
+                assertEquals(10, result.getInt("product_count"));
                 assertEquals(2, result.getInt("account_count"));
                 assertEquals(5, result.getInt("schedule_count"));
                 assertEquals(6, result.getInt("role_count"));
-                assertEquals(24, result.getInt("node_count"));
+                assertEquals(36, result.getInt("node_count"));
                 assertEquals(12, result.getInt("published_node_count"));
-                assertEquals(2, result.getInt("workflow_version_count"));
-                assertEquals("workflowversion_standard_v2", result.getString("published_version_id"));
-                assertEquals(10, result.getInt("source_count"));
+                assertEquals(3, result.getInt("workflow_version_count"));
+                assertEquals("workflowversion_standard_v3", result.getString("published_version_id"));
+                assertEquals(11, result.getInt("source_count"));
                 assertEquals(4, result.getInt("proxy_route_count"));
-                assertEquals(3, result.getInt("watchlist_item_count"));
+                assertEquals(5, result.getInt("watchlist_item_count"));
                 assertFalse(result.getBoolean("gate_proxy_required"));
                 assertTrue(result.getBoolean("gate_direct_allowed"));
                 assertFalse(result.getBoolean("bybit_proxy_required"));
@@ -144,7 +170,16 @@ class LiquibasePostgresIntegrationTest {
                         "http://mimo2api.mimo2api.svc.cluster.local:8080/v1",
                         result.getString("mimo_base_url"));
                 assertEquals("provider_sub2api_default", result.getString("bull_provider"));
-                assertEquals("provider_mimo_default", result.getString("risk_provider"));
+                assertEquals("provider_mimo_default", result.getString("bull_fallback_provider"));
+                assertEquals("gpt-5.6-terra", result.getString("chair_fallback_model"));
+                assertEquals(0, new java.math.BigDecimal("20")
+                        .compareTo(result.getBigDecimal("preferred_leverage")));
+                assertEquals(0, new java.math.BigDecimal("20")
+                        .compareTo(result.getBigDecimal("maximum_leverage")));
+                assertTrue(result.getBoolean("workflow_active"));
+                assertEquals(7, result.getInt("research_only_instrument_count"));
+                assertEquals("firecrawl-ipv4", result.getString("x_route"));
+                assertEquals(6, result.getInt("new_control_column_count"));
             }
         }
     }
@@ -180,6 +215,32 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(stoppedAt, result.getObject("stopped_at", OffsetDateTime.class).toInstant());
             }
         }
+    }
+
+    @Test
+    void updatesExchangeAccountControlWithOptimisticVersion() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var repository = new JdbcExchangeAccountControlRepository(JdbcClient.create(dataSource));
+        var accountId = new ExchangeAccountId("account_bybit_demo_default");
+        var current = repository.find(accountId).orElseThrow();
+
+        var updated = repository.setEnabled(
+                        accountId,
+                        !current.enabled(),
+                        current.version(),
+                        Instant.parse("2026-07-14T09:00:00Z"))
+                .orElseThrow();
+
+        assertEquals(current.version() + 1, updated.version());
+        assertEquals(!current.enabled(), updated.enabled());
+        assertTrue(repository.setEnabled(
+                        accountId,
+                        current.enabled(),
+                        current.version(),
+                        Instant.parse("2026-07-14T09:01:00Z"))
+                .isEmpty());
     }
 
     private static void updateSchema() throws Exception {

@@ -1,0 +1,61 @@
+package io.omnnu.finbot.api.exchange;
+
+import io.omnnu.finbot.application.exchange.ExchangeAccountControl;
+import io.omnnu.finbot.application.exchange.ExchangeAccountControlUseCase;
+import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.PositiveOrZero;
+import java.time.Instant;
+import java.util.Objects;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v2/trading/accounts")
+public final class ExchangeAccountControlController {
+    private final ExchangeAccountControlUseCase useCase;
+
+    public ExchangeAccountControlController(ExchangeAccountControlUseCase useCase) {
+        this.useCase = Objects.requireNonNull(useCase, "useCase");
+    }
+
+    @PutMapping("/{accountId}/configuration")
+    public AccountControlResponse setEnabled(
+            @PathVariable String accountId,
+            @Valid @RequestBody UpdateAccountControlRequest request) {
+        return AccountControlResponse.from(useCase.setEnabled(
+                new ExchangeAccountId(accountId),
+                request.enabled(),
+                request.expectedVersion()));
+    }
+
+    public record UpdateAccountControlRequest(
+            boolean enabled,
+            @PositiveOrZero long expectedVersion) {
+    }
+
+    public record AccountControlResponse(
+            String accountId,
+            ExchangeVenue exchange,
+            ExchangeEnvironment environment,
+            String displayName,
+            boolean enabled,
+            long version,
+            Instant updatedAt) {
+        static AccountControlResponse from(ExchangeAccountControl account) {
+            return new AccountControlResponse(
+                    account.accountId().value(),
+                    account.exchange(),
+                    account.environment(),
+                    account.displayName(),
+                    account.enabled(),
+                    account.version(),
+                    account.updatedAt());
+        }
+    }
+}

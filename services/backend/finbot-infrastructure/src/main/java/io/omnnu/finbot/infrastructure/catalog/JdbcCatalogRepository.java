@@ -47,7 +47,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
                 select p.product_id, p.base_asset, p.quote_asset, p.display_name,
                        p.category, p.status,
                        (select count(*) from venue_instrument vi
-                        where vi.product_id = p.product_id and vi.status = 'ACTIVE') as instrument_count,
+                         where vi.product_id = p.product_id and vi.status = 'ACTIVE') as instrument_count,
                        (select wi.research_mode
                         from watchlist_item wi
                         join watchlist w on w.watchlist_id = wi.watchlist_id
@@ -134,7 +134,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
         var instruments = jdbcClient.sql("""
                 select instrument_id, exchange, market_type, symbol, settlement_asset,
                        contract_size, price_tick, quantity_step, minimum_quantity,
-                       maximum_leverage, status, metadata_updated_at
+                       maximum_leverage, execution_enabled, status, metadata_updated_at
                 from venue_instrument
                 where product_id = :productId
                 order by status, exchange, market_type, symbol
@@ -391,6 +391,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
                 resultSet.getBigDecimal("quantity_step"),
                 resultSet.getBigDecimal("minimum_quantity"),
                 resultSet.getBigDecimal("maximum_leverage"),
+                resultSet.getBoolean("execution_enabled"),
                 CatalogStatus.valueOf(resultSet.getString("status")),
                 instant(resultSet.getObject("metadata_updated_at", OffsetDateTime.class)));
     }

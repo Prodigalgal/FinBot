@@ -1,7 +1,6 @@
 package io.omnnu.finbot.domain.workflow;
 
-import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
-import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.shared.DomainText;
 import java.util.Objects;
 
@@ -11,9 +10,8 @@ public record WorkflowNodeDefinition(
         String displayName,
         String roleName,
         AgentRoleTemplateId roleTemplateId,
-        AiProviderProfileId providerProfileId,
-        String modelName,
-        ReasoningEffort reasoningEffort,
+        AiModelBinding primaryAiBinding,
+        AiModelBinding fallbackAiBinding,
         String systemPrompt,
         String userPromptTemplate,
         WorkflowOutputContract outputContract,
@@ -31,7 +29,6 @@ public record WorkflowNodeDefinition(
         Objects.requireNonNull(nodeType, "nodeType");
         displayName = DomainText.required(displayName, "displayName", 160);
         roleName = optional(roleName, 120);
-        modelName = optional(modelName, 160);
         systemPrompt = optional(systemPrompt, 32_000);
         userPromptTemplate = optional(userPromptTemplate, 32_000);
         Objects.requireNonNull(contextMode, "contextMode");
@@ -50,22 +47,22 @@ public record WorkflowNodeDefinition(
         if (timeoutSeconds < 5 || timeoutSeconds > 1_800) {
             throw new IllegalArgumentException("timeoutSeconds must be between 5 and 1800");
         }
-        requireLlmBinding(nodeType, providerProfileId, modelName, reasoningEffort, systemPrompt, outputContract);
+        requireLlmBinding(nodeType, primaryAiBinding, fallbackAiBinding, systemPrompt, outputContract);
     }
 
     private static void requireLlmBinding(
             WorkflowNodeType nodeType,
-            AiProviderProfileId providerProfileId,
-            String modelName,
-            ReasoningEffort reasoningEffort,
+            AiModelBinding primaryAiBinding,
+            AiModelBinding fallbackAiBinding,
             String systemPrompt,
             WorkflowOutputContract outputContract) {
         if (!nodeType.llmBacked()) {
+            if (primaryAiBinding != null || fallbackAiBinding != null) {
+                throw new IllegalArgumentException("Non-LLM workflow nodes cannot define AI model bindings");
+            }
             return;
         }
-        Objects.requireNonNull(providerProfileId, "providerProfileId");
-        Objects.requireNonNull(modelName, "modelName");
-        Objects.requireNonNull(reasoningEffort, "reasoningEffort");
+        Objects.requireNonNull(primaryAiBinding, "primaryAiBinding");
         Objects.requireNonNull(systemPrompt, "systemPrompt");
         Objects.requireNonNull(outputContract, "outputContract");
     }

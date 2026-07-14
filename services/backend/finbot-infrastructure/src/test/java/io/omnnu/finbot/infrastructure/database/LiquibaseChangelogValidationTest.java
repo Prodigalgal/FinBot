@@ -23,7 +23,7 @@ class LiquibaseChangelogValidationTest {
         try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, database)) {
             liquibase.validate();
             var changeSets = liquibase.getDatabaseChangeLog().getChangeSets();
-            assertEquals(17, changeSets.size());
+            assertEquals(23, changeSets.size());
             assertEquals("001-foundation", changeSets.getFirst().getId());
             assertEquals("002-platform-foundation", changeSets.get(1).getId());
             assertEquals("003-background-operations", changeSets.get(2).getId());
@@ -40,7 +40,13 @@ class LiquibaseChangelogValidationTest {
             assertEquals("012-operational-ai-routing", changeSets.get(13).getId());
             assertEquals("013-terminalize-exhausted-workflows", changeSets.get(14).getId());
             assertEquals("014-trade-automation-retry", changeSets.get(15).getId());
-            assertEquals("015-operational-ai-timeouts", changeSets.getLast().getId());
+            assertEquals("015-operational-ai-timeouts", changeSets.get(16).getId());
+            assertEquals("016-configurable-ai-fallback", changeSets.get(17).getId());
+            assertEquals("017-maximal-default-workflow", changeSets.get(18).getId());
+            assertEquals("018-adjustable-leverage", changeSets.get(19).getId());
+            assertEquals("019-x-bybit-tradfi-perpetuals", changeSets.get(20).getId());
+            assertEquals("020-workflow-activation", changeSets.get(21).getId());
+            assertEquals("021-exchange-product-controls", changeSets.getLast().getId());
             assertTrue(changeSets.getFirst().getChanges().size() >= 1);
         }
     }

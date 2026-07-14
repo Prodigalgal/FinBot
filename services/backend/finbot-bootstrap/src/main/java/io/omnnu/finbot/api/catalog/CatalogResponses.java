@@ -84,6 +84,7 @@ public final class CatalogResponses {
             BigDecimal quantityStep,
             BigDecimal minimumQuantity,
             BigDecimal maximumLeverage,
+            boolean executionEnabled,
             CatalogStatus status,
             Instant metadataUpdatedAt) {
         static InstrumentResponse from(VenueInstrumentView instrument) {
@@ -98,6 +99,7 @@ public final class CatalogResponses {
                     instrument.quantityStep(),
                     instrument.minimumQuantity(),
                     instrument.maximumLeverage(),
+                    instrument.executionEnabled(),
                     instrument.status(),
                     instrument.metadataUpdatedAt());
         }

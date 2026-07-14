@@ -28,6 +28,7 @@ class MarginRiskEngineTest {
             new BigDecimal("0.65"),
             new BigDecimal("5"),
             new BigDecimal("100"),
+            new BigDecimal("5"),
             new BigDecimal("20"),
             3,
             new BigDecimal("0.10"),
@@ -50,6 +51,46 @@ class MarginRiskEngineTest {
         assertTrue(plan.estimatedMaximumLossUsdt().compareTo(POLICY.riskBudgetUsdt()) <= 0);
         assertTrue(plan.approximateLiquidationPrice().compareTo(
                 proposal.invalidationPrice().value()) < 0);
+        assertEquals(new BigDecimal("5"), plan.leverage());
+    }
+
+    @Test
+    void supportsHighLeverageWhenExplicitlyPreferredAndAllHardLimitsAllowIt() {
+        var highLeveragePolicy = new RiskPolicy(
+                "paper-high-leverage-test",
+                true,
+                new BigDecimal("0.65"),
+                new BigDecimal("5"),
+                new BigDecimal("100"),
+                new BigDecimal("500"),
+                new BigDecimal("500"),
+                3,
+                new BigDecimal("0.10"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO);
+        var proposal = proposal(DirectionalAction.BUY, "60000", "63000", "59940");
+        var instrument = new RiskInstrumentSpec(
+                new InstrumentId("instrument_gate_btc_test"),
+                new ExchangeAccountId("account_gate_test"),
+                ExchangeVenue.GATE,
+                ExchangeEnvironment.TESTNET,
+                new InstrumentSymbol("BTC_USDT"),
+                new BigDecimal("0.0001"),
+                BigDecimal.ONE,
+                BigDecimal.ONE,
+                new BigDecimal("500"),
+                new Price(new BigDecimal("60000")),
+                0);
+
+        var plan = new MarginRiskEngine().assess(
+                proposal,
+                new Confidence(new BigDecimal("0.90")),
+                instrument,
+                highLeveragePolicy);
+
+        assertEquals(RiskAssessmentStatus.APPROVED, plan.status());
+        assertEquals(0, new BigDecimal("500").compareTo(plan.leverage()));
     }
 
     @Test

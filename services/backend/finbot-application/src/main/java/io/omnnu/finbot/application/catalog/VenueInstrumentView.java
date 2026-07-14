@@ -18,6 +18,7 @@ public record VenueInstrumentView(
         BigDecimal quantityStep,
         BigDecimal minimumQuantity,
         BigDecimal maximumLeverage,
+        boolean executionEnabled,
         CatalogStatus status,
         Instant metadataUpdatedAt) {
 }

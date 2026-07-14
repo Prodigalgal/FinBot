@@ -22,6 +22,10 @@ import io.omnnu.finbot.application.configuration.ConfigurationUseCase;
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
 import io.omnnu.finbot.application.exchange.OmsExecutionStore;
 import io.omnnu.finbot.application.exchange.ExchangeAccountGateway;
+import io.omnnu.finbot.application.exchange.ExchangeAccountConfigurationRepository;
+import io.omnnu.finbot.application.exchange.ExchangeAccountControlRepository;
+import io.omnnu.finbot.application.exchange.ExchangeAccountControlService;
+import io.omnnu.finbot.application.exchange.ExchangeAccountControlUseCase;
 import io.omnnu.finbot.application.exchange.ExchangeAccountSyncService;
 import io.omnnu.finbot.application.exchange.ExchangeAccountSyncUseCase;
 import io.omnnu.finbot.application.exchange.ExchangeSyncCursorStore;
@@ -431,11 +435,19 @@ public class RuntimeConfiguration {
     @Bean
     ExchangeAccountSyncUseCase exchangeAccountSyncUseCase(
             ExchangeAccountGateway gateway,
+            ExchangeAccountConfigurationRepository accounts,
             ExchangeSyncCursorStore cursors,
             TradingLedgerWriter ledger,
             Clock clock,
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
-        return new ExchangeAccountSyncService(gateway, cursors, ledger, clock, executor);
+        return new ExchangeAccountSyncService(gateway, accounts, cursors, ledger, clock, executor);
+    }
+
+    @Bean
+    ExchangeAccountControlUseCase exchangeAccountControlUseCase(
+            ExchangeAccountControlRepository repository,
+            Clock clock) {
+        return new ExchangeAccountControlService(repository, clock);
     }
 
     @Bean

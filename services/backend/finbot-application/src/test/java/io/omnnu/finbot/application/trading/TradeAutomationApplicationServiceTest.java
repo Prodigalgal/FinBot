@@ -12,15 +12,18 @@ import io.omnnu.finbot.application.exchange.PaperOrderExecutionUseCase;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.application.workflow.WorkflowEventPublisher;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionStore;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.risk.MarginRiskEngine;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeType;
 import io.omnnu.finbot.domain.workflow.WorkflowOutputContract;
+import io.omnnu.finbot.domain.workflow.WorkflowRetryPolicy;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -139,13 +142,16 @@ class TradeAutomationApplicationServiceTest {
     private static TradeExecutionAiStageConfig stage(TradeExecutionAiStage stage) {
         return new TradeExecutionAiStageConfig(
                 stage,
-                new AiProviderProfileId("provider_sub2api_default"),
-                "gpt-5.6-sol",
-                ReasoningEffort.MAX,
+                new AiModelBinding(
+                        new AiProviderProfileId("provider_sub2api_default"),
+                        "gpt-5.6-sol",
+                        ReasoningEffort.MAX),
+                null,
                 "System prompt",
                 "User prompt",
                 4_096,
                 300,
+                new WorkflowRetryPolicy(3, Duration.ofSeconds(2)),
                 true,
                 0);
     }

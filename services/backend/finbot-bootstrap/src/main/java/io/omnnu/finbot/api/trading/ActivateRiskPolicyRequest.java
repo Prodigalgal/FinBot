@@ -15,7 +15,8 @@ public record ActivateRiskPolicyRequest(
         @NotNull @DecimalMin("0") @DecimalMax("1") BigDecimal minimumConfidence,
         @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal riskBudgetUsdt,
         @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal maximumNotionalUsdt,
-        @NotNull @DecimalMin("1") @DecimalMax("100") BigDecimal maximumLeverage,
+        @NotNull @DecimalMin("1") BigDecimal preferredLeverage,
+        @NotNull @DecimalMin("1") BigDecimal maximumLeverage,
         @Min(1) @Max(100) int maximumOpenPositions,
         @NotNull @DecimalMin(value = "0", inclusive = false) @DecimalMax(value = "1", inclusive = false)
         BigDecimal maximumStopDistance,

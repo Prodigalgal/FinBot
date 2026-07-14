@@ -146,6 +146,28 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
     }
 
     @Override
+    public WorkflowDefinitionSummary setActive(WorkflowDefinitionId definitionId, boolean active) {
+        Objects.requireNonNull(definitionId, "definitionId");
+        var summary = definitions().stream()
+                .filter(value -> value.definitionId().equals(definitionId))
+                .findFirst()
+                .orElseThrow(() -> new WorkflowNotFoundException("工作流不存在"));
+        if (active && summary.publishedVersionId() == null) {
+            throw new WorkflowManagementConflictException("工作流发布后才能激活");
+        }
+        if (summary.active() == active) {
+            return summary;
+        }
+        if (!repository.setActive(definitionId, active, clock.instant())) {
+            throw new WorkflowManagementConflictException("工作流激活状态更新冲突，请刷新后重试");
+        }
+        return definitions().stream()
+                .filter(value -> value.definitionId().equals(definitionId))
+                .findFirst()
+                .orElseThrow(() -> new WorkflowNotFoundException("工作流不存在"));
+    }
+
+    @Override
     public List<AgentRoleTemplate> roles() {
         return repository.listRoles();
     }
@@ -237,8 +259,8 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
         canonical.append("node|").append(node.nodeId().value()).append('|')
                 .append(node.nodeType()).append('|').append(node.displayName()).append('|')
                 .append(node.roleName()).append('|').append(node.roleTemplateId()).append('|')
-                .append(node.providerProfileId()).append('|').append(node.modelName()).append('|')
-                .append(node.reasoningEffort()).append('|').append(node.systemPrompt()).append('|')
+                .append(node.primaryAiBinding()).append('|').append(node.fallbackAiBinding()).append('|')
+                .append(node.systemPrompt()).append('|')
                 .append(node.userPromptTemplate()).append('|').append(node.outputContract()).append('|')
                 .append(node.contextMode()).append('|').append(node.contextHistoryRounds()).append('|')
                 .append(node.contextMaximumMessages()).append('|').append(node.maximumOutputTokens()).append('|')

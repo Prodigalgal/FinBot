@@ -45,10 +45,11 @@ public final class MarginRiskEngine {
                 .add(policy.liquidationBufferRate())
                 .add(policy.takerFeeRate())
                 .add(policy.slippageRate());
-        var safeLeverage = BigDecimal.ONE.divide(safeLeverageDenominator, CALCULATION)
+        var riskDerivedMaximumLeverage = BigDecimal.ONE.divide(safeLeverageDenominator, CALCULATION)
                 .setScale(0, RoundingMode.FLOOR)
                 .min(policy.maximumLeverage())
                 .min(instrument.venueMaximumLeverage());
+        var safeLeverage = policy.preferredLeverage().min(riskDerivedMaximumLeverage);
         if (safeLeverage.compareTo(BigDecimal.ONE) < 0) {
             return RiskAssessmentPlan.blocked(java.util.List.of(
                     "止损距离与费用导致不存在至少 1x 的安全杠杆"));

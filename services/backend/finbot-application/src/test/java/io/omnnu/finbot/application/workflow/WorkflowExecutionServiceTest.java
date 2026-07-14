@@ -21,6 +21,7 @@ import io.omnnu.finbot.application.ai.AiUsageReported;
 import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.domain.ai.AiInvocationId;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
@@ -190,6 +191,51 @@ class WorkflowExecutionServiceTest {
         assertTrue(failed.retryable());
     }
 
+    @Test
+    void exhaustsPrimaryBindingBeforeUsingConfiguredFallback() {
+        var version = workflowVersion();
+        var store = new InMemoryExecutionStore(new WorkflowExecutionContext(
+                RUN_ID,
+                WorkflowRunStatus.ACCEPTED,
+                "Analyze BTC liquidity and directional risk",
+                "{\"evidence\":[{\"evidence_id\":\"evidence_test\"}]}",
+                version));
+        var gateway = new RecordingCompletionGateway(
+                new WorkflowNodeId("node_chair00"),
+                new AiProviderProfileId("provider_test_default"));
+        var events = new RecordingEventPublisher();
+        var idSequence = new AtomicInteger();
+        SortableIdGenerator ids = prefix -> prefix + "fallback" + idSequence.incrementAndGet();
+        var invoker = new WorkflowAiInvoker(
+                gateway,
+                ignored -> AiProtocol.CHAT,
+                new NoOpAuditStore(),
+                new NoOpBudgetStore(),
+                events,
+                ids,
+                CLOCK);
+
+        try (var executor = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().factory())) {
+            var service = new WorkflowExecutionService(
+                    store,
+                    events,
+                    new WorkflowRunFailureService(store, events),
+                    invoker,
+                    outputParser(),
+                    CLOCK,
+                    executor);
+            service.execute(RUN_ID).toCompletableFuture().join();
+        }
+
+        var chairRequests = gateway.requests().stream()
+                .filter(request -> request.nodeId().value().equals("node_chair00"))
+                .toList();
+        assertEquals(2, chairRequests.size());
+        assertEquals("provider_test_default", chairRequests.get(0).providerProfileId().value());
+        assertEquals("provider_fallback_default", chairRequests.get(1).providerProfileId().value());
+        assertEquals(WorkflowRunStatus.COMPLETED, store.status());
+    }
+
     private static StructuredAiOutputParser outputParser() {
         return new StructuredAiOutputParser() {
             @Override
@@ -219,7 +265,7 @@ class WorkflowExecutionServiceTest {
         var input = node("node_input000", WorkflowNodeType.INPUT, WorkflowContextMode.NONE);
         var agentA = node("node_agent_a", WorkflowNodeType.AGENT, WorkflowContextMode.LATEST);
         var agentB = node("node_agent_b", WorkflowNodeType.AGENT, WorkflowContextMode.LATEST);
-        var chair = node("node_chair00", WorkflowNodeType.CHAIR, WorkflowContextMode.UPSTREAM);
+        var chair = node("node_chair00", WorkflowNodeType.CHAIR, WorkflowContextMode.UPSTREAM, true);
         var output = node("node_output00", WorkflowNodeType.OUTPUT, WorkflowContextMode.UPSTREAM);
         return new WorkflowDefinitionVersion(
                 new WorkflowVersionId("workflowversion_test_v1"),
@@ -249,6 +295,14 @@ class WorkflowExecutionServiceTest {
             String id,
             WorkflowNodeType type,
             WorkflowContextMode contextMode) {
+        return node(id, type, contextMode, false);
+    }
+
+    private static WorkflowNodeDefinition node(
+            String id,
+            WorkflowNodeType type,
+            WorkflowContextMode contextMode,
+            boolean fallback) {
         var llm = type.llmBacked();
         return new WorkflowNodeDefinition(
                 new WorkflowNodeId(id),
@@ -256,9 +310,14 @@ class WorkflowExecutionServiceTest {
                 id,
                 llm ? id : null,
                 null,
-                llm ? new AiProviderProfileId("provider_test_default") : null,
-                llm ? "model-test" : null,
-                llm ? ReasoningEffort.HIGH : null,
+                llm ? new AiModelBinding(
+                        new AiProviderProfileId("provider_test_default"),
+                        "model-test",
+                        ReasoningEffort.HIGH) : null,
+                llm && fallback ? new AiModelBinding(
+                        new AiProviderProfileId("provider_fallback_default"),
+                        "model-fallback",
+                        ReasoningEffort.MEDIUM) : null,
                 llm ? "Return a structured, evidence-backed result." : null,
                 llm ? "Review the request and the supplied context." : null,
                 llm
@@ -296,13 +355,21 @@ class WorkflowExecutionServiceTest {
         private final List<AiCompletionRequest> requests = new CopyOnWriteArrayList<>();
         private final Map<WorkflowNodeId, AtomicInteger> calls = new ConcurrentHashMap<>();
         private final WorkflowNodeId failingNodeId;
+        private final AiProviderProfileId failingProviderProfileId;
 
         private RecordingCompletionGateway() {
-            this(null);
+            this(null, null);
         }
 
         private RecordingCompletionGateway(WorkflowNodeId failingNodeId) {
+            this(failingNodeId, null);
+        }
+
+        private RecordingCompletionGateway(
+                WorkflowNodeId failingNodeId,
+                AiProviderProfileId failingProviderProfileId) {
             this.failingNodeId = failingNodeId;
+            this.failingProviderProfileId = failingProviderProfileId;
         }
 
         @Override
@@ -321,7 +388,9 @@ class WorkflowExecutionServiceTest {
                     }
                     emitted = true;
                     subscriber.onNext(new AiStreamStarted(request.invocationId(), NOW));
-                    if (request.nodeId().equals(failingNodeId)) {
+                    if (request.nodeId().equals(failingNodeId)
+                            && (failingProviderProfileId == null
+                                    || request.providerProfileId().equals(failingProviderProfileId))) {
                         subscriber.onNext(new AiCompletionFailed(
                                 request.invocationId(),
                                 "AI_PROVIDER_TEMPORARILY_UNAVAILABLE",

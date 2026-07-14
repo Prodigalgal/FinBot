@@ -214,6 +214,7 @@ public class JdbcTradingLedgerStore implements TradingLedgerWriter, TradingLedge
         return jdbcClient.sql("""
                 select a.account_id, a.exchange, a.environment, a.display_name,
                        a.api_key_env, a.api_secret_env, a.proxy_route, a.enabled,
+                       a.version,
                        coalesce(s.currency, 'USDT') as currency,
                        coalesce(s.equity, 0) as equity,
                        coalesce(s.available_balance, 0) as available_balance,
@@ -384,6 +385,7 @@ public class JdbcTradingLedgerStore implements TradingLedgerWriter, TradingLedge
                 resultSet.getString("api_secret_env"),
                 resultSet.getString("proxy_route"),
                 resultSet.getBoolean("enabled"),
+                resultSet.getLong("version"),
                 resultSet.getString("currency"),
                 resultSet.getBigDecimal("equity"),
                 resultSet.getBigDecimal("available_balance"),

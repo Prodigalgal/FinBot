@@ -97,13 +97,20 @@ export const api = {
   tradeAutomations: (limit = 50) => request<TradeAutomationSummary[]>(`/api/v2/trading/automations${query({ limit })}`),
   tradeAutomation: (runId: string) => request<TradeAutomationDetail>(`/api/v2/trading/automations/${encodeURIComponent(runId)}`),
   tradeAutomationConfiguration: () => request<TradeAutomationConfiguration>('/api/v2/trading/automation-configuration'),
-  updateExecutionStage: (stage: string, body: Omit<ExecutionAiStage, 'stage' | 'providerProfileId' | 'version'> & { providerProfileId: string; expectedVersion: number }) =>
+  updateExecutionStage: (stage: string, body: {
+    primaryAiBinding: { providerProfileId: string; modelName: string; reasoningEffort: ExecutionAiStage['primaryAiBinding']['reasoningEffort'] };
+    fallbackAiBinding: { providerProfileId: string; modelName: string; reasoningEffort: ExecutionAiStage['primaryAiBinding']['reasoningEffort'] } | null;
+    systemPrompt: string; userPromptTemplate: string; maximumOutputTokens: number; timeoutSeconds: number;
+    retryMaximumAttempts: number; retryBackoffSeconds: number; enabled: boolean; expectedVersion: number;
+  }) =>
     request<ExecutionAiStage>(`/api/v2/trading/automation-configuration/ai-stages/${stage}`, { method: 'PUT', body: JSON.stringify(body) }),
   activateRiskPolicy: (body: RiskPolicy & { policyVersion: string }) => {
     const { version: _ignoredVersion, ...requestBody } = body;
     return request<RiskPolicy>('/api/v2/trading/automation-configuration/risk-policies', { method: 'POST', body: JSON.stringify(requestBody) });
   },
   accounts: (range = 'ALL', from?: string, to?: string) => request<AccountsOverview>(`/api/v2/trading/accounts${query({ range, from, to })}`),
+  setExchangeAccountEnabled: (accountId: string, enabled: boolean, expectedVersion: number) =>
+    request<{ accountId: string; enabled: boolean; version: number }>(`/api/v2/trading/accounts/${encodeURIComponent(accountId)}/configuration`, { method: 'PUT', body: JSON.stringify({ enabled, expectedVersion }) }),
   positions: (accountId: string) => request<PositionRecord[]>(`/api/v2/trading/accounts/${encodeURIComponent(accountId)}/positions`),
   activity: (params: { accountId?: string; activityType?: string; range?: string; from?: string; to?: string; limit?: number }) =>
     request<{ activities: ActivityRecord[]; nextCursor: unknown | null }>(`/api/v2/trading/activity${query(params)}`),
@@ -124,6 +131,7 @@ export const api = {
   workflowSchema: () => request<WorkflowSchema>('/api/v2/workflow-schema'),
   saveWorkflowDraft: (body: Record<string, unknown>) => request<WorkflowVersion>('/api/v2/workflow-drafts', { method: 'PUT', body: JSON.stringify(body) }),
   publishWorkflow: (versionId: string) => request<WorkflowVersion>(`/api/v2/workflow-versions/${encodeURIComponent(versionId)}/publish`, { method: 'POST', body: '{}' }),
+  setWorkflowActive: (definitionId: string, active: boolean) => request<WorkflowDefinitionSummary>(`/api/v2/workflow-definitions/${encodeURIComponent(definitionId)}/activation`, { method: 'PUT', body: JSON.stringify({ active }) }),
 
   configuration: () => request<ConfigurationSnapshot>('/api/v2/configuration'),
   updateSetting: (setting: SystemSetting, value: string) => request<SystemSetting>(`/api/v2/configuration/settings/${encodeURIComponent(setting.key)}`, { method: 'PUT', body: JSON.stringify({ value, expectedVersion: setting.version }) }),

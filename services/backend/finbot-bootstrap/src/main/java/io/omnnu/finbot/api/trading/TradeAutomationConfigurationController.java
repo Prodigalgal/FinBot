@@ -4,8 +4,9 @@ import io.omnnu.finbot.application.trading.TradeAutomationConfigurationRepositor
 import io.omnnu.finbot.application.trading.TradeAutomationConfigurationSnapshot;
 import io.omnnu.finbot.application.trading.TradeExecutionAiStage;
 import io.omnnu.finbot.application.trading.TradeExecutionAiStageConfig;
-import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.risk.RiskPolicy;
+import io.omnnu.finbot.domain.workflow.WorkflowRetryPolicy;
+import java.time.Duration;
 import jakarta.validation.Valid;
 import java.util.Objects;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,13 +37,15 @@ public final class TradeAutomationConfigurationController {
             @Valid @RequestBody UpdateExecutionAiStageRequest request) {
         var config = new TradeExecutionAiStageConfig(
                 stage,
-                new AiProviderProfileId(request.providerProfileId()),
-                request.modelName(),
-                request.reasoningEffort(),
+                request.primaryAiBinding().toDomain(),
+                request.fallbackAiBinding() == null ? null : request.fallbackAiBinding().toDomain(),
                 request.systemPrompt(),
                 request.userPromptTemplate(),
                 request.maximumOutputTokens(),
                 request.timeoutSeconds(),
+                new WorkflowRetryPolicy(
+                        request.retryMaximumAttempts(),
+                        Duration.ofSeconds(request.retryBackoffSeconds())),
                 request.enabled(),
                 request.expectedVersion());
         return repository.updateAiStage(config, request.expectedVersion());
@@ -56,6 +59,7 @@ public final class TradeAutomationConfigurationController {
                 request.minimumConfidence(),
                 request.riskBudgetUsdt(),
                 request.maximumNotionalUsdt(),
+                request.preferredLeverage(),
                 request.maximumLeverage(),
                 request.maximumOpenPositions(),
                 request.maximumStopDistance(),

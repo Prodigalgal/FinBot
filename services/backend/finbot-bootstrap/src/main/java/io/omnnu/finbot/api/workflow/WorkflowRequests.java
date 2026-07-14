@@ -1,5 +1,6 @@
 package io.omnnu.finbot.api.workflow;
 
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplateId;
@@ -39,6 +40,9 @@ public final class WorkflowRequests {
     private WorkflowRequests() {
     }
 
+    public record ActivationRequest(boolean active) {
+    }
+
     public record SaveDraftRequest(
             @Size(max = 80) String definitionId,
             @Size(max = 80) String versionId,
@@ -61,9 +65,8 @@ public final class WorkflowRequests {
             @NotBlank @Size(max = 160) String displayName,
             @Size(max = 120) String roleName,
             @Size(max = 80) String roleTemplateId,
-            @Size(max = 80) String providerProfileId,
-            @Size(max = 160) String modelName,
-            ReasoningEffort reasoningEffort,
+            @Valid AiBindingRequest primaryAiBinding,
+            @Valid AiBindingRequest fallbackAiBinding,
             @Size(max = 32000) String systemPrompt,
             @Size(max = 32000) String userPromptTemplate,
             WorkflowOutputContract outputContract,
@@ -87,11 +90,8 @@ public final class WorkflowRequests {
                     roleTemplateId == null || roleTemplateId.isBlank()
                             ? null
                             : new AgentRoleTemplateId(roleTemplateId),
-                    providerProfileId == null || providerProfileId.isBlank()
-                            ? null
-                            : new AiProviderProfileId(providerProfileId),
-                    modelName,
-                    reasoningEffort,
+                    primaryAiBinding == null ? null : primaryAiBinding.toDomain(),
+                    fallbackAiBinding == null ? null : fallbackAiBinding.toDomain(),
                     systemPrompt,
                     userPromptTemplate,
                     outputContract,
@@ -104,6 +104,18 @@ public final class WorkflowRequests {
                     operation,
                     new WorkflowCanvasPosition(positionX, positionY),
                     enabled);
+        }
+    }
+
+    public record AiBindingRequest(
+            @NotBlank @Size(max = 80) String providerProfileId,
+            @NotBlank @Size(max = 160) String modelName,
+            @NotNull ReasoningEffort reasoningEffort) {
+        AiModelBinding toDomain() {
+            return new AiModelBinding(
+                    new AiProviderProfileId(providerProfileId),
+                    modelName,
+                    reasoningEffort);
         }
     }
 

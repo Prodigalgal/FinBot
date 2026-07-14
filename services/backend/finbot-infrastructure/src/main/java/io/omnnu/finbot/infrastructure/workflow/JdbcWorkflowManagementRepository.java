@@ -6,8 +6,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.workflow.WorkflowDefinitionSummary;
+import io.omnnu.finbot.application.workflow.ActiveWorkflowQuery;
 import io.omnnu.finbot.application.workflow.WorkflowManagementConflictException;
 import io.omnnu.finbot.application.workflow.WorkflowManagementRepository;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplate;
@@ -49,7 +51,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public class JdbcWorkflowManagementRepository implements WorkflowManagementRepository {
+public class JdbcWorkflowManagementRepository implements WorkflowManagementRepository, ActiveWorkflowQuery {
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
 
@@ -62,7 +64,7 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
     @Transactional(readOnly = true)
     public List<WorkflowDefinitionSummary> listDefinitions() {
         return jdbcClient.sql("""
-                select d.definition_id, d.name, d.description, d.built_in, d.updated_at,
+                select d.definition_id, d.name, d.description, d.built_in, d.active, d.updated_at,
                        published.version_id as published_version_id,
                        published.version_number as published_version_number,
                        draft.version_id as draft_version_id,
@@ -88,12 +90,31 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                         resultSet.getString("name"),
                         resultSet.getString("description"),
                         resultSet.getBoolean("built_in"),
+                        resultSet.getBoolean("active"),
                         nullableVersionId(resultSet.getString("published_version_id")),
                         nullableInteger(resultSet, "published_version_number"),
                         nullableVersionId(resultSet.getString("draft_version_id")),
                         nullableInteger(resultSet, "draft_version_number"),
                         instant(resultSet.getObject("updated_at", OffsetDateTime.class))))
                 .list();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WorkflowVersionId> activePublishedVersionIds() {
+        return jdbcClient.sql("""
+                select v.version_id
+                from workflow_definition d
+                join workflow_definition_version v
+                  on v.definition_id = d.definition_id and v.status = 'PUBLISHED'
+                where d.active = true
+                order by d.built_in desc, d.name, d.definition_id
+                """)
+                .query(String.class)
+                .list()
+                .stream()
+                .map(WorkflowVersionId::new)
+                .toList();
     }
 
     @Override
@@ -114,7 +135,9 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
         }
         var nodes = jdbcClient.sql("""
                 select node_id, node_type, display_name, role_name, role_template_id,
-                       provider_profile_id, model_name, reasoning_effort, system_prompt,
+                       provider_profile_id, model_name, reasoning_effort,
+                       fallback_provider_profile_id, fallback_model_name, fallback_reasoning_effort,
+                       system_prompt,
                        user_prompt_template, output_contract, context_mode,
                        context_history_rounds, context_max_messages, maximum_output_tokens,
                        timeout_seconds, retry_max_attempts, retry_backoff_seconds,
@@ -168,6 +191,20 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                 .query(String.class)
                 .optional()
                 .flatMap(value -> findVersion(new WorkflowVersionId(value)));
+    }
+
+    @Override
+    @Transactional
+    public boolean setActive(WorkflowDefinitionId definitionId, boolean active, Instant updatedAt) {
+        return jdbcClient.sql("""
+                update workflow_definition
+                set active = :active, updated_at = :updatedAt
+                where definition_id = :definitionId and active <> :active
+                """)
+                .param("definitionId", definitionId.value())
+                .param("active", active)
+                .param("updatedAt", timestamp(updatedAt))
+                .update() == 1;
     }
 
     @Override
@@ -425,14 +462,18 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
         jdbcClient.sql("""
                 insert into workflow_node_definition (
                   version_id, node_id, node_type, display_name, role_name, role_template_id,
-                  provider_profile_id, model_name, reasoning_effort, system_prompt,
+                  provider_profile_id, model_name, reasoning_effort,
+                  fallback_provider_profile_id, fallback_model_name, fallback_reasoning_effort,
+                  system_prompt,
                   user_prompt_template, output_contract, context_mode, context_history_rounds,
                   context_max_messages, maximum_output_tokens, timeout_seconds,
                   retry_max_attempts, retry_backoff_seconds, operation,
                   position_x, position_y, enabled
                 ) values (
                   :versionId, :nodeId, :nodeType, :displayName, :roleName, :roleTemplateId,
-                  :providerProfileId, :modelName, :reasoningEffort, :systemPrompt,
+                  :providerProfileId, :modelName, :reasoningEffort,
+                  :fallbackProviderProfileId, :fallbackModelName, :fallbackReasoningEffort,
+                  :systemPrompt,
                   :userPromptTemplate, :outputContract, :contextMode, :historyRounds,
                   :maximumMessages, :maximumOutputTokens, :timeoutSeconds,
                   :retryAttempts, :retryBackoffSeconds, :operation,
@@ -445,9 +486,12 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                 .param("displayName", node.displayName())
                 .param("roleName", node.roleName())
                 .param("roleTemplateId", node.roleTemplateId() == null ? null : node.roleTemplateId().value())
-                .param("providerProfileId", node.providerProfileId() == null ? null : node.providerProfileId().value())
-                .param("modelName", node.modelName())
-                .param("reasoningEffort", node.reasoningEffort() == null ? null : node.reasoningEffort().name())
+                .param("providerProfileId", providerProfileId(node.primaryAiBinding()))
+                .param("modelName", modelName(node.primaryAiBinding()))
+                .param("reasoningEffort", reasoningEffort(node.primaryAiBinding()))
+                .param("fallbackProviderProfileId", providerProfileId(node.fallbackAiBinding()))
+                .param("fallbackModelName", modelName(node.fallbackAiBinding()))
+                .param("fallbackReasoningEffort", reasoningEffort(node.fallbackAiBinding()))
                 .param("systemPrompt", node.systemPrompt())
                 .param("userPromptTemplate", node.userPromptTemplate())
                 .param("outputContract", node.outputContract() == null ? null : node.outputContract().name())
@@ -494,6 +538,8 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
     private WorkflowNodeDefinition node(ResultSet resultSet) throws SQLException {
         var providerId = resultSet.getString("provider_profile_id");
         var reasoning = resultSet.getString("reasoning_effort");
+        var fallbackProviderId = resultSet.getString("fallback_provider_profile_id");
+        var fallbackReasoning = resultSet.getString("fallback_reasoning_effort");
         var outputContract = resultSet.getString("output_contract");
         var roleTemplateId = resultSet.getString("role_template_id");
         return new WorkflowNodeDefinition(
@@ -502,9 +548,11 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                 resultSet.getString("display_name"),
                 resultSet.getString("role_name"),
                 roleTemplateId == null ? null : new AgentRoleTemplateId(roleTemplateId),
-                providerId == null ? null : new AiProviderProfileId(providerId),
-                resultSet.getString("model_name"),
-                reasoning == null ? null : ReasoningEffort.valueOf(reasoning),
+                binding(providerId, resultSet.getString("model_name"), reasoning),
+                binding(
+                        fallbackProviderId,
+                        resultSet.getString("fallback_model_name"),
+                        fallbackReasoning),
                 resultSet.getString("system_prompt"),
                 resultSet.getString("user_prompt_template"),
                 outputContract == null ? null : WorkflowOutputContract.valueOf(outputContract),
@@ -521,6 +569,27 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                         resultSet.getBigDecimal("position_x"),
                         resultSet.getBigDecimal("position_y")),
                 resultSet.getBoolean("enabled"));
+    }
+
+    private static AiModelBinding binding(String providerId, String modelName, String reasoning) {
+        return providerId == null
+                ? null
+                : new AiModelBinding(
+                        new AiProviderProfileId(providerId),
+                        modelName,
+                        ReasoningEffort.valueOf(reasoning));
+    }
+
+    private static String providerProfileId(AiModelBinding binding) {
+        return binding == null ? null : binding.providerProfileId().value();
+    }
+
+    private static String modelName(AiModelBinding binding) {
+        return binding == null ? null : binding.modelName();
+    }
+
+    private static String reasoningEffort(AiModelBinding binding) {
+        return binding == null ? null : binding.reasoningEffort().name();
     }
 
     private WorkflowEdgeDefinition edge(ResultSet resultSet) throws SQLException {

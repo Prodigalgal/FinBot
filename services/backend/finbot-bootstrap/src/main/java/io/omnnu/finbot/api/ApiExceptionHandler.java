@@ -4,6 +4,7 @@ import io.omnnu.finbot.application.identity.AuthenticationRejectedException;
 import io.omnnu.finbot.application.configuration.ConfigurationConflictException;
 import io.omnnu.finbot.application.catalog.CatalogConflictException;
 import io.omnnu.finbot.application.catalog.CatalogNotFoundException;
+import io.omnnu.finbot.application.exchange.ExchangeAccountNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import io.omnnu.finbot.application.operations.TaskNotFoundException;
 import io.omnnu.finbot.application.workflow.WorkflowManagementConflictException;
@@ -37,6 +38,7 @@ public final class ApiExceptionHandler {
 
     @ExceptionHandler({
         CatalogNotFoundException.class,
+        ExchangeAccountNotFoundException.class,
         TaskNotFoundException.class,
         WorkflowNotFoundException.class
     })

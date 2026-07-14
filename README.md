@@ -13,24 +13,72 @@ FinBot 是面向自动研究与模拟交易的 AI 决策平台。系统按定时
 - Python Quant 只负责无状态量化计算，通过类型化 HTTP/SSE 契约与 Java 通信。
 - React 管理台只访问 Java `/api/v2`，SSE 支持断线续传与 heartbeat。
 - PostgreSQL `finbot_v2` 保存运行状态和 append-only 交易事实；SQLite 不参与生产。
-- Gate TestNet 与 Bybit Demo 允许策略约束内的自动模拟执行；Mainnet/Live 私有写入在多层代码门禁中永久阻断。
+- Gate TestNet 与 Bybit Demo 仅对已验证且开启 `execution_enabled` 的合约允许策略约束内的自动模拟执行；Mainnet/Live 私有写入在多层代码门禁中永久阻断。
+- 产品使用 `canonical_product -> venue_instrument -> exchange_account` 三层模型；关闭交易所账户会同时阻止其行情候选、账户同步、风控候选和新订单，但保留产品与历史账本。
+- 每个 LLM 工作流节点和最终交易机器人阶段可独立配置主模型、兜底模型、思考强度、超时和重试；执行顺序固定为主模型重试耗尽后再进入兜底模型。
 - 生产采用单副本应用服务，不承诺高可用；允许发布期间短暂中断。
 
 ```mermaid
-flowchart LR
-    User["管理员浏览器"] --> Edge["Cloudflare / Ingress"]
-    Edge --> Web["React 管理台"]
-    Web -->|"/api/v2 + SSE"| Java["Java 26 主系统"]
-    Java <-->|"类型化 HTTP / SSE"| Quant["Python Quant"]
-    Java --> DB[("PostgreSQL finbot_v2")]
-    Java --> FirecrawlProxy["Firecrawl Proxy Gateway"]
-    FirecrawlProxy --> IPv4Pool["IPv4 代理池"]
-    Java --> Gate["Gate TestNet"]
-    Java --> Bybit["Bybit Demo"]
-    ExchangeProxy["Exchange Proxy Gateway<br/>备用"] -.-> Gate
-    ExchangeProxy -.-> Bybit
-    Java --> AI["MiMo / DeepSeek / Sub2API"]
+flowchart TB
+    Admin["管理员浏览器"] --> CF["Cloudflare TLS / CDN"]
+    CF --> Gateway["Envoy Gateway / HTTPRoute"]
+
+    subgraph Cluster["Oracle ARM64 K8S · namespace finbot"]
+        Gateway --> Web["Web Pod<br/>React + Vite + Nginx"]
+        Web -->|"/api/v2 REST"| Backend["Backend Pod<br/>Java 26 + Spring Boot 4.1"]
+        Backend -->|"SSE heartbeat / resume"| Web
+
+        subgraph BackendModules["Java 主系统"]
+            Auth["Auth / PoW / 数学验证码"]
+            Scheduler["Scheduler / Worker / Lease"]
+            Research["采集 / 压缩 / 工作流 / 多 Agent 辩论"]
+            Trading["风险 / 执行机器人 / OMS / 对账"]
+            Ledger["账户 / 订单 / 成交 / PnL 永久账本"]
+        end
+        Backend --- Auth
+        Backend --- Scheduler
+        Backend --- Research
+        Backend --- Trading
+        Backend --- Ledger
+
+        Backend <-->|"类型化 HTTP/1.1 + SSE"| Quant["Quant Pod<br/>Python 3.13 + FastAPI"]
+        Backend --> PG[("PostgreSQL 18<br/>finbot_v2")]
+        Longhorn["Longhorn PVC / Snapshot"] --- PG
+
+        Backend --> FireProxy["Firecrawl Proxy Pod<br/>fail-closed"]
+        Backend -. "按路由启用" .-> ExchangeProxy["Exchange Proxy Pod<br/>备用"]
+        Monitor["ServiceMonitor / PrometheusRule"] -. "metrics / alerts" .-> Backend
+        Policies["7 NetworkPolicy<br/>default deny"] -. "隔离" .-> Backend
+    end
+
+    FireProxy --> IPv4Pool["Firecrawl IPv4 代理池"]
+    IPv4Pool --> Sources["官方站点 / 新闻 / Firecrawl keyless"]
+    Backend --> AI["MiMo2API / Sub2API<br/>DeepSeek 配置保留、运行停用"]
+    Backend --> Gate["Gate TestNet"]
+    Backend --> Bybit["Bybit Demo"]
+    ExchangeProxy -.-> ProxyPool["VLESS / Hysteria2 节点池"]
+    ProxyPool -.-> Gate
+    ProxyPool -.-> Bybit
+
+    GitHub["Public GitHub main"] --> CI["Core / Proxy GitHub Actions"]
+    CI --> Registry["DockerHub ARM64 Images<br/>Trivy + SBOM + Cosign"]
+    CI --> GitOps["Private GitOps Repo"]
+    GitOps --> Argo["Argo CD"]
+    Registry --> Argo
+    Argo --> Cluster
 ```
+
+生产 Kustomize 当前渲染 30 个声明对象，但常驻计算只有 6 个 Pod：
+
+| 类型 | 数量 | 是否常驻计算 | 说明 |
+| --- | ---: | --- | --- |
+| Deployment | 6 | 5 个 Pod | Backend、Web、Quant、两个 Proxy 各 1；legacy freeze 固定 0 副本 |
+| StatefulSet | 1 | 1 个 Pod | PostgreSQL 单实例 |
+| Job | 3 | 否 | DB bootstrap、Liquibase、历史导入，仅 Argo Hook 期间存在 |
+| Service / HTTPRoute | 6 / 2 | 否 | 集群寻址、HTTPS 路由与 HTTP 重定向 |
+| NetworkPolicy | 7 | 否 | 默认拒绝及按组件放行 |
+| Namespace / ConfigMap / PVC | 1 / 1 / 1 | 否 | 隔离、非敏感配置和持久卷声明 |
+| ServiceMonitor / PrometheusRule | 1 / 1 | 否 | 指标抓取与告警规则 |
 
 ## 仓库结构
 
@@ -150,6 +198,9 @@ npm run dev
 
 - 架构：[`docs/requirements/29-java-python-breaking-architecture.md`](./docs/requirements/29-java-python-breaking-architecture.md)
 - ADR：[`docs/decisions/012-java26-spring-data-jdbc-liquibase-python-quant.md`](./docs/decisions/012-java26-spring-data-jdbc-liquibase-python-quant.md)
+- 模型兜底与杠杆语义：[`docs/decisions/014-configurable-fallback-and-leverage-semantics.md`](./docs/decisions/014-configurable-fallback-and-leverage-semantics.md)
+- 交易所/产品控制面：[`docs/decisions/015-exchange-product-control-plane.md`](./docs/decisions/015-exchange-product-control-plane.md)
+- Binance Demo TradFi 调查：[`docs/reports/07-binance-demo-tradifi-assessment.md`](./docs/reports/07-binance-demo-tradifi-assessment.md)
 - 迁移门禁：[`docs/migrations/010-java-breaking-exec-plan.md`](./docs/migrations/010-java-breaking-exec-plan.md)
 - 生产验收：[`docs/reports/30-java-breaking-migration-acceptance.md`](./docs/reports/30-java-breaking-migration-acceptance.md)
 - 项目规则：[`AGENTS.md`](./AGENTS.md)

@@ -1,29 +1,28 @@
 package io.omnnu.finbot.application.trading;
 
-import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
-import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
+import io.omnnu.finbot.domain.workflow.WorkflowRetryPolicy;
 import java.util.Objects;
 
 public record TradeExecutionAiStageConfig(
         TradeExecutionAiStage stage,
-        AiProviderProfileId providerProfileId,
-        String modelName,
-        ReasoningEffort reasoningEffort,
+        AiModelBinding primaryAiBinding,
+        AiModelBinding fallbackAiBinding,
         String systemPrompt,
         String userPromptTemplate,
         int maximumOutputTokens,
         int timeoutSeconds,
+        WorkflowRetryPolicy retryPolicy,
         boolean enabled,
         long version) {
     public TradeExecutionAiStageConfig {
         Objects.requireNonNull(stage, "stage");
-        Objects.requireNonNull(providerProfileId, "providerProfileId");
-        modelName = requireText(modelName, "modelName");
-        Objects.requireNonNull(reasoningEffort, "reasoningEffort");
+        Objects.requireNonNull(primaryAiBinding, "primaryAiBinding");
         systemPrompt = requireText(systemPrompt, "systemPrompt");
         userPromptTemplate = requireText(userPromptTemplate, "userPromptTemplate");
-        if (maximumOutputTokens < 256 || maximumOutputTokens > 16_384) {
-            throw new IllegalArgumentException("maximumOutputTokens must be between 256 and 16384");
+        Objects.requireNonNull(retryPolicy, "retryPolicy");
+        if (maximumOutputTokens < 256 || maximumOutputTokens > 65_536) {
+            throw new IllegalArgumentException("maximumOutputTokens must be between 256 and 65536");
         }
         if (timeoutSeconds < 10 || timeoutSeconds > 1_800 || version < 0) {
             throw new IllegalArgumentException("Invalid execution AI stage limits");

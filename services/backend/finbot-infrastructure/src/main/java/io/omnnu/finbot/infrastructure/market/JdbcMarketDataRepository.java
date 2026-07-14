@@ -66,6 +66,10 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                   from venue_instrument candidate
                   where candidate.product_id = item.product_id
                     and candidate.status = 'ACTIVE'
+                    and exists (
+                      select 1 from exchange_account account
+                      where account.exchange = candidate.exchange and account.enabled = true
+                    )
                   order by
                     case when candidate.instrument_id = item.preferred_instrument_id then 0 else 1 end,
                     case candidate.market_type
@@ -100,6 +104,10 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                 select instrument_id, exchange, market_type, symbol, settlement_asset
                 from venue_instrument
                 where instrument_id = :instrumentId and status = 'ACTIVE'
+                  and exists (
+                    select 1 from exchange_account account
+                    where account.exchange = venue_instrument.exchange and account.enabled = true
+                  )
                 """)
                 .param("instrumentId", instrumentId.value())
                 .query((resultSet, rowNumber) -> new ResearchInstrument(

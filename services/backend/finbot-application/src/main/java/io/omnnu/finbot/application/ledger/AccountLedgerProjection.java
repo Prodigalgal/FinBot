@@ -15,6 +15,7 @@ public record AccountLedgerProjection(
         String apiSecretEnv,
         String proxyRoute,
         boolean enabled,
+        long version,
         String currency,
         BigDecimal equity,
         BigDecimal availableBalance,

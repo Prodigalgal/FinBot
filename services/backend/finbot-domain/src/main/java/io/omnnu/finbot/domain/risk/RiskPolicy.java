@@ -10,6 +10,7 @@ public record RiskPolicy(
         BigDecimal minimumConfidence,
         BigDecimal riskBudgetUsdt,
         BigDecimal maximumNotionalUsdt,
+        BigDecimal preferredLeverage,
         BigDecimal maximumLeverage,
         int maximumOpenPositions,
         BigDecimal maximumStopDistance,
@@ -22,14 +23,18 @@ public record RiskPolicy(
         minimumConfidence = ratio(minimumConfidence, "minimumConfidence", true);
         riskBudgetUsdt = DecimalValue.positive(riskBudgetUsdt, "riskBudgetUsdt");
         maximumNotionalUsdt = DecimalValue.positive(maximumNotionalUsdt, "maximumNotionalUsdt");
+        preferredLeverage = DecimalValue.positive(preferredLeverage, "preferredLeverage");
         maximumLeverage = DecimalValue.positive(maximumLeverage, "maximumLeverage");
         maximumStopDistance = ratio(maximumStopDistance, "maximumStopDistance", false);
         takerFeeRate = ratio(takerFeeRate, "takerFeeRate", true);
         slippageRate = ratio(slippageRate, "slippageRate", true);
         liquidationBufferRate = ratio(liquidationBufferRate, "liquidationBufferRate", true);
-        if (maximumLeverage.compareTo(BigDecimal.ONE) < 0
-                || maximumLeverage.compareTo(BigDecimal.valueOf(100)) > 0) {
-            throw new IllegalArgumentException("maximumLeverage must be between 1 and 100");
+        if (preferredLeverage.compareTo(BigDecimal.ONE) < 0
+                || maximumLeverage.compareTo(BigDecimal.ONE) < 0) {
+            throw new IllegalArgumentException("Leverage values must be at least 1");
+        }
+        if (preferredLeverage.compareTo(maximumLeverage) > 0) {
+            throw new IllegalArgumentException("preferredLeverage must not exceed maximumLeverage");
         }
         if (maximumOpenPositions < 1 || maximumOpenPositions > 100) {
             throw new IllegalArgumentException("maximumOpenPositions must be between 1 and 100");

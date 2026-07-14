@@ -21,6 +21,7 @@ public final class ExchangeAccountSyncService implements ExchangeAccountSyncUseC
     private static final Duration INITIAL_HISTORY_WINDOW = Duration.ofDays(7);
 
     private final ExchangeAccountGateway gateway;
+    private final ExchangeAccountConfigurationRepository accounts;
     private final ExchangeSyncCursorStore cursors;
     private final TradingLedgerWriter ledger;
     private final Clock clock;
@@ -28,11 +29,13 @@ public final class ExchangeAccountSyncService implements ExchangeAccountSyncUseC
 
     public ExchangeAccountSyncService(
             ExchangeAccountGateway gateway,
+            ExchangeAccountConfigurationRepository accounts,
             ExchangeSyncCursorStore cursors,
             TradingLedgerWriter ledger,
             Clock clock,
             Executor executor) {
         this.gateway = Objects.requireNonNull(gateway, "gateway");
+        this.accounts = Objects.requireNonNull(accounts, "accounts");
         this.cursors = Objects.requireNonNull(cursors, "cursors");
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -45,6 +48,16 @@ public final class ExchangeAccountSyncService implements ExchangeAccountSyncUseC
     }
 
     private ExchangeAccountSyncResult synchronizeNow(ExchangeAccountId accountId) {
+        var account = accounts.find(accountId)
+                .orElseThrow(() -> new ExchangeAccountNotFoundException("交易所账户不存在"));
+        if (!account.enabled()) {
+            return new ExchangeAccountSyncResult(
+                    accountId,
+                    0,
+                    cursors.watermark(accountId).orElse(clock.instant()),
+                    true,
+                    java.util.List.of("Exchange account is disabled; synchronization skipped"));
+        }
         var toExclusive = clock.instant().plusNanos(1);
         var fromInclusive = cursors.watermark(accountId)
                 .orElse(toExclusive.minus(INITIAL_HISTORY_WINDOW));

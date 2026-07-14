@@ -51,6 +51,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
 
 public final class TradeAutomationApplicationService implements TradeAutomationUseCase {
     private static final int MAXIMUM_PROMPT_CHARACTERS = 180_000;
@@ -115,28 +116,30 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             var draftStage = requiredStage(stages, TradeExecutionAiStage.DRAFT);
             var reflectionStage = requiredStage(stages, TradeExecutionAiStage.REFLECTION);
 
-            var draftInvocation = invoke(
+            var draftAttempt = invokeAndParse(
                     workflow,
                     draftStage,
-                    draftPrompt(workflow, chair));
-            var parsedDraft = outputParser.parseDraft(draftInvocation.output());
+                    draftPrompt(workflow, chair),
+                    outputParser::parseDraft);
+            var parsedDraft = draftAttempt.value();
             saveReview(
                     automationRunId,
                     workflowRunId,
                     draftStage.stage(),
-                    draftInvocation,
+                    draftAttempt.invocation(),
                     parsedDraft.canonicalJson());
 
-            var reflectionInvocation = invoke(
+            var reflectionAttempt = invokeAndParse(
                     workflow,
                     reflectionStage,
-                    reflectionPrompt(workflow, chair, parsedDraft.canonicalJson()));
-            var parsedReflection = outputParser.parseReflection(reflectionInvocation.output());
+                    reflectionPrompt(workflow, chair, parsedDraft.canonicalJson()),
+                    outputParser::parseReflection);
+            var parsedReflection = reflectionAttempt.value();
             saveReview(
                     automationRunId,
                     workflowRunId,
                     reflectionStage.stage(),
-                    reflectionInvocation,
+                    reflectionAttempt.invocation(),
                     parsedReflection.canonicalJson());
 
             var finalDraft = reflectedDecision(parsedDraft.decision(), parsedReflection.reflection());
@@ -299,31 +302,48 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 reasons);
     }
 
-    private AiInvocationResult invoke(
+    private <T> ParsedAiStage<T> invokeAndParse(
             WorkflowExecutionContext workflow,
             TradeExecutionAiStageConfig stage,
-            String prompt) {
+            String prompt,
+            Function<String, T> parser) {
         var node = executionNode(stage);
-        try {
-            return aiInvoker.invokeDetailed(
-                    workflow.runId(),
-                    workflow.definitionVersion(),
-                    node,
-                    bounded(stage.userPromptTemplate() + "\n\n" + prompt),
-                    clock.instant().plusSeconds(stage.timeoutSeconds()));
-        } catch (RuntimeException exception) {
-            store.saveExecutionAiFailure(
-                    deterministicId(
-                            "review_",
-                            workflow.runId().value() + ':' + stage.stage().name()),
-                    deterministicId("automation_", workflow.runId().value()),
-                    workflow.runId(),
-                    stage.stage(),
-                    "AI_EXECUTION_STAGE_FAILED",
-                    "Execution AI stage failed: " + exception.getClass().getSimpleName(),
-                    clock.instant());
-            throw exception;
+        var bindings = stage.fallbackAiBinding() == null
+                ? List.of(stage.primaryAiBinding())
+                : List.of(stage.primaryAiBinding(), stage.fallbackAiBinding());
+        RuntimeException lastFailure = null;
+        for (var binding : bindings) {
+            for (var attempt = 1; attempt <= stage.retryPolicy().maximumAttempts(); attempt++) {
+                try {
+                    var invocation = aiInvoker.invokeDetailed(
+                            workflow.runId(),
+                            workflow.definitionVersion(),
+                            node,
+                            binding,
+                            bounded(stage.userPromptTemplate() + "\n\n" + prompt),
+                            clock.instant().plusSeconds(stage.timeoutSeconds()));
+                    return new ParsedAiStage<>(invocation, parser.apply(invocation.output()));
+                } catch (RuntimeException exception) {
+                    lastFailure = exception;
+                    if (attempt < stage.retryPolicy().maximumAttempts()) {
+                        pause(stage.retryPolicy().backoff().multipliedBy(attempt));
+                    }
+                }
+            }
         }
+        var failure = Objects.requireNonNullElseGet(lastFailure, () ->
+                new IllegalStateException("Execution AI stage failed without a classified error"));
+        store.saveExecutionAiFailure(
+                deterministicId(
+                        "review_",
+                        workflow.runId().value() + ':' + stage.stage().name()),
+                deterministicId("automation_", workflow.runId().value()),
+                workflow.runId(),
+                stage.stage(),
+                "AI_EXECUTION_STAGE_FAILED",
+                "Execution AI stage failed: " + failure.getClass().getSimpleName(),
+                clock.instant());
+        throw failure;
     }
 
     private void saveReview(
@@ -380,9 +400,8 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 stage.stage() == TradeExecutionAiStage.DRAFT ? "执行决策初审" : "执行决策反思",
                 stage.stage() == TradeExecutionAiStage.DRAFT ? "Execution Draft" : "Execution Reflection",
                 null,
-                stage.providerProfileId(),
-                stage.modelName(),
-                stage.reasoningEffort(),
+                stage.primaryAiBinding(),
+                stage.fallbackAiBinding(),
                 stage.systemPrompt(),
                 stage.userPromptTemplate(),
                 stage.stage() == TradeExecutionAiStage.DRAFT
@@ -393,10 +412,29 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 48,
                 stage.maximumOutputTokens(),
                 stage.timeoutSeconds(),
-                new WorkflowRetryPolicy(1, Duration.ZERO),
+                stage.retryPolicy(),
                 stage.stage().name().toLowerCase(Locale.ROOT),
                 new WorkflowCanvasPosition(BigDecimal.ZERO, BigDecimal.ZERO),
                 true);
+    }
+
+    private static void pause(Duration duration) {
+        if (duration.isZero()) {
+            return;
+        }
+        try {
+            Thread.sleep(duration);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Execution AI retry was interrupted", exception);
+        }
+    }
+
+    private record ParsedAiStage<T>(AiInvocationResult invocation, T value) {
+        private ParsedAiStage {
+            Objects.requireNonNull(invocation, "invocation");
+            Objects.requireNonNull(value, "value");
+        }
     }
 
     private static String draftPrompt(WorkflowExecutionContext workflow, AgentMessage chair) {

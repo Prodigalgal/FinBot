@@ -16,6 +16,7 @@ import io.omnnu.finbot.application.exchange.ExchangeSubmissionStatus;
 import io.omnnu.finbot.application.exchange.PaperOrderExecutionResult;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
@@ -31,6 +32,7 @@ import io.omnnu.finbot.domain.trading.NonDirectionalTradeDecision;
 import io.omnnu.finbot.domain.trading.TradeDecision;
 import io.omnnu.finbot.domain.trading.TradeDecisionId;
 import io.omnnu.finbot.domain.trading.TradeProposal;
+import io.omnnu.finbot.domain.workflow.WorkflowRetryPolicy;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import java.time.Instant;
 import java.util.List;
@@ -123,22 +125,38 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
     public List<TradeExecutionAiStageConfig> executionAiStages() {
         return jdbcClient.sql("""
                 select stage, provider_profile_id, model_name, reasoning_effort,
+                       fallback_provider_profile_id, fallback_model_name, fallback_reasoning_effort,
                        system_prompt, user_prompt_template, maximum_output_tokens,
-                       timeout_seconds, enabled, version
+                       timeout_seconds, retry_max_attempts, retry_backoff_seconds, enabled, version
                 from trade_execution_ai_stage order by stage
                 """)
                 .query((resultSet, rowNumber) -> new TradeExecutionAiStageConfig(
                         TradeExecutionAiStage.valueOf(resultSet.getString("stage")),
-                        new AiProviderProfileId(resultSet.getString("provider_profile_id")),
-                        resultSet.getString("model_name"),
-                        ReasoningEffort.valueOf(resultSet.getString("reasoning_effort")),
+                        binding(
+                                resultSet.getString("provider_profile_id"),
+                                resultSet.getString("model_name"),
+                                resultSet.getString("reasoning_effort")),
+                        binding(
+                                resultSet.getString("fallback_provider_profile_id"),
+                                resultSet.getString("fallback_model_name"),
+                                resultSet.getString("fallback_reasoning_effort")),
                         resultSet.getString("system_prompt"),
                         resultSet.getString("user_prompt_template"),
                         resultSet.getInt("maximum_output_tokens"),
                         resultSet.getInt("timeout_seconds"),
+                        new WorkflowRetryPolicy(
+                                resultSet.getInt("retry_max_attempts"),
+                                java.time.Duration.ofSeconds(resultSet.getInt("retry_backoff_seconds"))),
                         resultSet.getBoolean("enabled"),
                         resultSet.getLong("version")))
                 .list();
+    }
+
+    private static AiModelBinding binding(String providerProfileId, String modelName, String reasoningEffort) {
+        return providerProfileId == null ? null : new AiModelBinding(
+                new AiProviderProfileId(providerProfileId),
+                modelName,
+                ReasoningEffort.valueOf(reasoningEffort));
     }
 
     @Override
@@ -146,7 +164,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
     public RiskPolicy activeRiskPolicy() {
         return jdbcClient.sql("""
                 select policy_version, test_environment_only, minimum_confidence,
-                       risk_budget_usdt, maximum_notional_usdt, maximum_leverage,
+                       risk_budget_usdt, maximum_notional_usdt, preferred_leverage, maximum_leverage,
                        maximum_open_positions, maximum_stop_distance, taker_fee_rate,
                        slippage_rate, liquidation_buffer_rate
                 from risk_policy where active = true
@@ -157,6 +175,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                         resultSet.getBigDecimal("minimum_confidence"),
                         resultSet.getBigDecimal("risk_budget_usdt"),
                         resultSet.getBigDecimal("maximum_notional_usdt"),
+                        resultSet.getBigDecimal("preferred_leverage"),
                         resultSet.getBigDecimal("maximum_leverage"),
                         resultSet.getInt("maximum_open_positions"),
                         resultSet.getBigDecimal("maximum_stop_distance"),
@@ -196,6 +215,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                   where current_position.quantity > 0
                 ) open_positions on true
                 where instrument.status = 'ACTIVE'
+                  and instrument.execution_enabled = true
                   and replace(replace(upper(instrument.symbol), '_', ''), '-', '') = :normalizedSymbol
                 order by instrument.exchange, account.account_id, instrument.instrument_id
                 """)

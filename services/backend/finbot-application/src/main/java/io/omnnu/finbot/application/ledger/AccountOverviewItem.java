@@ -13,6 +13,7 @@ public record AccountOverviewItem(
         String displayName,
         String proxyRoute,
         boolean enabled,
+        long version,
         boolean credentialConfigured,
         AccountDataStatus dataStatus,
         String currency,

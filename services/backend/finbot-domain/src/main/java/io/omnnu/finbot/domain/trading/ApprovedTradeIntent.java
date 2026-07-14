@@ -38,9 +38,8 @@ public record ApprovedTradeIntent(
             throw new IllegalArgumentException("approved quantity must be positive");
         }
         leverage = DecimalValue.positive(leverage, "leverage");
-        if (leverage.compareTo(BigDecimal.ONE) < 0
-                || leverage.compareTo(BigDecimal.valueOf(100)) > 0) {
-            throw new IllegalArgumentException("leverage must be between 1 and 100");
+        if (leverage.compareTo(BigDecimal.ONE) < 0) {
+            throw new IllegalArgumentException("leverage must be at least 1");
         }
         Objects.requireNonNull(entryReference, "entryReference");
         Objects.requireNonNull(targetPrice, "targetPrice");

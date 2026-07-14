@@ -1,6 +1,7 @@
 package io.omnnu.finbot.api.workflow;
 
 import io.omnnu.finbot.application.workflow.WorkflowDefinitionSummary;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplate;
 import io.omnnu.finbot.domain.workflow.BooleanConditionOperand;
@@ -32,6 +33,7 @@ public final class WorkflowResponses {
             String name,
             String description,
             boolean builtIn,
+            boolean active,
             String publishedVersionId,
             Integer publishedVersionNumber,
             String draftVersionId,
@@ -40,7 +42,7 @@ public final class WorkflowResponses {
         public static DefinitionSummaryResponse from(WorkflowDefinitionSummary definition) {
             return new DefinitionSummaryResponse(
                     definition.definitionId().value(), definition.name(), definition.description(),
-                    definition.builtIn(),
+                    definition.builtIn(), definition.active(),
                     definition.publishedVersionId() == null ? null : definition.publishedVersionId().value(),
                     definition.publishedVersionNumber(),
                     definition.draftVersionId() == null ? null : definition.draftVersionId().value(),
@@ -82,9 +84,8 @@ public final class WorkflowResponses {
             String displayName,
             String roleName,
             String roleTemplateId,
-            String providerProfileId,
-            String modelName,
-            ReasoningEffort reasoningEffort,
+            AiBindingResponse primaryAiBinding,
+            AiBindingResponse fallbackAiBinding,
             String systemPrompt,
             String userPromptTemplate,
             WorkflowOutputContract outputContract,
@@ -103,12 +104,25 @@ public final class WorkflowResponses {
             return new NodeResponse(
                     node.nodeId().value(), node.nodeType(), node.displayName(), node.roleName(),
                     node.roleTemplateId() == null ? null : node.roleTemplateId().value(),
-                    node.providerProfileId() == null ? null : node.providerProfileId().value(),
-                    node.modelName(), node.reasoningEffort(), node.systemPrompt(), node.userPromptTemplate(),
+                    AiBindingResponse.from(node.primaryAiBinding()),
+                    AiBindingResponse.from(node.fallbackAiBinding()),
+                    node.systemPrompt(), node.userPromptTemplate(),
                     node.outputContract(), node.contextMode(), node.contextHistoryRounds(),
                     node.contextMaximumMessages(), node.maximumOutputTokens(), node.timeoutSeconds(),
                     node.retryPolicy().maximumAttempts(), node.retryPolicy().backoff().toSeconds(),
                     node.operation(), node.position().x(), node.position().y(), node.enabled());
+        }
+    }
+
+    public record AiBindingResponse(
+            String providerProfileId,
+            String modelName,
+            ReasoningEffort reasoningEffort) {
+        static AiBindingResponse from(AiModelBinding binding) {
+            return binding == null ? null : new AiBindingResponse(
+                    binding.providerProfileId().value(),
+                    binding.modelName(),
+                    binding.reasoningEffort());
         }
     }
 

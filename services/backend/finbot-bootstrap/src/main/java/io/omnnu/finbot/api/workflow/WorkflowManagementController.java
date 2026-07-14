@@ -2,6 +2,7 @@ package io.omnnu.finbot.api.workflow;
 
 import io.omnnu.finbot.api.workflow.WorkflowRequests.SaveDraftRequest;
 import io.omnnu.finbot.api.workflow.WorkflowRequests.SaveRoleRequest;
+import io.omnnu.finbot.api.workflow.WorkflowRequests.ActivationRequest;
 import io.omnnu.finbot.api.workflow.WorkflowResponses.DefinitionSummaryResponse;
 import io.omnnu.finbot.api.workflow.WorkflowResponses.RoleResponse;
 import io.omnnu.finbot.api.workflow.WorkflowResponses.SchemaResponse;
@@ -85,6 +86,15 @@ public final class WorkflowManagementController {
         return VersionResponse.from(useCase.rollback(
                 new WorkflowDefinitionId(definitionId),
                 new WorkflowVersionId(targetVersionId)));
+    }
+
+    @PutMapping("/workflow-definitions/{definitionId}/activation")
+    public DefinitionSummaryResponse setActive(
+            @PathVariable String definitionId,
+            @Valid @RequestBody ActivationRequest request) {
+        return DefinitionSummaryResponse.from(useCase.setActive(
+                new WorkflowDefinitionId(definitionId),
+                request.active()));
     }
 
     @GetMapping("/agent-roles")

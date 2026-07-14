@@ -208,6 +208,7 @@ export interface RiskPolicy {
   minimumConfidence: number;
   riskBudgetUsdt: number;
   maximumNotionalUsdt: number;
+  preferredLeverage: number;
   maximumLeverage: number;
   maximumOpenPositions: number;
   maximumStopDistance: number;
@@ -218,15 +219,21 @@ export interface RiskPolicy {
 
 export interface ExecutionAiStage {
   stage: 'DRAFT' | 'REFLECTION';
-  providerProfileId: { value: string } | string;
-  modelName: string;
-  reasoningEffort: ReasoningEffort;
+  primaryAiBinding: AiModelBinding;
+  fallbackAiBinding: AiModelBinding | null;
   systemPrompt: string;
   userPromptTemplate: string;
   maximumOutputTokens: number;
   timeoutSeconds: number;
+  retryPolicy: { maximumAttempts: number; backoff: number | string };
   enabled: boolean;
   version: number;
+}
+
+export interface AiModelBinding {
+  providerProfileId: { value: string } | string;
+  modelName: string;
+  reasoningEffort: ReasoningEffort;
 }
 
 export interface TradeAutomationConfiguration {
@@ -241,6 +248,7 @@ export interface AccountOverview {
   displayName: string;
   proxyRoute: string;
   enabled: boolean;
+  version: number;
   credentialConfigured: boolean;
   dataStatus: string;
   currency: string;
@@ -288,7 +296,7 @@ export interface ProductPage { products: ProductSummary[]; nextCursor: string | 
 export interface InstrumentRecord {
   instrumentId: string; exchange: string; marketType: string; symbol: string; settlementAsset: string;
   contractSize: number; priceTick: number; quantityStep: number; minimumQuantity: number;
-  maximumLeverage: number; status: string; metadataUpdatedAt: string;
+  maximumLeverage: number; executionEnabled: boolean; status: string; metadataUpdatedAt: string;
 }
 export interface ProductDetail extends ProductSummary {
   instruments: InstrumentRecord[];
@@ -298,14 +306,14 @@ export interface WatchlistSummary { watchlistId: string; name: string; descripti
 export interface WatchlistDetail extends WatchlistSummary { items: Array<{ productId: string; displayName: string; baseAsset: string; quoteAsset: string; researchMode: string; preferredInstrumentId: string | null; note: string; updatedAt: string }> }
 
 export interface WorkflowDefinitionSummary {
-  definitionId: string; name: string; description: string; builtIn: boolean;
+  definitionId: string; name: string; description: string; builtIn: boolean; active: boolean;
   publishedVersionId: string | null; publishedVersionNumber: number | null;
   draftVersionId: string | null; draftVersionNumber: number | null; updatedAt: string;
 }
 export interface WorkflowNode {
   nodeId: string; nodeType: string; displayName: string; roleName: string | null;
-  roleTemplateId: string | null; providerProfileId: string | null; modelName: string | null;
-  reasoningEffort: ReasoningEffort | null; systemPrompt: string | null; userPromptTemplate: string | null;
+  roleTemplateId: string | null; primaryAiBinding: AiModelBinding | null;
+  fallbackAiBinding: AiModelBinding | null; systemPrompt: string | null; userPromptTemplate: string | null;
   outputContract: string | null; contextMode: string; contextHistoryRounds: number;
   contextMaximumMessages: number; maximumOutputTokens: number; timeoutSeconds: number;
   retryMaximumAttempts: number; retryBackoffSeconds: number; operation: string | null;

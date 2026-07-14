@@ -18,6 +18,8 @@ public interface WorkflowManagementUseCase {
 
     WorkflowDefinitionVersion rollback(WorkflowDefinitionId definitionId, WorkflowVersionId targetVersionId);
 
+    WorkflowDefinitionSummary setActive(WorkflowDefinitionId definitionId, boolean active);
+
     List<AgentRoleTemplate> roles();
 
     AgentRoleTemplate saveRole(SaveAgentRoleCommand command);

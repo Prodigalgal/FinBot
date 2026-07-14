@@ -373,20 +373,29 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             Instant deadline,
             boolean chair) {
         var checkpoint = executionStore.findCheckpoint(execution.runId(), node.nodeId(), round, 0);
+        var bindings = node.fallbackAiBinding() == null
+                ? List.of(node.primaryAiBinding())
+                : List.of(node.primaryAiBinding(), node.fallbackAiBinding());
+        var attemptsPerBinding = node.retryPolicy().maximumAttempts();
+        var totalAttempts = Math.multiplyExact(bindings.size(), attemptsPerBinding);
         var firstAttempt = checkpoint.map(value -> Math.min(
-                        node.retryPolicy().maximumAttempts(),
+                        totalAttempts,
                         value.attempt() + 1))
                 .orElse(1);
         NodeExecutionFailure lastFailure = null;
-        for (var attempt = firstAttempt; attempt <= node.retryPolicy().maximumAttempts(); attempt++) {
+        for (var attempt = firstAttempt; attempt <= totalAttempts; attempt++) {
+            var bindingIndex = (attempt - 1) / attemptsPerBinding;
+            var bindingAttempt = (attempt - 1) % attemptsPerBinding + 1;
+            var binding = bindings.get(bindingIndex);
             saveRunningCheckpoint(execution.runId(), node, round, attempt, checkpoint.orElse(null));
             try {
-                var output = aiInvoker.invoke(
+                var output = aiInvoker.invokeDetailed(
                         execution.runId(),
                         execution.definitionVersion(),
                         node,
+                        binding,
                         userPrompt,
-                        deadline);
+                        deadline).output();
                 return chair ? outputParser.parseChair(output) : outputParser.parseAgent(output);
             } catch (AiInvocationRejectedException exception) {
                 lastFailure = new NodeExecutionFailure(
@@ -398,11 +407,20 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                         "AI_OUTPUT_SCHEMA_INVALID",
                         "AI output did not match the required structured contract",
                         true);
+            } catch (RuntimeException exception) {
+                lastFailure = new NodeExecutionFailure(
+                        "AI_PIPELINE_FAILURE",
+                        "AI invocation pipeline failed: " + exception.getClass().getSimpleName(),
+                        true);
             }
-            if (!lastFailure.retryable() || attempt == node.retryPolicy().maximumAttempts()) {
+            var bindingExhausted = bindingAttempt == attemptsPerBinding || !lastFailure.retryable();
+            if (bindingExhausted && bindingIndex + 1 < bindings.size()) {
+                continue;
+            }
+            if (bindingExhausted) {
                 break;
             }
-            pause(node.retryPolicy().backoff().multipliedBy(attempt));
+            pause(node.retryPolicy().backoff().multipliedBy(bindingAttempt));
         }
         var failure = Objects.requireNonNullElseGet(lastFailure, () -> new NodeExecutionFailure(
                 "NODE_EXECUTION_FAILED",
@@ -484,7 +502,8 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 round,
                 0,
                 previous.map(WorkflowCheckpoint::attempt)
-                        .orElse(node.retryPolicy().maximumAttempts()),
+                        .orElse(node.retryPolicy().maximumAttempts()
+                                * (node.fallbackAiBinding() == null ? 1 : 2)),
                 WorkflowCheckpointStatus.FAILED,
                 null,
                 failure.errorCode(),

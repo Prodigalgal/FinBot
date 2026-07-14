@@ -65,6 +65,7 @@ public final class TradingLedgerQueryService implements TradingLedgerQueryUseCas
                 projection.displayName(),
                 projection.proxyRoute(),
                 projection.enabled(),
+                projection.version(),
                 credentialsConfigured,
                 dataStatus,
                 projection.currency(),

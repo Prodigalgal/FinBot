@@ -3,6 +3,7 @@ package io.omnnu.finbot.application.ai;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.application.workflow.WorkflowEventPublisher;
 import io.omnnu.finbot.domain.ai.AiInvocationId;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.workflow.AiTextChunkPublished;
 import io.omnnu.finbot.domain.workflow.WorkflowDefinitionVersion;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition;
@@ -52,7 +53,7 @@ public final class WorkflowAiInvoker {
             WorkflowNodeDefinition node,
             String userPrompt,
             Instant deadline) {
-        return invokeDetailed(runId, version, node, userPrompt, deadline).output();
+        return invokeDetailed(runId, version, node, node.primaryAiBinding(), userPrompt, deadline).output();
     }
 
     public AiInvocationResult invokeDetailed(
@@ -61,22 +62,33 @@ public final class WorkflowAiInvoker {
             WorkflowNodeDefinition node,
             String userPrompt,
             Instant deadline) {
+        return invokeDetailed(runId, version, node, node.primaryAiBinding(), userPrompt, deadline);
+    }
+
+    public AiInvocationResult invokeDetailed(
+            WorkflowRunId runId,
+            WorkflowDefinitionVersion version,
+            WorkflowNodeDefinition node,
+            AiModelBinding binding,
+            String userPrompt,
+            Instant deadline) {
         Objects.requireNonNull(runId, "runId");
         Objects.requireNonNull(version, "version");
         Objects.requireNonNull(node, "node");
+        Objects.requireNonNull(binding, "binding");
         Objects.requireNonNull(userPrompt, "userPrompt");
         Objects.requireNonNull(deadline, "deadline");
         var invocationId = new AiInvocationId(idGenerator.next("invocation_"));
         var timeout = requestTimeout(node, deadline);
-        var protocol = resolveProtocol(node);
+        var protocol = resolveProtocol(binding);
         var request = new AiCompletionRequest(
                 invocationId,
                 runId,
                 node.nodeId(),
-                node.providerProfileId(),
+                binding.providerProfileId(),
                 protocol,
-                node.modelName(),
-                node.reasoningEffort(),
+                binding.modelName(),
+                binding.reasoningEffort(),
                 node.systemPrompt(),
                 userPrompt,
                 node.maximumOutputTokens(),
@@ -87,10 +99,10 @@ public final class WorkflowAiInvoker {
                 invocationId,
                 runId,
                 node.nodeId(),
-                node.providerProfileId(),
+                binding.providerProfileId(),
                 protocol,
-                node.modelName(),
-                node.reasoningEffort(),
+                binding.modelName(),
+                binding.reasoningEffort(),
                 request.promptVersion(),
                 AiRequestHasher.hash(request),
                 startedAt));
@@ -148,9 +160,9 @@ public final class WorkflowAiInvoker {
     }
 
     private io.omnnu.finbot.domain.configuration.AiProtocol resolveProtocol(
-            WorkflowNodeDefinition node) {
+            AiModelBinding binding) {
         try {
-            return protocolResolver.protocolFor(node.providerProfileId());
+            return protocolResolver.protocolFor(binding.providerProfileId());
         } catch (AiProviderUnavailableException exception) {
             throw new AiInvocationRejectedException(
                     "AI_PROVIDER_CONFIGURATION_INVALID",

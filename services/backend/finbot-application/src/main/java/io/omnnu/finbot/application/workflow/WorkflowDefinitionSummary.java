@@ -9,6 +9,7 @@ public record WorkflowDefinitionSummary(
         String name,
         String description,
         boolean builtIn,
+        boolean active,
         WorkflowVersionId publishedVersionId,
         Integer publishedVersionNumber,
         WorkflowVersionId draftVersionId,

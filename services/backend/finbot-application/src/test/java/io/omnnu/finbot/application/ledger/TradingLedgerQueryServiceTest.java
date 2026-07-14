@@ -68,7 +68,7 @@ class TradingLedgerQueryServiceTest {
             String realized) {
         return new AccountLedgerProjection(
                 new ExchangeAccountId(accountId), exchange, ExchangeEnvironment.DEMO,
-                exchange.name(), keyEnv, secretEnv, "exchange-ipv4", true, "USDT",
+                exchange.name(), keyEnv, secretEnv, "exchange-ipv4", true, 0, "USDT",
                 new BigDecimal(equity), new BigDecimal(equity), BigDecimal.ZERO,
                 new BigDecimal(unrealized), new BigDecimal(realized), 0, snapshotAt);
     }
