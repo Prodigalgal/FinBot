@@ -284,10 +284,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                         "A workflow node failed and requested replanning: " + failure.getMessage(),
                         false);
             }
-            throw new TerminalWorkflowFailure(
-                    failure.errorCode(),
-                    failure.getMessage(),
-                    failure.retryable());
+            throw terminalFailure(failure);
         }
     }
 
@@ -343,7 +340,12 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         }
         publishStageStarted(execution.runId(), WorkflowStage.PRODUCT_SELECTION, chair.nodeId());
         var prompt = promptComposer.composeChair(execution, chair, messages);
-        var content = invokeWithRetry(execution, chair, 0, prompt.userPrompt(), deadline, true);
+        final AgentMessageContent content;
+        try {
+            content = invokeWithRetry(execution, chair, 0, prompt.userPrompt(), deadline, true);
+        } catch (NodeExecutionFailure failure) {
+            throw terminalFailure(failure);
+        }
         var message = new AgentMessage(
                 messageId,
                 session.debateId(),
@@ -627,6 +629,13 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     "Workflow node retry was interrupted",
                     true);
         }
+    }
+
+    private static TerminalWorkflowFailure terminalFailure(NodeExecutionFailure failure) {
+        return new TerminalWorkflowFailure(
+                failure.errorCode(),
+                failure.getMessage(),
+                failure.retryable());
     }
 
     private record NodeResult(AgentMessage message, boolean partial) {

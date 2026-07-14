@@ -2,11 +2,13 @@ package io.omnnu.finbot.application.workflow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.omnnu.finbot.application.ai.AiBudgetReservationStore;
 import io.omnnu.finbot.application.ai.AiCompletionEvent;
 import io.omnnu.finbot.application.ai.AiCompletionFinished;
+import io.omnnu.finbot.application.ai.AiCompletionFailed;
 import io.omnnu.finbot.application.ai.AiCompletionGateway;
 import io.omnnu.finbot.application.ai.AiCompletionRequest;
 import io.omnnu.finbot.application.ai.AiInvocationAuditStore;
@@ -30,6 +32,7 @@ import io.omnnu.finbot.domain.workflow.DebateStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowActivationMode;
 import io.omnnu.finbot.domain.workflow.WorkflowCanvasPosition;
 import io.omnnu.finbot.domain.workflow.WorkflowCheckpointId;
+import io.omnnu.finbot.domain.workflow.WorkflowCheckpointStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowCondition;
 import io.omnnu.finbot.domain.workflow.WorkflowContextMode;
 import io.omnnu.finbot.domain.workflow.WorkflowDefinitionId;
@@ -40,6 +43,7 @@ import io.omnnu.finbot.domain.workflow.WorkflowEdgeId;
 import io.omnnu.finbot.domain.workflow.WorkflowEvent;
 import io.omnnu.finbot.domain.workflow.WorkflowEventId;
 import io.omnnu.finbot.domain.workflow.WorkflowFailurePolicy;
+import io.omnnu.finbot.domain.workflow.WorkflowFailed;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeType;
@@ -59,6 +63,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
@@ -93,25 +98,13 @@ class WorkflowExecutionServiceTest {
                 events,
                 ids,
                 CLOCK);
-        StructuredAiOutputParser parser = new StructuredAiOutputParser() {
-            @Override
-            public AgentMessageContent parseAgent(String output) {
-                return content(output);
-            }
-
-            @Override
-            public AgentMessageContent parseChair(String output) {
-                return content("chair-" + output);
-            }
-        };
-
         try (var executor = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().factory())) {
             var service = new WorkflowExecutionService(
                     store,
                     events,
                     new WorkflowRunFailureService(store, events),
                     invoker,
-                    parser,
+                    outputParser(),
                     CLOCK,
                     executor);
 
@@ -144,6 +137,71 @@ class WorkflowExecutionServiceTest {
         assertTrue(events.events().stream()
                 .map(WorkflowEvent::eventType)
                 .anyMatch("workflow.ai.text.delta"::equals));
+    }
+
+    @Test
+    void chairFailureTerminalizesTheWorkflowAndDebate() {
+        var version = workflowVersion();
+        var store = new InMemoryExecutionStore(new WorkflowExecutionContext(
+                RUN_ID,
+                WorkflowRunStatus.ACCEPTED,
+                "Analyze BTC liquidity and directional risk",
+                "{\"evidence\":[{\"evidence_id\":\"evidence_test\"}]}",
+                version));
+        var gateway = new RecordingCompletionGateway(new WorkflowNodeId("node_chair00"));
+        var events = new RecordingEventPublisher();
+        var idSequence = new AtomicInteger();
+        SortableIdGenerator ids = prefix -> prefix + "test0000" + idSequence.incrementAndGet();
+        var invoker = new WorkflowAiInvoker(
+                gateway,
+                ignored -> AiProtocol.CHAT,
+                new NoOpAuditStore(),
+                new NoOpBudgetStore(),
+                events,
+                ids,
+                CLOCK);
+
+        try (var executor = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().factory())) {
+            var service = new WorkflowExecutionService(
+                    store,
+                    events,
+                    new WorkflowRunFailureService(store, events),
+                    invoker,
+                    outputParser(),
+                    CLOCK,
+                    executor);
+
+            assertThrows(
+                    CompletionException.class,
+                    () -> service.execute(RUN_ID).toCompletableFuture().join());
+        }
+
+        assertEquals(WorkflowRunStatus.FAILED, store.status());
+        assertEquals(DebateStatus.FAILED, store.debate().orElseThrow().status());
+        assertEquals(
+                WorkflowCheckpointStatus.FAILED,
+                store.checkpoint(new WorkflowNodeId("node_chair00"), 0).orElseThrow().status());
+        var failed = events.events().stream()
+                .filter(WorkflowFailed.class::isInstance)
+                .map(WorkflowFailed.class::cast)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("AI_PROVIDER_TEMPORARILY_UNAVAILABLE", failed.errorCode());
+        assertTrue(failed.retryable());
+    }
+
+    private static StructuredAiOutputParser outputParser() {
+        return new StructuredAiOutputParser() {
+            @Override
+            public AgentMessageContent parseAgent(String output) {
+                return content(output);
+            }
+
+            @Override
+            public AgentMessageContent parseChair(String output) {
+                return content("chair-" + output);
+            }
+        };
     }
 
     private static AgentMessageContent content(String output) {
@@ -237,6 +295,15 @@ class WorkflowExecutionServiceTest {
     private static final class RecordingCompletionGateway implements AiCompletionGateway {
         private final List<AiCompletionRequest> requests = new CopyOnWriteArrayList<>();
         private final Map<WorkflowNodeId, AtomicInteger> calls = new ConcurrentHashMap<>();
+        private final WorkflowNodeId failingNodeId;
+
+        private RecordingCompletionGateway() {
+            this(null);
+        }
+
+        private RecordingCompletionGateway(WorkflowNodeId failingNodeId) {
+            this.failingNodeId = failingNodeId;
+        }
 
         @Override
         public Flow.Publisher<AiCompletionEvent> stream(AiCompletionRequest request) {
@@ -254,6 +321,16 @@ class WorkflowExecutionServiceTest {
                     }
                     emitted = true;
                     subscriber.onNext(new AiStreamStarted(request.invocationId(), NOW));
+                    if (request.nodeId().equals(failingNodeId)) {
+                        subscriber.onNext(new AiCompletionFailed(
+                                request.invocationId(),
+                                "AI_PROVIDER_TEMPORARILY_UNAVAILABLE",
+                                "AI provider is temporarily unavailable",
+                                true,
+                                NOW));
+                        subscriber.onComplete();
+                        return;
+                    }
                     subscriber.onNext(new AiTextDelta(request.invocationId(), 1, output, NOW));
                     subscriber.onNext(new AiUsageReported(request.invocationId(), 10, 5, NOW));
                     subscriber.onNext(new AiCompletionFinished(request.invocationId(), "stop", NOW));
@@ -439,6 +516,10 @@ class WorkflowExecutionServiceTest {
 
         private Optional<DebateSession> debate() {
             return Optional.ofNullable(debate.get());
+        }
+
+        private Optional<WorkflowCheckpoint> checkpoint(WorkflowNodeId nodeId, int roundIndex) {
+            return Optional.ofNullable(checkpoints.get(checkpointKey(nodeId, roundIndex, 0)));
         }
 
         private List<AgentMessage> messages() {
