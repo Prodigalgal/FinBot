@@ -1,5 +1,6 @@
 package io.omnnu.finbot.application.research;
 
+import io.omnnu.finbot.application.operations.ResearchTaskMode;
 import io.omnnu.finbot.application.workflow.StartWorkflowCommand;
 import java.util.concurrent.CompletionStage;
 
@@ -7,5 +8,6 @@ import java.util.concurrent.CompletionStage;
 public interface ResearchLaunchUseCase {
     CompletionStage<ResearchLaunchResult> launch(
             StartWorkflowCommand workflowCommand,
-            String taskIdempotencyKey);
+            String taskIdempotencyKey,
+            ResearchTaskMode taskMode);
 }

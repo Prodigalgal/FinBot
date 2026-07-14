@@ -3,6 +3,7 @@ package io.omnnu.finbot.operations;
 import io.omnnu.finbot.application.operations.BackgroundTask;
 import io.omnnu.finbot.application.operations.BackgroundTaskHandler;
 import io.omnnu.finbot.application.operations.InstantResearchTaskPayload;
+import io.omnnu.finbot.application.research.ResearchPipelineRequest;
 import io.omnnu.finbot.application.research.ResearchPipelineUseCase;
 import io.omnnu.finbot.application.workflow.StartWorkflowCommand;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
@@ -30,12 +31,17 @@ public final class InstantResearchTaskHandler implements BackgroundTaskHandler {
         if (!(task.payload() instanceof InstantResearchTaskPayload payload)) {
             throw new IllegalArgumentException("Instant research task has an invalid payload");
         }
-        return researchPipeline.execute(new StartWorkflowCommand(
-                        payload.workflowType(),
-                        payload.trigger(),
-                        payload.workflowVersionId(),
-                        payload.question(),
-                        payload.workflowIdempotencyKey()))
+        var workflowCommand = new StartWorkflowCommand(
+                payload.workflowType(),
+                payload.trigger(),
+                payload.workflowVersionId(),
+                payload.question(),
+                payload.workflowIdempotencyKey());
+        return researchPipeline.execute(new ResearchPipelineRequest(
+                        workflowCommand,
+                        payload.taskMode(),
+                        task.attemptCount(),
+                        task.maximumAttempts()))
                 .thenApply(ignored -> null);
     }
 }

@@ -8,12 +8,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-public interface WorkflowExecutionStore extends WorkflowRunFailureStore {
+public interface WorkflowExecutionStore extends WorkflowRunFailureStore, WorkflowRunResumeStore {
     Optional<WorkflowExecutionContext> load(WorkflowRunId runId);
 
     boolean markRunning(WorkflowRunId runId, Instant startedAt);
-
-    boolean resumeFailed(WorkflowRunId runId, Instant resumedAt);
 
     void saveCheckpoint(WorkflowCheckpoint checkpoint);
 

@@ -9,6 +9,7 @@ import io.omnnu.finbot.application.operations.BackgroundTaskPayload;
 import io.omnnu.finbot.application.operations.IngestionTaskPayload;
 import io.omnnu.finbot.application.operations.InstantResearchTaskPayload;
 import io.omnnu.finbot.application.operations.MarketDataTaskPayload;
+import io.omnnu.finbot.application.operations.ResearchTaskMode;
 import io.omnnu.finbot.application.operations.ScheduledResearchTaskPayload;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
@@ -39,7 +40,8 @@ public final class TaskPayloadCodec {
                     .put("workflowVersionId", instant.workflowVersionId() == null
                             ? null
                             : instant.workflowVersionId().value())
-                    .put("workflowIdempotencyKey", instant.workflowIdempotencyKey());
+                    .put("workflowIdempotencyKey", instant.workflowIdempotencyKey())
+                    .put("taskMode", instant.taskMode().name());
             case AccountTaskPayload account -> node.put("accountId", account.accountId().value());
             case MarketDataTaskPayload marketData -> node.put("instrumentId", marketData.instrumentId().value());
             case IngestionTaskPayload ingestion -> node
@@ -62,7 +64,7 @@ public final class TaskPayloadCodec {
             case INSTANT_RESEARCH -> {
                 requireOnlyFields(node, Set.of(
                         "requestId", "question", "workflowType", "trigger",
-                        "workflowVersionId", "workflowIdempotencyKey"));
+                        "workflowVersionId", "workflowIdempotencyKey", "taskMode"));
                 yield new InstantResearchTaskPayload(
                         requiredText(node, "requestId"),
                         requiredText(node, "question"),
@@ -72,7 +74,8 @@ public final class TaskPayloadCodec {
                                 ? null
                                 : new io.omnnu.finbot.domain.workflow.WorkflowVersionId(
                                         nullableText(node, "workflowVersionId")),
-                        requiredText(node, "workflowIdempotencyKey"));
+                        requiredText(node, "workflowIdempotencyKey"),
+                        ResearchTaskMode.valueOf(requiredText(node, "taskMode")));
             }
             case ACCOUNT_SYNC, ORDER_RECONCILIATION -> {
                 requireOnlyFields(node, Set.of("accountId"));

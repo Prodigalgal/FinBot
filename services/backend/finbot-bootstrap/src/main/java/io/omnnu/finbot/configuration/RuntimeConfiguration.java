@@ -68,6 +68,10 @@ import io.omnnu.finbot.application.workflow.WorkflowExecutionStore;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionUseCase;
 import io.omnnu.finbot.application.workflow.WorkflowRunFailureService;
 import io.omnnu.finbot.application.workflow.WorkflowRunFailureUseCase;
+import io.omnnu.finbot.application.workflow.WorkflowRunQuery;
+import io.omnnu.finbot.application.workflow.WorkflowRunResumeService;
+import io.omnnu.finbot.application.workflow.WorkflowRunResumeStore;
+import io.omnnu.finbot.application.workflow.WorkflowRunResumeUseCase;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.application.trading.TradeAutomationApplicationService;
 import io.omnnu.finbot.application.trading.TradeAutomationStore;
@@ -249,6 +253,7 @@ public class RuntimeConfiguration {
             QuantResearchUseCase quantResearch,
             WorkflowExecutionUseCase workflowExecution,
             WorkflowRunFailureUseCase workflowFailure,
+            WorkflowRunQuery workflowRuns,
             TradeAutomationUseCase tradeAutomation,
             Clock clock) {
         return new ResearchPipelineService(
@@ -259,6 +264,7 @@ public class RuntimeConfiguration {
                 quantResearch,
                 workflowExecution,
                 workflowFailure,
+                workflowRuns,
                 tradeAutomation,
                 clock);
     }
@@ -266,8 +272,17 @@ public class RuntimeConfiguration {
     @Bean
     ResearchLaunchUseCase researchLaunchUseCase(
             StartWorkflowUseCase startWorkflow,
-            BackgroundTaskCoordinator tasks) {
-        return new ResearchLaunchService(startWorkflow, tasks);
+            BackgroundTaskCoordinator tasks,
+            WorkflowRunResumeUseCase workflowResume) {
+        return new ResearchLaunchService(startWorkflow, tasks, workflowResume);
+    }
+
+    @Bean
+    WorkflowRunResumeUseCase workflowRunResumeUseCase(
+            WorkflowRunResumeStore store,
+            WorkflowRunQuery query,
+            Clock clock) {
+        return new WorkflowRunResumeService(store, query, clock);
     }
 
     @Bean

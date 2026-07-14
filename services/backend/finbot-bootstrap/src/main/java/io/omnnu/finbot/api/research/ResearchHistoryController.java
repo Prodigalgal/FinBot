@@ -4,6 +4,7 @@ import io.omnnu.finbot.application.research.ResearchHistoryDetail;
 import io.omnnu.finbot.application.research.ResearchHistoryRepository;
 import io.omnnu.finbot.application.research.ResearchLaunchResult;
 import io.omnnu.finbot.application.research.ResearchLaunchUseCase;
+import io.omnnu.finbot.application.operations.ResearchTaskMode;
 import io.omnnu.finbot.application.shared.IdempotencyKeys;
 import io.omnnu.finbot.application.workflow.StartWorkflowCommand;
 import io.omnnu.finbot.application.workflow.WorkflowNotFoundException;
@@ -65,7 +66,7 @@ public final class ResearchHistoryController {
                 source.workflowVersionId(),
                 source.requestSummary(),
                 operationKey);
-        return researchLaunch.launch(command, operationKey)
+        return researchLaunch.launch(command, operationKey, ResearchTaskMode.STANDARD)
                 .thenApply(launched -> response(launched, WorkflowRunStatus.ACCEPTED));
     }
 
@@ -86,8 +87,8 @@ public final class ResearchHistoryController {
                 source.workflowVersionId(),
                 source.requestSummary(),
                 source.workflowIdempotencyKey());
-        return researchLaunch.launch(command, taskKey)
-                .thenApply(launched -> response(launched, WorkflowRunStatus.FAILED));
+        return researchLaunch.launch(command, taskKey, ResearchTaskMode.RESUME_FAILED)
+                .thenApply(launched -> response(launched, WorkflowRunStatus.ACCEPTED));
     }
 
     private io.omnnu.finbot.application.research.ResearchReplaySource source(String runId) {

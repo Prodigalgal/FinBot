@@ -11,13 +11,15 @@ public record InstantResearchTaskPayload(
         WorkflowType workflowType,
         WorkflowTrigger trigger,
         WorkflowVersionId workflowVersionId,
-        String workflowIdempotencyKey) implements BackgroundTaskPayload {
+        String workflowIdempotencyKey,
+        ResearchTaskMode taskMode) implements BackgroundTaskPayload {
     public InstantResearchTaskPayload {
         requestId = requireText(requestId, "requestId", 80);
         question = requireText(question, "question", 2000);
         Objects.requireNonNull(workflowType, "workflowType");
         Objects.requireNonNull(trigger, "trigger");
         workflowIdempotencyKey = requireText(workflowIdempotencyKey, "workflowIdempotencyKey", 200);
+        Objects.requireNonNull(taskMode, "taskMode");
     }
 
     private static String requireText(String value, String fieldName, int maximumLength) {

@@ -2,6 +2,7 @@ package io.omnnu.finbot.api.research;
 
 import io.omnnu.finbot.application.research.ResearchLaunchResult;
 import io.omnnu.finbot.application.research.ResearchLaunchUseCase;
+import io.omnnu.finbot.application.operations.ResearchTaskMode;
 import io.omnnu.finbot.application.shared.IdempotencyKeys;
 import io.omnnu.finbot.application.workflow.StartWorkflowCommand;
 import io.omnnu.finbot.application.workflow.WorkflowRunQuery;
@@ -47,7 +48,7 @@ public final class InstantResearchController {
                         versionId,
                         request.question(),
                         operationKey);
-        return researchLaunch.launch(command, operationKey)
+        return researchLaunch.launch(command, operationKey, ResearchTaskMode.STANDARD)
                 .thenApply(this::acceptedResponse);
     }
 
