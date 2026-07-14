@@ -1,6 +1,8 @@
 package io.omnnu.finbot.infrastructure.database;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.domain.operations.WorkerId;
@@ -90,6 +92,14 @@ class LiquibasePostgresIntegrationTest {
                           (select count(*) from information_source) as source_count,
                           (select count(*) from network_proxy_route) as proxy_route_count,
                           (select count(*) from watchlist_item) as watchlist_item_count,
+                          (select require_proxy from network_proxy_route
+                           where route_type = 'EXCHANGE_GATE') as gate_proxy_required,
+                          (select allow_direct from network_proxy_route
+                           where route_type = 'EXCHANGE_GATE') as gate_direct_allowed,
+                          (select require_proxy from network_proxy_route
+                           where route_type = 'EXCHANGE_BYBIT') as bybit_proxy_required,
+                          (select allow_direct from network_proxy_route
+                           where route_type = 'EXCHANGE_BYBIT') as bybit_direct_allowed,
                           (select default_reasoning_effort from ai_model_profile
                            where model_name = 'gpt-5.6-sol') as sol_effort
                         """)) {
@@ -104,6 +114,10 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(10, result.getInt("source_count"));
                 assertEquals(4, result.getInt("proxy_route_count"));
                 assertEquals(3, result.getInt("watchlist_item_count"));
+                assertFalse(result.getBoolean("gate_proxy_required"));
+                assertTrue(result.getBoolean("gate_direct_allowed"));
+                assertFalse(result.getBoolean("bybit_proxy_required"));
+                assertTrue(result.getBoolean("bybit_direct_allowed"));
                 assertEquals("MAX", result.getString("sol_effort"));
             }
         }

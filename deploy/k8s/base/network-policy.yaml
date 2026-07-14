@@ -175,6 +175,8 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: finbot-postgres-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "-50"
 spec:
   podSelector:
     matchLabels:
@@ -196,6 +198,8 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: finbot-migration-egress
+  annotations:
+    argocd.argoproj.io/sync-wave: "-50"
 spec:
   podSelector:
     matchLabels:

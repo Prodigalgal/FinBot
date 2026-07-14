@@ -15,7 +15,7 @@ resources:
 configMapGenerator:
   - name: finbot-env
     literals:
-      - FINBOT_DATABASE_URL=jdbc:postgresql://finbot-postgres:5432/finbot
+      - FINBOT_DATABASE_URL=jdbc:postgresql://finbot-postgres:5432/finbot_v2
       - FINBOT_DATABASE_USERNAME=finbot
       - FINBOT_DATABASE_POOL_SIZE=20
       - FINBOT_DATABASE_MIN_IDLE=2
@@ -28,23 +28,11 @@ configMapGenerator:
       - FINBOT_AUTH_POW_DIFFICULTY=3
       - FINBOT_AUTH_SESSION_TTL=PT12H
       - FINBOT_FIRECRAWL_PROXY_URL=http://finbot-firecrawl-proxy:8080
-      - FINBOT_GATE_PROXY_URL=http://finbot-exchange-proxy:8080
-      - FINBOT_BYBIT_PROXY_URL=http://finbot-exchange-proxy:8080
       - FINBOT_WORKER_POLL_DELAY=PT2S
       - FINBOT_WORKER_LEASE_DURATION=PT30S
       - FINBOT_WORKER_HEARTBEAT_INTERVAL=PT5S
       - FINBOT_SCHEDULER_POLL_DELAY=PT5S
       - FINBOT_TRADING_LEDGER_STALE_AFTER=PT10M
-images:
-  - name: ghcr.io/example/finbot-backend
-    newName: docker.io/speedproxy/finbot-backend
-    newTag: latest
-  - name: ghcr.io/example/finbot-quant
-    newName: docker.io/speedproxy/finbot-quant
-    newTag: latest
-  - name: ghcr.io/example/finbot-web
-    newName: docker.io/speedproxy/finbot-web
-    newTag: latest
-  - name: ghcr.io/example/finbot-proxy
-    newName: docker.io/speedproxy/finbot-proxy
-    newTag: latest
+generatorOptions:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-50"

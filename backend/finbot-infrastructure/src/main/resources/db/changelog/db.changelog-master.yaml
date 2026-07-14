@@ -17,3 +17,5 @@ databaseChangeLog:
       file: db/changelog/releases/008-workflow-idempotency.sql
   - include:
       file: db/changelog/releases/009-legacy-archive.sql
+  - include:
+      file: db/changelog/releases/010-exchange-route-recovery.sql

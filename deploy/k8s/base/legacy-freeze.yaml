@@ -21,6 +21,12 @@ spec:
         app.kubernetes.io/component: legacy-runtime
     spec:
       automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frozen
           image: docker.io/speedproxy/finbot:sha-1422495dba1d58e91b14502204f48898fd3a02e5

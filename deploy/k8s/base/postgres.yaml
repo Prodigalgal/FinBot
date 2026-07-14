@@ -79,19 +79,19 @@ spec:
               protocol: TCP
           startupProbe:
             exec:
-              command: ["pg_isready", "-U", "finbot", "-d", "finbot"]
+              command: ["pg_isready", "-U", "finbot", "-d", "postgres"]
             periodSeconds: 3
             timeoutSeconds: 3
             failureThreshold: 100
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "finbot", "-d", "finbot"]
+              command: ["pg_isready", "-U", "finbot", "-d", "postgres"]
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", "finbot", "-d", "finbot"]
+              command: ["pg_isready", "-U", "finbot", "-d", "postgres"]
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 6

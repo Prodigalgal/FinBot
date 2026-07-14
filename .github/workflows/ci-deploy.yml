@@ -1,8 +1,11 @@
-name: FinBot CI and ArgoCD deploy
+name: FinBot Core CI and ArgoCD deploy
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "proxy-gateway/**"
+      - ".github/workflows/proxy-deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -10,7 +13,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: finbot-production
+  group: finbot-core-production
   cancel-in-progress: false
 
 env:
@@ -51,11 +54,9 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: |
-            quant-service/pyproject.toml
-            proxy-gateway/pyproject.toml
+          cache-dependency-path: quant-service/pyproject.toml
       - name: Install typed Python services
-        run: python -m pip install './quant-service[dev]' './proxy-gateway[dev]'
+        run: python -m pip install './quant-service[dev]'
       - name: Quant service quality gates
         working-directory: quant-service
         run: |
@@ -63,13 +64,6 @@ jobs:
           python -m mypy src tests
           python -m pytest -q
           python -m openapi_spec_validator ../contracts/quant-research.openapi.yaml
-      - name: Proxy gateway quality gates
-        working-directory: proxy-gateway
-        run: |
-          python -m ruff check src tests
-          python -m mypy src tests
-          python -m pytest -q
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -151,7 +145,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  build-images:
+  build-core-images:
     needs: verify
     runs-on: ubuntu-24.04
     strategy:
@@ -170,10 +164,6 @@ jobs:
             image: speedproxy/finbot-web
             context: web-ui
             dockerfile: web-ui/Dockerfile
-          - component: proxy
-            image: speedproxy/finbot-proxy
-            context: proxy-gateway
-            dockerfile: proxy-gateway/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -207,8 +197,11 @@ jobs:
         run: cosign sign --yes docker.io/${{ matrix.image }}:${IMAGE_TAG}
 
   update-gitops:
-    needs: build-images
+    needs: build-core-images
     runs-on: ubuntu-24.04
+    concurrency:
+      group: finbot-gitops-production
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -217,6 +210,16 @@ jobs:
           ssh-key: ${{ secrets.FINBOT_GITOPS_DEPLOY_KEY }}
           path: gitops
       - uses: imranismail/setup-kustomize@v2
+      - name: Preserve independently released proxy image
+        id: current-proxy
+        working-directory: gitops
+        run: |
+          proxy_image=$(ruby -ryaml -e '
+            document = YAML.safe_load(File.read("finbot/oracle/kustomization.yaml"), aliases: true)
+            entry = document.fetch("images").find { |candidate| candidate["name"] == "ghcr.io/example/finbot-proxy" }
+            abort "GitOps proxy image pin is missing" unless entry && entry["newName"] && entry["newTag"]
+            puts [entry.fetch("newName"), entry.fetch("newTag")].join(":")')
+          echo "image=${proxy_image}" >> "$GITHUB_OUTPUT"
       - name: Update ArgoCD source of truth
         run: |
           rsync -a --delete deploy/k8s/base/ gitops/finbot/base/
@@ -226,7 +229,7 @@ jobs:
             ghcr.io/example/finbot-backend=docker.io/speedproxy/finbot-backend:${IMAGE_TAG} \
             ghcr.io/example/finbot-quant=docker.io/speedproxy/finbot-quant:${IMAGE_TAG} \
             ghcr.io/example/finbot-web=docker.io/speedproxy/finbot-web:${IMAGE_TAG} \
-            ghcr.io/example/finbot-proxy=docker.io/speedproxy/finbot-proxy:${IMAGE_TAG}
+            ghcr.io/example/finbot-proxy=${{ steps.current-proxy.outputs.image }}
           kustomize build . >/tmp/finbot-rendered.yaml
       - name: Commit GitOps revision
         working-directory: gitops
