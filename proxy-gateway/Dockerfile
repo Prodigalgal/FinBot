@@ -9,16 +9,23 @@ ARG TARGETARCH
 WORKDIR /source/sing-box
 RUN git init . \
     && git remote add origin https://github.com/SagerNet/sing-box.git \
-    && git fetch --depth 1 origin "${SING_BOX_COMMIT}" \
-    && git checkout --detach FETCH_HEAD \
+    && git fetch --depth 1 origin "refs/tags/v${SING_BOX_VERSION}:refs/tags/v${SING_BOX_VERSION}" \
+    && git checkout --detach "refs/tags/v${SING_BOX_VERSION}" \
     && test "$(git rev-parse HEAD)" = "${SING_BOX_COMMIT}" \
-    && go get golang.org/x/crypto@v0.53.0 golang.org/x/net@v0.55.0 \
+    && test "$(git describe --tags --exact-match)" = "v${SING_BOX_VERSION}" \
+    && cd /tmp \
+    && go work init /source/sing-box \
+    && go work edit -replace=golang.org/x/crypto=golang.org/x/crypto@v0.53.0 \
+    && go work edit -replace=golang.org/x/net=golang.org/x/net@v0.55.0 \
+    && cd /source/sing-box \
+    && test -z "$(git status --porcelain)" \
     && mkdir -p /out \
     && BUILD_TAGS="$(cat release/DEFAULT_BUILD_TAGS_OTHERS)" \
-    && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+    && GOWORK=/tmp/go.work CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
        go build -trimpath -tags "${BUILD_TAGS}" \
        -ldflags "-X github.com/sagernet/sing-box/constant.Version=${SING_BOX_VERSION} -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0 -s -w -buildid=" \
-       -o /out/sing-box ./cmd/sing-box
+       -o /out/sing-box ./cmd/sing-box \
+    && go version -m /out/sing-box | grep -F 'vcs.modified=false'
 
 FROM python:3.13-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
