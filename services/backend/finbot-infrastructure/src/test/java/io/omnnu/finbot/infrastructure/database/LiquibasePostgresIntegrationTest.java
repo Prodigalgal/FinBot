@@ -133,7 +133,7 @@ class LiquibasePostgresIntegrationTest {
                             as workflow_active,
                           (select count(*) from venue_instrument
                            where execution_enabled = false) as research_only_instrument_count,
-                          (select outbound_route from information_source
+                          (select proxy_route_type from information_source
                            where source_id = 'source_x_market_search') as x_route,
                           (select count(*) from information_schema.columns
                            where table_schema = 'public'
