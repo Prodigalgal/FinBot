@@ -1,0 +1,112 @@
+package io.omnnu.finbot.security;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import io.omnnu.finbot.application.identity.AdminSession;
+import io.omnnu.finbot.application.identity.AuthenticationUseCase;
+import io.omnnu.finbot.domain.identity.AdminSessionId;
+import jakarta.servlet.Filter;
+import jakarta.servlet.http.Cookie;
+import java.time.Instant;
+import java.util.Optional;
+import java.util.concurrent.Callable;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import tools.jackson.databind.ObjectMapper;
+
+@SpringJUnitWebConfig(classes = {SecurityConfiguration.class, SecurityConfigurationTest.TestConfiguration.class})
+class SecurityConfigurationTest {
+    private final WebApplicationContext context;
+    private MockMvc mockMvc;
+
+    @Autowired
+    SecurityConfigurationTest(WebApplicationContext context) {
+        this.context = context;
+    }
+
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(context.getBean("springSecurityFilterChain", Filter.class))
+                .build();
+    }
+
+    @Test
+    void permitsAsyncRedispatchAfterInitialSessionAuthentication() throws Exception {
+        var pending = mockMvc.perform(get("/api/v2/test/async")
+                        .cookie(new Cookie(SessionAuthenticationFilter.SESSION_COOKIE_NAME, "valid-session-token")))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(pending))
+                .andExpect(status().isOk())
+                .andExpect(content().string("completed"));
+    }
+
+    @Test
+    void rejectsAnonymousInitialRequestBeforeAsyncHandlingStarts() throws Exception {
+        mockMvc.perform(get("/api/v2/test/async"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(request().asyncNotStarted());
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableWebMvc
+    @EnableWebSecurity
+    static class TestConfiguration {
+        @Bean
+        ObjectMapper objectMapper() {
+            return new ObjectMapper();
+        }
+
+        @Bean
+        AuthenticationUseCase authenticationUseCase() {
+            var useCase = mock(AuthenticationUseCase.class);
+            var now = Instant.parse("2026-07-14T08:00:00Z");
+            var session = new AdminSession(
+                    new AdminSessionId("session_01j0000000001"),
+                    "admin",
+                    now.plusSeconds(3_600),
+                    now,
+                    null,
+                    now);
+            when(useCase.validateSession("valid-session-token")).thenReturn(Optional.of(session));
+            return useCase;
+        }
+
+        @Bean
+        SessionAuthenticationFilter sessionAuthenticationFilter(AuthenticationUseCase authenticationUseCase) {
+            return new SessionAuthenticationFilter(authenticationUseCase);
+        }
+
+        @Bean
+        AsyncTestController asyncTestController() {
+            return new AsyncTestController();
+        }
+    }
+
+    @RestController
+    static class AsyncTestController {
+        @GetMapping("/api/v2/test/async")
+        Callable<String> async() {
+            return () -> "completed";
+        }
+    }
+}

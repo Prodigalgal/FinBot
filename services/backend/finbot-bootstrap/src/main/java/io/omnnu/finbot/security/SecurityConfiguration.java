@@ -1,6 +1,6 @@
 package io.omnnu.finbot.security;
 
-import tools.jackson.databind.ObjectMapper;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Objects;
@@ -15,6 +15,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 public class SecurityConfiguration {
@@ -41,6 +42,7 @@ public class SecurityConfiguration {
                                 "/api/v2/auth/login",
                                 "/internal/**"))
                 .authorizeHttpRequests(authorize -> authorize
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers("/health", "/health/**", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v2/auth/status", "/api/v2/auth/challenge").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v2/auth/login").permitAll()

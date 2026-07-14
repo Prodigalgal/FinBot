@@ -116,7 +116,7 @@ public final class JdkQuantResearchHttpClient implements QuantResearchGateway {
             worker.set(Thread.currentThread());
             try {
                 var request = HttpRequest.newBuilder(streamUri)
-                        .version(HttpClient.Version.HTTP_2)
+                        .version(HttpClient.Version.HTTP_1_1)
                         .header("Accept", "text/event-stream")
                         .header("Content-Type", "application/json")
                         .header("Authorization", authorization)

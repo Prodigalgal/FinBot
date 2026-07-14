@@ -4,6 +4,7 @@ import io.omnnu.finbot.application.workflow.WorkflowEventStream;
 import io.omnnu.finbot.application.workflow.WorkflowRunQuery;
 import io.omnnu.finbot.domain.workflow.WorkflowEvent;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Objects;
@@ -46,12 +47,15 @@ public final class WorkflowEventController {
     @GetMapping(path = "/{runId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter events(
             @PathVariable String runId,
-            @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
+            @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId,
+            HttpServletResponse response) {
         var typedRunId = new WorkflowRunId(runId);
         if (workflowRunQuery.find(typedRunId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Workflow run not found");
         }
 
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
         var emitter = new SseEmitter(0L);
         var subscriber = new SseWorkflowSubscriber(emitter, heartbeatScheduler);
         subscriber.bindEmitterLifecycle();

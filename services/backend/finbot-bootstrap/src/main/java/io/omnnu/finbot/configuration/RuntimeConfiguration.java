@@ -216,7 +216,7 @@ public class RuntimeConfiguration {
                 .connectTimeout(Duration.ofSeconds(10))
                 .executor(executor)
                 .followRedirects(HttpClient.Redirect.NEVER)
-                .version(HttpClient.Version.HTTP_2)
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
     }
 

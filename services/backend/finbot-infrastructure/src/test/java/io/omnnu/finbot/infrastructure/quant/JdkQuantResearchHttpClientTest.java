@@ -110,6 +110,11 @@ class JdkQuantResearchHttpClientTest {
             HttpExchange exchange,
             AtomicReference<String> requestBody) throws IOException {
         try (exchange) {
+            if (!"HTTP/1.1".equals(exchange.getProtocol())
+                    || exchange.getRequestHeaders().getFirst("Upgrade") != null) {
+                exchange.sendResponseHeaders(422, -1);
+                return;
+            }
             if (!"POST".equals(exchange.getRequestMethod())
                     || !("Bearer " + SERVICE_TOKEN).equals(exchange.getRequestHeaders().getFirst("Authorization"))
                     || !"quant-run-01j0000000001".equals(

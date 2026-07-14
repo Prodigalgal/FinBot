@@ -6,7 +6,8 @@ import { chromium } from 'playwright';
 const appUrl = required('FINBOT_URL');
 const username = required('FINBOT_ADMIN_USERNAME');
 const password = required('FINBOT_ADMIN_PASSWORD');
-const outputDir = path.resolve(process.cwd(), '..', 'output', 'playwright');
+const sseRunId = process.env.FINBOT_SSE_RUN_ID?.trim() || null;
+const outputDir = path.resolve(process.cwd(), '..', '..', 'output', 'playwright');
 await mkdir(outputDir, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
@@ -68,7 +69,10 @@ try {
   if (browserProblems.length > 0) {
     throw new Error(`浏览器控制台存在错误: ${JSON.stringify(browserProblems)}`);
   }
-  console.log(JSON.stringify({ ok: true, pagesChecked: pages.length + 1, desktopOverflow, mobileOverflow }));
+  const sseHeartbeat = sseRunId === null
+    ? null
+    : await probeSseHeartbeat(page, appUrl, sseRunId);
+  console.log(JSON.stringify({ ok: true, pagesChecked: pages.length + 1, desktopOverflow, mobileOverflow, sseHeartbeat }));
 } catch (error) {
   await page.screenshot({ path: path.join(outputDir, 'system-smoke-failure.png'), fullPage: true });
   throw error;
@@ -93,4 +97,42 @@ async function horizontalOverflow(targetPage) {
     document.body.scrollWidth > document.body.clientWidth
     || document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
+}
+
+async function probeSseHeartbeat(targetPage, baseUrl, runId) {
+  const streamUrl = new URL(`/api/v2/workflows/${encodeURIComponent(runId)}/events`, baseUrl).toString();
+  return targetPage.evaluate(async ({ url, timeoutMs }) => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+    let reader;
+    try {
+      const response = await fetch(url, {
+        credentials: 'include',
+        headers: { Accept: 'text/event-stream' },
+        signal: controller.signal,
+      });
+      if (!response.ok || response.body === null) {
+        throw new Error(`SSE 连接失败: HTTP ${response.status}`);
+      }
+      if (!response.headers.get('content-type')?.startsWith('text/event-stream')) {
+        throw new Error(`SSE Content-Type 无效: ${response.headers.get('content-type') || '<missing>'}`);
+      }
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let received = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) throw new Error('SSE 在收到 heartbeat 前结束');
+        received += decoder.decode(value, { stream: true });
+        if (received.includes(':heartbeat') || received.includes(': heartbeat')) {
+          return true;
+        }
+        if (received.length > 65_536) received = received.slice(-32_768);
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      controller.abort();
+      await reader?.cancel().catch(() => undefined);
+    }
+  }, { url: streamUrl, timeoutMs: 35_000 });
 }
