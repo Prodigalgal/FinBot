@@ -1,28 +1,34 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.13-slim-bookworm
-ARG TARGETARCH
+FROM --platform=$BUILDPLATFORM golang:1.25.12-bookworm AS sing-box-builder
 ARG SING_BOX_VERSION=1.13.14
+ARG SING_BOX_COMMIT=25a600db24f7680ad9806ce5427bd0ab8afe1114
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /source/sing-box
+RUN git init . \
+    && git remote add origin https://github.com/SagerNet/sing-box.git \
+    && git fetch --depth 1 origin "${SING_BOX_COMMIT}" \
+    && git checkout --detach FETCH_HEAD \
+    && test "$(git rev-parse HEAD)" = "${SING_BOX_COMMIT}" \
+    && go get golang.org/x/crypto@v0.53.0 golang.org/x/net@v0.55.0 \
+    && mkdir -p /out \
+    && BUILD_TAGS="$(cat release/DEFAULT_BUILD_TAGS_OTHERS)" \
+    && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+       go build -trimpath -tags "${BUILD_TAGS}" \
+       -ldflags "-X github.com/sagernet/sing-box/constant.Version=${SING_BOX_VERSION} -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0 -s -w -buildid=" \
+       -o /out/sing-box ./cmd/sing-box
+
+FROM python:3.13-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     SING_BOX_PATH=/usr/local/bin/sing-box
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates curl \
-    && case "$TARGETARCH" in \
-         amd64) SING_BOX_SHA256="f48703461a15476951ac4967cdad339d986f4b8096b4eb3ff0829a500502d697" ;; \
-         arm64) SING_BOX_SHA256="4742df6a4314e8ecc41736849fca6d73b8f9e91b6e8b06ee794ff17ba180579e" ;; \
-         *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
-       esac \
-    && curl --fail --location --retry 3 --output /tmp/sing-box.tar.gz \
-       "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-linux-${TARGETARCH}.tar.gz" \
-    && echo "${SING_BOX_SHA256}  /tmp/sing-box.tar.gz" | sha256sum --check --strict \
-    && tar --extract --gzip --file /tmp/sing-box.tar.gz --directory /tmp \
-    && install --mode 0755 "/tmp/sing-box-${SING_BOX_VERSION}-linux-${TARGETARCH}/sing-box" /usr/local/bin/sing-box \
-    && rm -rf /tmp/sing-box.tar.gz "/tmp/sing-box-${SING_BOX_VERSION}-linux-${TARGETARCH}" /var/lib/apt/lists/* \
-    && groupadd --gid 10001 finbot \
+COPY --from=sing-box-builder /out/sing-box /usr/local/bin/sing-box
+RUN groupadd --gid 10001 finbot \
     && useradd --uid 10001 --gid finbot --shell /usr/sbin/nologin --no-create-home finbot
 
 COPY pyproject.toml ./

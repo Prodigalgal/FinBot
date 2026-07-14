@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM eclipse-temurin:26-jdk-noble AS builder
+FROM --platform=$BUILDPLATFORM eclipse-temurin:26-jdk-noble AS builder
 WORKDIR /workspace
 COPY backend/ ./
 RUN chmod +x gradlew \
