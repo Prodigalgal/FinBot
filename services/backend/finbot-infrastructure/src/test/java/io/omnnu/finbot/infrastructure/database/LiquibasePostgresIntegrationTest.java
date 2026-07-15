@@ -183,6 +183,9 @@ class LiquibasePostgresIntegrationTest {
                           (select count(*) from workflow_definition_version) as workflow_version_count,
                           (select version_id from workflow_definition_version
                            where status = 'PUBLISHED') as published_version_id,
+                          (select operation from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v5'
+                             and node_type = 'QUANT') as published_quant_operation,
                           (select count(*) from information_source) as source_count,
                           (select count(*) from network_proxy_route) as proxy_route_count,
                           (select count(*) from watchlist_item) as watchlist_item_count,
@@ -201,13 +204,13 @@ class LiquibasePostgresIntegrationTest {
                           (select base_url from ai_provider_profile
                            where profile_id = 'provider_mimo_default') as mimo_base_url,
                           (select provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v4'
+                           where version_id = 'workflowversion_standard_v5'
                              and node_id = 'node_bull_analyst') as bull_provider,
                           (select fallback_provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v4'
+                           where version_id = 'workflowversion_standard_v5'
                              and node_id = 'node_bull_analyst') as bull_fallback_provider,
                           (select fallback_model_name from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v4'
+                           where version_id = 'workflowversion_standard_v5'
                              and node_id = 'node_chair_arbiter') as chair_fallback_model,
                           (select preferred_leverage from risk_policy where active = true)
                             as preferred_leverage,
@@ -266,10 +269,11 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(2, result.getInt("account_count"));
                 assertEquals(10, result.getInt("schedule_count"));
                 assertEquals(6, result.getInt("role_count"));
-                assertEquals(50, result.getInt("node_count"));
+                assertEquals(64, result.getInt("node_count"));
                 assertEquals(14, result.getInt("published_node_count"));
-                assertEquals(4, result.getInt("workflow_version_count"));
-                assertEquals("workflowversion_standard_v4", result.getString("published_version_id"));
+                assertEquals(5, result.getInt("workflow_version_count"));
+                assertEquals("workflowversion_standard_v5", result.getString("published_version_id"));
+                assertEquals("multi_strategy_ensemble", result.getString("published_quant_operation"));
                 assertEquals(11, result.getInt("source_count"));
                 assertEquals(4, result.getInt("proxy_route_count"));
                 assertEquals(5, result.getInt("watchlist_item_count"));

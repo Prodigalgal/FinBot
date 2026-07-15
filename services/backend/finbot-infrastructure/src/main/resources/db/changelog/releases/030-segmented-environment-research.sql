@@ -173,12 +173,68 @@ SET payload = payload || jsonb_build_object(
     )
 WHERE task_type = 'INSTANT_RESEARCH';
 
-UPDATE workflow_node_definition
-SET operation = 'multi_strategy_ensemble'
-WHERE node_type = 'QUANT'
-  AND operation = 'statistical_analysis';
+INSERT INTO workflow_definition_version (
+    version_id, definition_id, version_number, status, default_debate_rounds,
+    maximum_steps, maximum_duration_seconds, maximum_tokens, maximum_cost_usd,
+    failure_policy, checksum, published_at, created_by
+)
+SELECT
+    'workflowversion_standard_v5', definition_id, 5, 'DRAFT', default_debate_rounds,
+    maximum_steps, maximum_duration_seconds, maximum_tokens, maximum_cost_usd,
+    failure_policy, 'da9cc98ab43670d675bc330d60e7ddf182d2dac266012306db1745280d05a59b',
+    NULL, 'system-migration'
+FROM workflow_definition_version
+WHERE version_id = 'workflowversion_standard_v4';
 
---rollback UPDATE workflow_node_definition SET operation = 'statistical_analysis' WHERE node_type = 'QUANT' AND operation = 'multi_strategy_ensemble';
+INSERT INTO workflow_node_definition (
+    version_id, node_id, node_type, display_name, role_name, role_template_id,
+    provider_profile_id, model_name, reasoning_effort,
+    fallback_provider_profile_id, fallback_model_name, fallback_reasoning_effort,
+    system_prompt, user_prompt_template, output_contract, context_mode,
+    context_history_rounds, context_max_messages, maximum_output_tokens,
+    timeout_seconds, retry_max_attempts, retry_backoff_seconds, operation,
+    position_x, position_y, enabled
+)
+SELECT
+    'workflowversion_standard_v5', node_id, node_type, display_name, role_name, role_template_id,
+    provider_profile_id, model_name, reasoning_effort,
+    fallback_provider_profile_id, fallback_model_name, fallback_reasoning_effort,
+    system_prompt, user_prompt_template, output_contract, context_mode,
+    context_history_rounds, context_max_messages, maximum_output_tokens,
+    timeout_seconds, retry_max_attempts, retry_backoff_seconds,
+    CASE
+        WHEN node_type = 'QUANT' AND operation = 'statistical_analysis'
+            THEN 'multi_strategy_ensemble'
+        ELSE operation
+    END,
+    position_x, position_y, enabled
+FROM workflow_node_definition
+WHERE version_id = 'workflowversion_standard_v4';
+
+INSERT INTO workflow_edge_definition (
+    version_id, edge_id, source_node_id, target_node_id, activation_mode, context_mode,
+    condition_field, condition_operator, condition_value, loop_edge, maximum_traversals
+)
+SELECT
+    'workflowversion_standard_v5', edge_id, source_node_id, target_node_id,
+    activation_mode, context_mode, condition_field, condition_operator, condition_value,
+    loop_edge, maximum_traversals
+FROM workflow_edge_definition
+WHERE version_id = 'workflowversion_standard_v4';
+
+UPDATE workflow_definition_version
+SET status = 'ARCHIVED'
+WHERE version_id = 'workflowversion_standard_v4';
+
+UPDATE workflow_definition_version
+SET status = 'PUBLISHED', published_at = CURRENT_TIMESTAMP
+WHERE version_id = 'workflowversion_standard_v5';
+
+--rollback UPDATE workflow_definition_version SET status = 'DRAFT', published_at = NULL WHERE version_id = 'workflowversion_standard_v5';
+--rollback UPDATE workflow_definition_version SET status = 'PUBLISHED', published_at = CURRENT_TIMESTAMP WHERE version_id = 'workflowversion_standard_v4';
+--rollback DELETE FROM workflow_edge_definition WHERE version_id = 'workflowversion_standard_v5';
+--rollback DELETE FROM workflow_node_definition WHERE version_id = 'workflowversion_standard_v5';
+--rollback DELETE FROM workflow_definition_version WHERE version_id = 'workflowversion_standard_v5';
 --rollback ALTER TABLE oms_order DROP CONSTRAINT IF EXISTS fk_oms_order_account_environment;
 --rollback ALTER TABLE oms_order DROP CONSTRAINT IF EXISTS fk_oms_order_intent_environment;
 --rollback ALTER TABLE approved_trade_intent DROP COLUMN IF EXISTS environment;
