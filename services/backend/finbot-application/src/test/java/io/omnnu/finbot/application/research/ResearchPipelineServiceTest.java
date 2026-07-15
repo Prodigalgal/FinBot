@@ -283,6 +283,63 @@ final class ResearchPipelineServiceTest {
         assertFalse(segmentation.demoRegistered);
     }
 
+    @Test
+    void reusesExistingEvidenceSnapshotWithoutCollectingOrCompressingAgain() {
+        var demoRunId = new WorkflowRunId("run_pipeline_demo001");
+        var startCount = new AtomicInteger();
+        var segmentation = new SnapshotSegmentationStore();
+        segmentation.ensureLiveCase(
+                new ResearchCaseId("case_pipeline_test001"),
+                new ResearchSegmentId("segment_evidence_test001"),
+                new ResearchSegmentId("segment_live_test001"),
+                RUN_ID,
+                WorkflowTrigger.SCHEDULED,
+                "Execute scheduled research",
+                NOW);
+        segmentation.recordEvidenceSnapshot(
+                RUN_ID,
+                new ResearchArtifactId("artifact_compression_test001"),
+                NOW);
+        var executedRuns = ConcurrentHashMap.<WorkflowRunId>newKeySet();
+        var service = new ResearchPipelineService(
+                command -> {
+                    var sequence = startCount.incrementAndGet();
+                    return CompletableFuture.completedFuture(new StartWorkflowResult(
+                            sequence == 1 ? RUN_ID : demoRunId,
+                            new WorkflowEventId(sequence == 1
+                                    ? "event_pipeline_live001"
+                                    : "event_pipeline_demo001"),
+                            NOW));
+                },
+                runId -> new ResearchWorkflowPlan(true, true, false, false),
+                rejectingIngestion(),
+                runId -> CompletableFuture.failedStage(
+                        new AssertionError("Compression must not restart after snapshot binding")),
+                runId -> CompletableFuture.failedStage(new AssertionError("Market data must not start")),
+                (runId, prepared) -> CompletableFuture.failedStage(
+                        new AssertionError("Quant research must not start")),
+                runId -> {
+                    executedRuns.add(runId);
+                    return CompletableFuture.completedFuture(null);
+                },
+                (runId, code, message, retryable, failedAt) -> true,
+                workflowRuns(WorkflowRunStatus.ACCEPTED),
+                runId -> CompletableFuture.failedStage(
+                        new AssertionError("Trade automation must not start")),
+                new ResearchSegmentationService(segmentation),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        var result = service.execute(new ResearchPipelineRequest(
+                        command(), ResearchTaskMode.STANDARD, 2, 3))
+                .toCompletableFuture()
+                .join();
+
+        assertEquals(RUN_ID, result.runId());
+        assertEquals(Set.of(RUN_ID, demoRunId), executedRuns);
+        assertEquals(2, startCount.get());
+        assertTrue(segmentation.demoRegistered);
+    }
+
     private static IngestionUseCase successfulIngestion() {
         return new IngestionUseCase() {
             @Override

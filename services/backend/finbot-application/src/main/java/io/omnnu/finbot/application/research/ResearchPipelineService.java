@@ -85,6 +85,11 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
     private CompletionStage<Void> prepareSharedEvidence(
             StartWorkflowResult liveStarted,
             ResearchPipelineRequest request) {
+        if (segmentation.findByRunId(liveStarted.runId())
+                .map(ResearchCaseView::evidenceArtifactId)
+                .isPresent()) {
+            return CompletableFuture.completedFuture(null);
+        }
         var status = workflowRuns.find(liveStarted.runId())
                 .orElseThrow(() -> new IllegalStateException("Accepted workflow run is missing"))
                 .status();

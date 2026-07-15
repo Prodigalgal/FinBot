@@ -101,6 +101,7 @@ class JdkQuantResearchHttpClientTest {
             assertInstanceOf(ResearchCompletedEvent.class, events.get(2));
             assertEquals(List.of(1L, 2L, 3L), events.stream().map(QuantResearchEvent::sequence).toList());
             assertTrue(requestBody.get().contains("\"deterministicSeed\":42"));
+            assertTrue(requestBody.get().contains("\"environment\":\"LIVE\""));
             assertTrue(requestBody.get().contains("\"marketType\":\"PERPETUAL\""));
         } finally {
             server.stop(0);

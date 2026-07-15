@@ -60,6 +60,7 @@ public final class QuantResearchHttpCodec {
         value.instruments().forEach(instrument -> {
             var node = instruments.addObject();
             node.put("exchange", instrument.exchange().name());
+            node.put("environment", instrument.environment().name());
             node.put("symbol", instrument.symbol().value());
             node.put("marketType", instrument.marketType().name());
             node.put("quoteCurrency", instrument.quoteCurrency());
