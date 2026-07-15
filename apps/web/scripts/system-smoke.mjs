@@ -64,7 +64,6 @@ try {
     await page.getByRole('heading', { name: heading, exact: true }).waitFor();
     await page.getByText(readyText, { exact: false }).first().waitFor();
   }
-  const csrfConflictStatus = await probeAuthenticatedCsrfWrite(page, appUrl);
   await page.screenshot({ path: path.join(outputDir, 'all-workspaces-desktop.png'), fullPage: true });
   const desktopOverflowElements = await horizontalOverflowElements(page);
 
@@ -81,6 +80,7 @@ try {
   if (browserProblems.length > 0) {
     throw new Error(`浏览器控制台存在错误: ${JSON.stringify(browserProblems)}`);
   }
+  const csrfConflictStatus = await probeAuthenticatedCsrfWrite(page, appUrl);
   const operationsSse = await probeOperationsSse(page, appUrl);
   const workflowSseHeartbeat = sseRunId === null
     ? null
