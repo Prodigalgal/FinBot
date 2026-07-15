@@ -66,10 +66,6 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                   from venue_instrument candidate
                   where candidate.product_id = item.product_id
                     and candidate.status = 'ACTIVE'
-                    and exists (
-                      select 1 from exchange_account account
-                      where account.exchange = candidate.exchange and account.enabled = true
-                    )
                   order by
                     case when candidate.instrument_id = item.preferred_instrument_id then 0 else 1 end,
                     case candidate.market_type
@@ -104,10 +100,6 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                 select instrument_id, exchange, market_type, symbol, settlement_asset
                 from venue_instrument
                 where instrument_id = :instrumentId and status = 'ACTIVE'
-                  and exists (
-                    select 1 from exchange_account account
-                    where account.exchange = venue_instrument.exchange and account.enabled = true
-                  )
                 """)
                 .param("instrumentId", instrumentId.value())
                 .query((resultSet, rowNumber) -> new ResearchInstrument(
@@ -115,6 +107,29 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                         ExchangeVenue.valueOf(resultSet.getString("exchange")),
                         MarketType.valueOf(resultSet.getString("market_type")),
                         resultSet.getString("symbol"),
+                        resultSet.getString("settlement_asset")))
+                .optional();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<ResearchInstrument> findResearchInstrument(
+            ExchangeVenue exchange,
+            String symbol) {
+        return jdbcClient.sql("""
+                select instrument_id, market_type, settlement_asset
+                from venue_instrument
+                where exchange = :exchange and symbol = :symbol and status = 'ACTIVE'
+                order by execution_enabled desc, instrument_id
+                limit 1
+                """)
+                .param("exchange", exchange.name())
+                .param("symbol", symbol)
+                .query((resultSet, rowNumber) -> new ResearchInstrument(
+                        new InstrumentId(resultSet.getString("instrument_id")),
+                        exchange,
+                        MarketType.valueOf(resultSet.getString("market_type")),
+                        symbol,
                         resultSet.getString("settlement_asset")))
                 .optional();
     }
@@ -150,6 +165,40 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                 return candles.size();
             }
         });
+    }
+
+    @Override
+    public void saveResearchScope(
+            WorkflowRunId workflowRunId,
+            ResearchInstrument instrument,
+            io.omnnu.finbot.application.market.MarketAnalysisScope scope,
+            java.math.BigDecimal marketReferencePrice,
+            java.time.Instant capturedAt) {
+        jdbcClient.sql("""
+                insert into research_market_scope (
+                  workflow_run_id, instrument_id, exchange, symbol,
+                  interval_seconds, forecast_horizon_seconds, market_reference_price, captured_at
+                ) values (
+                  :workflowRunId, :instrumentId, :exchange, :symbol,
+                  :intervalSeconds, :forecastHorizonSeconds, :marketReferencePrice, :capturedAt
+                ) on conflict (workflow_run_id) do update
+                set instrument_id = excluded.instrument_id,
+                    exchange = excluded.exchange,
+                    symbol = excluded.symbol,
+                    interval_seconds = excluded.interval_seconds,
+                    forecast_horizon_seconds = excluded.forecast_horizon_seconds,
+                    market_reference_price = excluded.market_reference_price,
+                    captured_at = excluded.captured_at
+                """)
+                .param("workflowRunId", workflowRunId.value())
+                .param("instrumentId", instrument.instrumentId().value())
+                .param("exchange", instrument.exchange().name())
+                .param("symbol", instrument.symbol())
+                .param("intervalSeconds", scope.intervalSeconds())
+                .param("forecastHorizonSeconds", scope.forecastHorizonSeconds())
+                .param("marketReferencePrice", marketReferencePrice)
+                .param("capturedAt", timestamp(capturedAt))
+                .update();
     }
 
     @Override

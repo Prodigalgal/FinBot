@@ -43,3 +43,13 @@ databaseChangeLog:
       file: db/changelog/releases/021-exchange-product-controls.sql
   - include:
       file: db/changelog/releases/022-execution-ai-output-contract.sql
+  - include:
+      file: db/changelog/releases/023-estimated-trading.sql
+  - include:
+      file: db/changelog/releases/024-feature-parity-control-plane.sql
+  - include:
+      file: db/changelog/releases/025-workflow-owned-execution-review.sql
+  - include:
+      file: db/changelog/releases/026-product-catalog-and-execution-isolation.sql
+  - include:
+      file: db/changelog/releases/027-research-forecast.sql

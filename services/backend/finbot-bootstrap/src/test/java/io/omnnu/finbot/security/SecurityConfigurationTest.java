@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 import io.omnnu.finbot.application.identity.AdminSession;
 import io.omnnu.finbot.application.identity.AuthenticationUseCase;
@@ -67,6 +68,7 @@ class SecurityConfigurationTest {
     void rejectsAnonymousInitialRequestBeforeAsyncHandlingStarts() throws Exception {
         mockMvc.perform(get("/api/v2/test/async"))
                 .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"))
                 .andExpect(request().asyncNotStarted());
     }
 
@@ -86,6 +88,19 @@ class SecurityConfigurationTest {
                         .header("X-XSRF-TOKEN", csrfCookie.getValue()))
                 .andExpect(status().isOk())
                 .andExpect(content().string("updated"));
+    }
+
+    @Test
+    void identifiesInvalidSpaCsrfSeparatelyFromAuthentication() throws Exception {
+        var sessionCookie = new Cookie(
+                SessionAuthenticationFilter.SESSION_COOKIE_NAME,
+                "valid-session-token");
+
+        mockMvc.perform(put("/api/v2/test/csrf")
+                        .cookie(sessionCookie)
+                        .header("X-XSRF-TOKEN", "invalid-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED_OR_INVALID_CSRF"));
     }
 
     @Configuration(proxyBeanMethods = false)

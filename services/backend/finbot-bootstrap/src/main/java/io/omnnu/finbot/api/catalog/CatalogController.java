@@ -2,20 +2,29 @@ package io.omnnu.finbot.api.catalog;
 
 import io.omnnu.finbot.api.catalog.CatalogResponses.ProductDetailResponse;
 import io.omnnu.finbot.api.catalog.CatalogResponses.ProductPageResponse;
+import io.omnnu.finbot.api.catalog.CatalogResponses.CatalogSyncRunResponse;
 import io.omnnu.finbot.api.catalog.CatalogResponses.WatchlistDetailResponse;
 import io.omnnu.finbot.api.catalog.CatalogResponses.WatchlistSummaryResponse;
 import io.omnnu.finbot.application.catalog.CatalogApplicationService;
 import io.omnnu.finbot.application.catalog.CatalogUseCase;
+import io.omnnu.finbot.application.catalog.CatalogSyncScope;
+import io.omnnu.finbot.application.catalog.ProductCatalogSyncUseCase;
 import io.omnnu.finbot.application.catalog.CreateWatchlistCommand;
 import io.omnnu.finbot.application.catalog.ProductSearchCriteria;
 import io.omnnu.finbot.application.catalog.UpdateWatchlistCommand;
 import io.omnnu.finbot.application.catalog.UpsertWatchlistItemCommand;
+import io.omnnu.finbot.application.operations.BackgroundTaskCoordinator;
+import io.omnnu.finbot.application.operations.CatalogSyncTaskPayload;
+import io.omnnu.finbot.application.operations.EnqueueTaskCommand;
+import io.omnnu.finbot.application.shared.IdempotencyKeys;
+import io.omnnu.finbot.api.operations.TaskResponse;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.catalog.MarketType;
 import io.omnnu.finbot.domain.catalog.ProductCategory;
 import io.omnnu.finbot.domain.catalog.ProductId;
 import io.omnnu.finbot.domain.catalog.WatchlistId;
+import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -29,6 +38,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -38,9 +48,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v2")
 public final class CatalogController {
     private final CatalogUseCase catalogUseCase;
+    private final ProductCatalogSyncUseCase catalogSyncUseCase;
+    private final BackgroundTaskCoordinator taskCoordinator;
 
-    public CatalogController(CatalogUseCase catalogUseCase) {
+    public CatalogController(
+            CatalogUseCase catalogUseCase,
+            ProductCatalogSyncUseCase catalogSyncUseCase,
+            BackgroundTaskCoordinator taskCoordinator) {
         this.catalogUseCase = Objects.requireNonNull(catalogUseCase, "catalogUseCase");
+        this.catalogSyncUseCase = Objects.requireNonNull(catalogSyncUseCase, "catalogSyncUseCase");
+        this.taskCoordinator = Objects.requireNonNull(taskCoordinator, "taskCoordinator");
     }
 
     @GetMapping("/products")
@@ -65,6 +82,29 @@ public final class CatalogController {
     @GetMapping("/products/{productId}")
     public ProductDetailResponse product(@PathVariable String productId) {
         return ProductDetailResponse.from(catalogUseCase.product(new ProductId(productId)));
+    }
+
+    @GetMapping("/products/catalog-sync-runs")
+    public List<CatalogSyncRunResponse> catalogSyncRuns() {
+        return catalogSyncUseCase.latestRuns().stream().map(CatalogSyncRunResponse::from).toList();
+    }
+
+    @PostMapping("/products/catalog-sync/{exchange}/{marketType}")
+    public org.springframework.http.ResponseEntity<TaskResponse> synchronizeCatalog(
+            @PathVariable ExchangeVenue exchange,
+            @PathVariable MarketType marketType,
+            @RequestHeader("Idempotency-Key") String clientIdempotencyKey) {
+        var scope = new CatalogSyncScope(exchange, marketType);
+        var task = taskCoordinator.enqueue(new EnqueueTaskCommand(
+                BackgroundTaskType.CATALOG_SYNC,
+                IdempotencyKeys.scoped(
+                        "catalog-sync:" + exchange.name() + ':' + marketType.name(),
+                        clientIdempotencyKey),
+                new CatalogSyncTaskPayload(scope),
+                60,
+                5,
+                null));
+        return org.springframework.http.ResponseEntity.accepted().body(TaskResponse.from(task));
     }
 
     @GetMapping("/watchlists")

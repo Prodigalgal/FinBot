@@ -73,11 +73,13 @@ public final class ResearchHistoryController {
     @PostMapping("/{runId}/resume")
     public CompletionStage<ResponseEntity<InstantResearchResponse>> resume(
             @PathVariable String runId,
+            @RequestParam(required = false) String checkpointNodeId,
             @RequestHeader("Idempotency-Key") String clientIdempotencyKey) {
         var source = source(runId);
         if (source.status() != WorkflowRunStatus.FAILED) {
             throw new IllegalArgumentException("Only a FAILED research run can be resumed");
         }
+        validateCheckpoint(runId, checkpointNodeId);
         var taskKey = IdempotencyKeys.scoped(
                 "research-resume",
                 runId + ':' + clientIdempotencyKey);
@@ -89,6 +91,21 @@ public final class ResearchHistoryController {
                 source.workflowIdempotencyKey());
         return researchLaunch.launch(command, taskKey, ResearchTaskMode.RESUME_FAILED)
                 .thenApply(launched -> response(launched, WorkflowRunStatus.ACCEPTED));
+    }
+
+    private void validateCheckpoint(String runId, String checkpointNodeId) {
+        if (checkpointNodeId == null || checkpointNodeId.isBlank()) {
+            return;
+        }
+        var detail = history.find(new WorkflowRunId(runId))
+                .orElseThrow(() -> new WorkflowNotFoundException(runId));
+        var resumable = detail.checkpoints().stream()
+                .anyMatch(checkpoint -> checkpoint.nodeId().equals(checkpointNodeId.strip())
+                        && "FAILED".equals(checkpoint.status()));
+        if (!resumable) {
+            throw new IllegalArgumentException(
+                    "checkpointNodeId must identify a failed checkpoint in this run");
+        }
     }
 
     private io.omnnu.finbot.application.research.ResearchReplaySource source(String runId) {

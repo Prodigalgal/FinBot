@@ -109,7 +109,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
             rows.removeLast();
         }
         var nextCursor = hasMore && !rows.isEmpty() ? rows.getLast().productId() : null;
-        return new ProductPage(rows, nextCursor);
+        return new ProductPage(rows, nextCursor, countProducts(criteria));
     }
 
     @Override
@@ -132,12 +132,26 @@ public class JdbcCatalogRepository implements CatalogRepository {
             return Optional.empty();
         }
         var instruments = jdbcClient.sql("""
-                select instrument_id, exchange, market_type, symbol, settlement_asset,
-                       contract_size, price_tick, quantity_step, minimum_quantity,
-                       maximum_leverage, execution_enabled, status, metadata_updated_at
-                from venue_instrument
-                where product_id = :productId
-                order by status, exchange, market_type, symbol
+                select instrument.instrument_id, instrument.exchange, instrument.market_type,
+                       instrument.symbol, instrument.settlement_asset, instrument.contract_size,
+                       instrument.price_tick, instrument.quantity_step, instrument.minimum_quantity,
+                       instrument.maximum_leverage, instrument.execution_enabled, instrument.status,
+                       instrument.metadata_updated_at,
+                       coalesce(latest.close_price, quote.last_price) as latest_price,
+                       coalesce(latest.observed_at, quote.observed_at) as latest_price_at
+                from venue_instrument instrument
+                left join lateral (
+                  select candle.close_price, candle.observed_at
+                  from market_candle_fact candle
+                  where candle.instrument_id = instrument.instrument_id
+                  order by candle.open_time desc, candle.id desc
+                  limit 1
+                ) latest on true
+                left join instrument_quote_snapshot quote
+                  on quote.instrument_id = instrument.instrument_id
+                where instrument.product_id = :productId
+                order by instrument.status, instrument.exchange,
+                         instrument.market_type, instrument.symbol
                 """)
                 .param("productId", productId.value())
                 .query((resultSet, rowNumber) -> instrument(resultSet))
@@ -393,7 +407,49 @@ public class JdbcCatalogRepository implements CatalogRepository {
                 resultSet.getBigDecimal("maximum_leverage"),
                 resultSet.getBoolean("execution_enabled"),
                 CatalogStatus.valueOf(resultSet.getString("status")),
-                instant(resultSet.getObject("metadata_updated_at", OffsetDateTime.class)));
+                instant(resultSet.getObject("metadata_updated_at", OffsetDateTime.class)),
+                resultSet.getBigDecimal("latest_price"),
+                nullableInstant(resultSet.getObject("latest_price_at", OffsetDateTime.class)));
+    }
+
+    private long countProducts(ProductSearchCriteria criteria) {
+        var sql = new StringBuilder("""
+                select count(*) from canonical_product p where p.status = 'ACTIVE'
+                """);
+        if (criteria.search() != null) {
+            sql.append(" and (lower(p.display_name) like :search or lower(p.base_asset) like :search ")
+                    .append("or lower(p.quote_asset) like :search or exists (")
+                    .append("select 1 from venue_instrument vsi where vsi.product_id = p.product_id ")
+                    .append("and lower(vsi.symbol) like :search))");
+        }
+        if (criteria.category() != null) {
+            sql.append(" and p.category = :category");
+        }
+        if (criteria.exchange() != null || criteria.marketType() != null) {
+            sql.append(" and exists (select 1 from venue_instrument vf where vf.product_id = p.product_id");
+            if (criteria.exchange() != null) {
+                sql.append(" and vf.exchange = :exchange");
+            }
+            if (criteria.marketType() != null) {
+                sql.append(" and vf.market_type = :marketType");
+            }
+            sql.append(" and vf.status = 'ACTIVE')");
+        }
+        var statement = jdbcClient.sql(sql.toString());
+        if (criteria.search() != null) {
+            statement = statement.param(
+                    "search", "%" + criteria.search().toLowerCase(java.util.Locale.ROOT) + "%");
+        }
+        if (criteria.category() != null) {
+            statement = statement.param("category", criteria.category().name());
+        }
+        if (criteria.exchange() != null) {
+            statement = statement.param("exchange", criteria.exchange().name());
+        }
+        if (criteria.marketType() != null) {
+            statement = statement.param("marketType", criteria.marketType().name());
+        }
+        return statement.query(Long.class).single();
     }
 
     private static InstrumentId nullableInstrumentId(String value) {
@@ -402,6 +458,10 @@ public class JdbcCatalogRepository implements CatalogRepository {
 
     private static Instant instant(OffsetDateTime value) {
         return Objects.requireNonNull(value, "database timestamp").toInstant();
+    }
+
+    private static Instant nullableInstant(OffsetDateTime value) {
+        return value == null ? null : value.toInstant();
     }
 
     private record ProductRoot(

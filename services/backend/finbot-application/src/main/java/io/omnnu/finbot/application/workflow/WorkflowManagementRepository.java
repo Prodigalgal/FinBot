@@ -14,6 +14,8 @@ public interface WorkflowManagementRepository {
 
     Optional<WorkflowDefinitionVersion> findVersion(WorkflowVersionId versionId);
 
+    List<WorkflowDefinitionVersion> listVersions(WorkflowDefinitionId definitionId);
+
     Optional<WorkflowDefinitionVersion> findPublished(WorkflowDefinitionId definitionId);
 
     boolean setActive(WorkflowDefinitionId definitionId, boolean active, Instant updatedAt);

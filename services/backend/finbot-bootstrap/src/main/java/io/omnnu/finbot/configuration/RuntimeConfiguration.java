@@ -5,6 +5,8 @@ import io.omnnu.finbot.application.ai.AiCompletionGateway;
 import io.omnnu.finbot.application.ai.AiInvocationAuditStore;
 import io.omnnu.finbot.application.ai.AiProviderProtocolResolver;
 import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
+import io.omnnu.finbot.application.autonomous.AutonomousResearchService;
+import io.omnnu.finbot.application.autonomous.AutonomousResearchUseCase;
 import io.omnnu.finbot.application.identity.AdminCredentialVerifier;
 import io.omnnu.finbot.application.ingestion.EvidenceNormalizer;
 import io.omnnu.finbot.application.ingestion.IngestionApplicationService;
@@ -20,6 +22,12 @@ import io.omnnu.finbot.application.configuration.ConfigurationApplicationService
 import io.omnnu.finbot.application.configuration.ConfigurationRepository;
 import io.omnnu.finbot.application.configuration.ConfigurationUseCase;
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
+import io.omnnu.finbot.application.configuration.ProviderModelCatalogGateway;
+import io.omnnu.finbot.application.configuration.ProviderModelCatalogService;
+import io.omnnu.finbot.application.configuration.ProviderModelCatalogUseCase;
+import io.omnnu.finbot.application.experiment.AiExperimentRepository;
+import io.omnnu.finbot.application.experiment.AiExperimentService;
+import io.omnnu.finbot.application.experiment.AiExperimentUseCase;
 import io.omnnu.finbot.application.exchange.OmsExecutionStore;
 import io.omnnu.finbot.application.exchange.ExchangeAccountGateway;
 import io.omnnu.finbot.application.exchange.ExchangeAccountConfigurationRepository;
@@ -38,6 +46,10 @@ import io.omnnu.finbot.application.exchange.OrderReconciliationUseCase;
 import io.omnnu.finbot.application.catalog.CatalogApplicationService;
 import io.omnnu.finbot.application.catalog.CatalogRepository;
 import io.omnnu.finbot.application.catalog.CatalogUseCase;
+import io.omnnu.finbot.application.catalog.ProductCatalogGateway;
+import io.omnnu.finbot.application.catalog.ProductCatalogSyncService;
+import io.omnnu.finbot.application.catalog.ProductCatalogSyncStore;
+import io.omnnu.finbot.application.catalog.ProductCatalogSyncUseCase;
 import io.omnnu.finbot.application.ledger.TradingLedgerQueryRepository;
 import io.omnnu.finbot.application.ledger.TradingLedgerQueryService;
 import io.omnnu.finbot.application.ledger.TradingLedgerQueryUseCase;
@@ -48,12 +60,27 @@ import io.omnnu.finbot.application.market.MarketDataArtifactUriFactory;
 import io.omnnu.finbot.application.market.MarketDataGateway;
 import io.omnnu.finbot.application.market.MarketDataRepository;
 import io.omnnu.finbot.application.market.MarketDataUseCase;
+import io.omnnu.finbot.application.market.MarketDataRefreshUseCase;
+import io.omnnu.finbot.application.network.NetworkDiagnosticStore;
+import io.omnnu.finbot.application.network.NetworkDiagnosticsService;
+import io.omnnu.finbot.application.network.NetworkDiagnosticsUseCase;
+import io.omnnu.finbot.application.network.NetworkProbeGateway;
+import io.omnnu.finbot.application.network.ProxyRouteResolver;
 import io.omnnu.finbot.application.operations.BackgroundTaskCoordinator;
 import io.omnnu.finbot.application.operations.BackgroundTaskStore;
+import io.omnnu.finbot.application.operations.OperationsRepository;
 import io.omnnu.finbot.application.quant.QuantResearchApplicationService;
 import io.omnnu.finbot.application.quant.QuantResearchGateway;
 import io.omnnu.finbot.application.quant.QuantResearchStore;
 import io.omnnu.finbot.application.quant.QuantResearchUseCase;
+import io.omnnu.finbot.application.quant.TradeRiskPreviewService;
+import io.omnnu.finbot.application.quant.TradeRiskPreviewUseCase;
+import io.omnnu.finbot.application.review.ResearchFeedbackStore;
+import io.omnnu.finbot.application.review.ResearchReviewService;
+import io.omnnu.finbot.application.review.ResearchReviewUseCase;
+import io.omnnu.finbot.application.setup.SetupProfileRepository;
+import io.omnnu.finbot.application.setup.SetupProfileService;
+import io.omnnu.finbot.application.setup.SetupProfileUseCase;
 import io.omnnu.finbot.application.workflow.WorkflowManagementRepository;
 import io.omnnu.finbot.application.workflow.WorkflowManagementService;
 import io.omnnu.finbot.application.workflow.WorkflowManagementUseCase;
@@ -62,20 +89,32 @@ import io.omnnu.finbot.application.research.CompressionOutputParser;
 import io.omnnu.finbot.application.research.CompressionRepository;
 import io.omnnu.finbot.application.research.CompressionUseCase;
 import io.omnnu.finbot.application.research.ResearchPipelineService;
+import io.omnnu.finbot.application.research.StoredResearchWorkflowPlanQuery;
 import io.omnnu.finbot.application.research.ResearchPipelineUseCase;
 import io.omnnu.finbot.application.research.ResearchLaunchService;
 import io.omnnu.finbot.application.research.ResearchLaunchUseCase;
+import io.omnnu.finbot.application.research.ResearchHistoryRepository;
+import io.omnnu.finbot.application.research.ForecastEvaluationService;
+import io.omnnu.finbot.application.research.ForecastEvaluationUseCase;
+import io.omnnu.finbot.application.research.ResearchForecastRepository;
+import io.omnnu.finbot.application.research.ResearchForecastService;
+import io.omnnu.finbot.application.research.ResearchForecastUseCase;
 import io.omnnu.finbot.application.workflow.StructuredAiOutputParser;
 import io.omnnu.finbot.application.workflow.WorkflowEventPublisher;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionService;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionStore;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionUseCase;
+import io.omnnu.finbot.application.workflow.WorkflowDiagnosticsService;
+import io.omnnu.finbot.application.workflow.WorkflowDiagnosticsUseCase;
 import io.omnnu.finbot.application.workflow.WorkflowRunFailureService;
 import io.omnnu.finbot.application.workflow.WorkflowRunFailureUseCase;
 import io.omnnu.finbot.application.workflow.WorkflowRunQuery;
 import io.omnnu.finbot.application.workflow.WorkflowRunResumeService;
 import io.omnnu.finbot.application.workflow.WorkflowRunResumeStore;
 import io.omnnu.finbot.application.workflow.WorkflowRunResumeUseCase;
+import io.omnnu.finbot.application.workspace.PlatformWorkspaceRepository;
+import io.omnnu.finbot.application.workspace.PlatformWorkspaceService;
+import io.omnnu.finbot.application.workspace.PlatformWorkspaceUseCase;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.application.trading.TradeAutomationApplicationService;
 import io.omnnu.finbot.application.trading.TradeAutomationStore;
@@ -96,6 +135,7 @@ import java.util.random.RandomGenerator;
 import io.omnnu.finbot.infrastructure.identity.EncodedAdminCredentialVerifier;
 import io.omnnu.finbot.infrastructure.identity.MonotonicSortableIdGenerator;
 import io.omnnu.finbot.domain.risk.MarginRiskEngine;
+import io.omnnu.finbot.domain.risk.EstimatedTradeEngine;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -169,11 +209,27 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    ProviderModelCatalogUseCase providerModelCatalogUseCase(
+            ConfigurationUseCase configuration,
+            EnvironmentValueResolver environmentValueResolver,
+            ProviderModelCatalogGateway gateway) {
+        return new ProviderModelCatalogService(configuration, environmentValueResolver, gateway);
+    }
+
+    @Bean
     CatalogUseCase catalogUseCase(
             CatalogRepository repository,
             SortableIdGenerator idGenerator,
             Clock clock) {
         return new CatalogApplicationService(repository, idGenerator, clock);
+    }
+
+    @Bean
+    ProductCatalogSyncUseCase productCatalogSyncUseCase(
+            ProductCatalogGateway gateway,
+            ProductCatalogSyncStore store,
+            Clock clock) {
+        return new ProductCatalogSyncService(gateway, store, clock);
     }
 
     @Bean
@@ -198,11 +254,54 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    AutonomousResearchUseCase autonomousResearchUseCase(
+            OperationsRepository operations,
+            BackgroundTaskCoordinator tasks,
+            ResearchHistoryRepository history,
+            Clock clock) {
+        return new AutonomousResearchService(operations, tasks, history, clock);
+    }
+
+    @Bean
+    PlatformWorkspaceUseCase platformWorkspaceUseCase(
+            PlatformWorkspaceRepository repository,
+            Clock clock) {
+        return new PlatformWorkspaceService(repository, clock);
+    }
+
+    @Bean
+    ResearchReviewUseCase researchReviewUseCase(
+            ResearchHistoryRepository history,
+            ResearchFeedbackStore feedbackStore,
+            SortableIdGenerator idGenerator,
+            Clock clock) {
+        return new ResearchReviewService(history, feedbackStore, idGenerator, clock);
+    }
+
+    @Bean
+    SetupProfileUseCase setupProfileUseCase(
+            ConfigurationUseCase configuration,
+            SetupProfileRepository repository,
+            SortableIdGenerator idGenerator,
+            Clock clock) {
+        return new SetupProfileService(configuration, repository, idGenerator, clock);
+    }
+
+    @Bean
     WorkflowManagementUseCase workflowManagementUseCase(
             WorkflowManagementRepository repository,
             SortableIdGenerator idGenerator,
             Clock clock) {
         return new WorkflowManagementService(repository, idGenerator, clock);
+    }
+
+    @Bean
+    AiExperimentUseCase aiExperimentUseCase(
+            AiExperimentRepository repository,
+            WorkflowManagementUseCase workflows,
+            SortableIdGenerator idGenerator,
+            Clock clock) {
+        return new AiExperimentService(repository, workflows, idGenerator, clock);
     }
 
     @Bean(name = "workflowVirtualThreadExecutor", destroyMethod = "close")
@@ -251,6 +350,7 @@ public class RuntimeConfiguration {
     @Bean
     ResearchPipelineUseCase researchPipelineUseCase(
             StartWorkflowUseCase startWorkflow,
+            WorkflowExecutionStore workflowStore,
             IngestionUseCase ingestion,
             CompressionUseCase compression,
             MarketDataUseCase marketData,
@@ -262,6 +362,7 @@ public class RuntimeConfiguration {
             Clock clock) {
         return new ResearchPipelineService(
                 startWorkflow,
+                new StoredResearchWorkflowPlanQuery(workflowStore),
                 ingestion,
                 compression,
                 marketData,
@@ -335,6 +436,43 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    WorkflowDiagnosticsUseCase workflowDiagnosticsUseCase(
+            WorkflowManagementUseCase management,
+            ConfigurationUseCase configuration,
+            StartWorkflowUseCase startWorkflow,
+            WorkflowExecutionStore executionStore,
+            WorkflowRunFailureUseCase failureUseCase,
+            WorkflowEventPublisher eventPublisher,
+            WorkflowAiInvoker aiInvoker,
+            SortableIdGenerator idGenerator,
+            Clock clock,
+            @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
+        return new WorkflowDiagnosticsService(
+                management,
+                configuration,
+                startWorkflow,
+                executionStore,
+                failureUseCase,
+                eventPublisher,
+                aiInvoker,
+                idGenerator,
+                clock,
+                executor);
+    }
+
+    @Bean
+    NetworkDiagnosticsUseCase networkDiagnosticsUseCase(
+            ProxyRouteResolver routeResolver,
+            NetworkProbeGateway probeGateway,
+            NetworkDiagnosticStore store,
+            SortableIdGenerator idGenerator,
+            Clock clock,
+            @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
+        return new NetworkDiagnosticsService(
+                routeResolver, probeGateway, store, idGenerator, clock, executor);
+    }
+
+    @Bean
     IngestionUseCase ingestionUseCase(
             IngestionRepository repository,
             SourceCollectionGateway collectionGateway,
@@ -388,6 +526,19 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    ResearchForecastUseCase researchForecastUseCase(ResearchForecastRepository repository) {
+        return new ResearchForecastService(repository);
+    }
+
+    @Bean
+    ForecastEvaluationUseCase forecastEvaluationUseCase(
+            ResearchForecastRepository repository,
+            MarketDataRefreshUseCase marketData,
+            Clock clock) {
+        return new ForecastEvaluationService(repository, marketData, clock);
+    }
+
+    @Bean
     QuantResearchUseCase quantResearchUseCase(
             QuantResearchGateway gateway,
             QuantResearchStore store,
@@ -399,6 +550,17 @@ public class RuntimeConfiguration {
                 store,
                 workflowStore,
                 workflowEvents,
+                clock);
+    }
+
+    @Bean
+    TradeRiskPreviewUseCase tradeRiskPreviewUseCase(
+            io.omnnu.finbot.application.trading.TradeAutomationConfigurationRepository configuration,
+            Clock clock) {
+        return new TradeRiskPreviewService(
+                configuration,
+                new MarginRiskEngine(),
+                new EstimatedTradeEngine(),
                 clock);
     }
 
@@ -428,6 +590,7 @@ public class RuntimeConfiguration {
                 store,
                 orderExecution,
                 new MarginRiskEngine(),
+                new EstimatedTradeEngine(),
                 clock,
                 executor);
     }

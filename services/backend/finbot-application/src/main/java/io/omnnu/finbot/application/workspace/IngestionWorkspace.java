@@ -1,0 +1,53 @@
+package io.omnnu.finbot.application.workspace;
+
+import java.time.Instant;
+import java.util.List;
+
+public record IngestionWorkspace(
+        long rawEvidenceCount,
+        long normalizedDocumentCount,
+        long compressionCount,
+        List<SourceStatus> sources,
+        List<CollectionRun> recentRuns,
+        Instant generatedAt) {
+    public IngestionWorkspace {
+        sources = List.copyOf(sources);
+        recentRuns = List.copyOf(recentRuns);
+    }
+
+    public record SourceStatus(
+            String sourceId,
+            String displayName,
+            String mode,
+            String tier,
+            String category,
+            String outboundRoute,
+            String credentialEnvironment,
+            boolean credentialConfigured,
+            boolean enabled,
+            long version,
+            String latestStatus,
+            int fetchedCount,
+            int insertedCount,
+            int duplicateCount,
+            String errorCode,
+            String errorMessage,
+            Instant lastCollectedAt) {
+    }
+
+    public record CollectionRun(
+            String collectionId,
+            String workflowRunId,
+            String sourceId,
+            String sourceName,
+            String query,
+            String status,
+            int fetchedCount,
+            int insertedCount,
+            int duplicateCount,
+            String errorCode,
+            String errorMessage,
+            Instant startedAt,
+            Instant completedAt) {
+    }
+}

@@ -1,5 +1,7 @@
 package io.omnnu.finbot.application.trading;
 
+import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.domain.risk.RiskAssessmentId;
 import io.omnnu.finbot.domain.risk.RiskAssessmentPlan;
@@ -13,6 +15,8 @@ public record StoredRiskAssessment(
         WorkflowRunId workflowRunId,
         TradeProposalId proposalId,
         ExchangeAccountId accountId,
+        InstrumentId instrumentId,
+        ExchangeVenue exchange,
         String policyVersion,
         RiskAssessmentPlan plan,
         Instant assessedAt) {

@@ -1,5 +1,6 @@
 package io.omnnu.finbot.application.research;
 
+import io.omnnu.finbot.application.market.MarketAnalysisScope;
 import io.omnnu.finbot.application.operations.BackgroundTaskCoordinator;
 import io.omnnu.finbot.application.operations.EnqueueTaskCommand;
 import io.omnnu.finbot.application.operations.InstantResearchTaskPayload;
@@ -33,6 +34,15 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
             StartWorkflowCommand workflowCommand,
             String taskIdempotencyKey,
             ResearchTaskMode taskMode) {
+        return launch(workflowCommand, taskIdempotencyKey, taskMode, null);
+    }
+
+    @Override
+    public CompletionStage<ResearchLaunchResult> launch(
+            StartWorkflowCommand workflowCommand,
+            String taskIdempotencyKey,
+            ResearchTaskMode taskMode,
+            MarketAnalysisScope marketAnalysisScope) {
         Objects.requireNonNull(workflowCommand, "workflowCommand");
         Objects.requireNonNull(taskMode, "taskMode");
         return startWorkflow.start(workflowCommand).thenApply(started -> {
@@ -49,7 +59,8 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
                             workflowCommand.trigger(),
                             workflowCommand.workflowVersionId(),
                             workflowCommand.idempotencyKey(),
-                            taskMode),
+                            taskMode,
+                            marketAnalysisScope),
                     RESEARCH_PRIORITY,
                     MAXIMUM_ATTEMPTS,
                     null));

@@ -9,6 +9,7 @@ import io.omnnu.finbot.application.ledger.TradingLedgerQueryUseCase;
 import io.omnnu.finbot.application.ledger.TradingTimeRange;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.domain.ledger.TradingActivityType;
+import io.omnnu.finbot.domain.ledger.TradingActivitySource;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.time.Clock;
@@ -54,7 +55,10 @@ public final class TradingLedgerController {
     @GetMapping("/activity")
     public ActivityPageResponse activity(
             @RequestParam(required = false) String accountId,
+            @RequestParam(required = false) TradingActivitySource source,
             @RequestParam(required = false) TradingActivityType activityType,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String symbol,
             @RequestParam(defaultValue = "DAYS_30") TradingRangePreset range,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
@@ -64,7 +68,10 @@ public final class TradingLedgerController {
         var cursor = cursor(beforeOccurredAt, beforeActivityId);
         var criteria = new TradingActivityCriteria(
                 accountId == null || accountId.isBlank() ? null : new ExchangeAccountId(accountId),
+                source,
                 activityType,
+                status,
+                symbol,
                 resolveRange(range, from, to),
                 cursor,
                 limit);

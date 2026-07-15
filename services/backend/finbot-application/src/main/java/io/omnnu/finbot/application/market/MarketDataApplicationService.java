@@ -45,23 +45,42 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
     @Override
     public CompletionStage<MarketDataPreparationResult> prepare(WorkflowRunId workflowRunId) {
         Objects.requireNonNull(workflowRunId, "workflowRunId");
-        return CompletableFuture.supplyAsync(() -> prepareSynchronously(workflowRunId), executor);
+        return CompletableFuture.supplyAsync(() -> prepareSynchronously(workflowRunId, null), executor);
+    }
+
+    @Override
+    public CompletionStage<MarketDataPreparationResult> prepare(
+            WorkflowRunId workflowRunId,
+            MarketAnalysisScope scope) {
+        Objects.requireNonNull(workflowRunId, "workflowRunId");
+        Objects.requireNonNull(scope, "scope");
+        return CompletableFuture.supplyAsync(() -> prepareSynchronously(workflowRunId, scope), executor);
     }
 
     @Override
     public CompletionStage<MarketDataRefreshResult> refresh(
             io.omnnu.finbot.domain.catalog.InstrumentId instrumentId) {
+        return refresh(instrumentId, RESEARCH_INTERVAL_SECONDS);
+    }
+
+    @Override
+    public CompletionStage<MarketDataRefreshResult> refresh(
+            io.omnnu.finbot.domain.catalog.InstrumentId instrumentId,
+            int intervalSeconds) {
         Objects.requireNonNull(instrumentId, "instrumentId");
-        return CompletableFuture.supplyAsync(() -> refreshSynchronously(instrumentId), executor);
+        return CompletableFuture.supplyAsync(
+                () -> refreshSynchronously(instrumentId, intervalSeconds),
+                executor);
     }
 
     private MarketDataRefreshResult refreshSynchronously(
-            io.omnnu.finbot.domain.catalog.InstrumentId instrumentId) {
+            io.omnnu.finbot.domain.catalog.InstrumentId instrumentId,
+            int intervalSeconds) {
         var instrument = repository.findInstrument(instrumentId)
                 .orElseThrow(() -> new MarketDataFetchException(
                         "INSTRUMENT_NOT_FOUND",
                         "Active venue instrument was not found"));
-        var outcome = fetch(instrument);
+        var outcome = fetch(instrument, intervalSeconds);
         if (outcome.series() == null) {
             throw new MarketDataFetchException(
                     Objects.requireNonNullElse(outcome.source().errorCode(), "MARKET_DATA_FETCH_FAILED"),
@@ -74,15 +93,27 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
                 clock.instant());
     }
 
-    private MarketDataPreparationResult prepareSynchronously(WorkflowRunId workflowRunId) {
-        var instruments = repository.listResearchInstruments();
+    private MarketDataPreparationResult prepareSynchronously(
+            WorkflowRunId workflowRunId,
+            MarketAnalysisScope scope) {
+        var instruments = scope == null
+                ? repository.listResearchInstruments()
+                : repository.findInstrument(scope.instrumentId())
+                        .filter(instrument -> instrument.exchange() == scope.exchange())
+                        .filter(instrument -> instrument.symbol().equals(scope.symbol()))
+                        .map(List::of)
+                        .orElse(List.of());
         if (instruments.isEmpty()) {
             throw new MarketDataFetchException(
-                    "RESEARCH_UNIVERSE_EMPTY",
-                    "No active venue instruments are available in the default watchlist");
+                    scope == null ? "RESEARCH_UNIVERSE_EMPTY" : "MARKET_ANALYSIS_INSTRUMENT_NOT_FOUND",
+                    scope == null
+                            ? "No active venue instruments are available in the default watchlist"
+                            : "Requested live-market instrument is not present in the active product catalog");
         }
+        var intervalSeconds = scope == null ? RESEARCH_INTERVAL_SECONDS : scope.intervalSeconds();
         var futures = instruments.stream()
-                .map(instrument -> CompletableFuture.supplyAsync(() -> fetch(instrument), executor))
+                .map(instrument -> CompletableFuture.supplyAsync(
+                        () -> fetch(instrument, intervalSeconds), executor))
                 .toList();
         awaitAll(futures);
         var outcomes = futures.stream().map(CompletableFuture::join).toList();
@@ -96,6 +127,15 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
                     "No exchange returned usable public candle data");
         }
         repository.saveCandles(series.stream().flatMap(value -> value.candles().stream()).toList());
+        if (scope != null) {
+            var scopedSeries = series.getFirst();
+            repository.saveResearchScope(
+                    workflowRunId,
+                    scopedSeries.instrument(),
+                    scope,
+                    scopedSeries.candles().getLast().close(),
+                    clock.instant());
+        }
         var encoded = artifactEncoder.encode(series);
         var artifactIdentity = sha256(workflowRunId.value() + ':' + encoded.sha256Hex());
         var artifactId = new ResearchArtifactId("artifact_" + artifactIdentity.substring(0, 40));
@@ -118,11 +158,11 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
                 outcomes.stream().map(FetchOutcome::source).toList());
     }
 
-    private FetchOutcome fetch(ResearchInstrument instrument) {
+    private FetchOutcome fetch(ResearchInstrument instrument, int intervalSeconds) {
         try {
             var candles = gateway.fetchCandles(
                     instrument,
-                    RESEARCH_INTERVAL_SECONDS,
+                    intervalSeconds,
                     RESEARCH_CANDLE_LIMIT);
             if (candles.size() < 50) {
                 return failure(

@@ -2,6 +2,7 @@ package io.omnnu.finbot.domain.workflow;
 
 import io.omnnu.finbot.domain.shared.DecimalValue;
 import io.omnnu.finbot.domain.shared.DomainText;
+import io.omnnu.finbot.domain.research.ForecastSignal;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -12,7 +13,19 @@ public record AgentMessageContent(
         List<AgentClaim> claims,
         List<String> evidenceReferences,
         List<String> challenges,
-        List<String> revisionNotes) {
+        List<String> revisionNotes,
+        ForecastSignal forecast) {
+    public AgentMessageContent(
+            String summary,
+            String argument,
+            BigDecimal confidence,
+            List<AgentClaim> claims,
+            List<String> evidenceReferences,
+            List<String> challenges,
+            List<String> revisionNotes) {
+        this(summary, argument, confidence, claims, evidenceReferences, challenges, revisionNotes, null);
+    }
+
     public AgentMessageContent {
         summary = DomainText.required(summary, "summary", 8_000);
         argument = DomainText.required(argument, "argument", 32_000);

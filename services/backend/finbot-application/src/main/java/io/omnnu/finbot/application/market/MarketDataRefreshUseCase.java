@@ -6,4 +6,10 @@ import java.util.concurrent.CompletionStage;
 @FunctionalInterface
 public interface MarketDataRefreshUseCase {
     CompletionStage<MarketDataRefreshResult> refresh(InstrumentId instrumentId);
+
+    default CompletionStage<MarketDataRefreshResult> refresh(
+            InstrumentId instrumentId,
+            int intervalSeconds) {
+        return refresh(instrumentId);
+    }
 }

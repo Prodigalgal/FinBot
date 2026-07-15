@@ -87,7 +87,7 @@ class TradingLedgerQueryServiceTest {
 
         @Override
         public TradingActivityPage activity(TradingActivityCriteria criteria) {
-            return new TradingActivityPage(List.of(), null);
+            return new TradingActivityPage(List.of(), null, 0, List.of(), List.of());
         }
     }
 }

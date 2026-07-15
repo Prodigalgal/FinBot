@@ -1,6 +1,7 @@
 package io.omnnu.finbot.api.catalog;
 
 import io.omnnu.finbot.application.catalog.ProductDetail;
+import io.omnnu.finbot.application.catalog.CatalogSyncRun;
 import io.omnnu.finbot.application.catalog.ProductPage;
 import io.omnnu.finbot.application.catalog.ProductSummary;
 import io.omnnu.finbot.application.catalog.VenueInstrumentView;
@@ -21,11 +22,43 @@ public final class CatalogResponses {
     private CatalogResponses() {
     }
 
-    public record ProductPageResponse(List<ProductSummaryResponse> products, String nextCursor) {
+    public record ProductPageResponse(
+            List<ProductSummaryResponse> products,
+            String nextCursor,
+            long totalCount) {
         public static ProductPageResponse from(ProductPage page) {
             return new ProductPageResponse(
                     page.products().stream().map(ProductSummaryResponse::from).toList(),
-                    page.nextCursor() == null ? null : page.nextCursor().value());
+                    page.nextCursor() == null ? null : page.nextCursor().value(),
+                    page.totalCount());
+        }
+    }
+
+    public record CatalogSyncRunResponse(
+            String syncRunId,
+            ExchangeVenue exchange,
+            MarketType marketType,
+            String status,
+            int discoveredCount,
+            int activeCount,
+            int inactiveCount,
+            String errorCode,
+            String errorMessage,
+            Instant startedAt,
+            Instant completedAt) {
+        public static CatalogSyncRunResponse from(CatalogSyncRun run) {
+            return new CatalogSyncRunResponse(
+                    run.syncRunId(),
+                    run.scope().exchange(),
+                    run.scope().marketType(),
+                    run.status(),
+                    run.discoveredCount(),
+                    run.activeCount(),
+                    run.inactiveCount(),
+                    run.errorCode(),
+                    run.errorMessage(),
+                    run.startedAt(),
+                    run.completedAt());
         }
     }
 
@@ -86,7 +119,9 @@ public final class CatalogResponses {
             BigDecimal maximumLeverage,
             boolean executionEnabled,
             CatalogStatus status,
-            Instant metadataUpdatedAt) {
+            Instant metadataUpdatedAt,
+            BigDecimal latestPrice,
+            Instant latestPriceAt) {
         static InstrumentResponse from(VenueInstrumentView instrument) {
             return new InstrumentResponse(
                     instrument.instrumentId().value(),
@@ -101,7 +136,9 @@ public final class CatalogResponses {
                     instrument.maximumLeverage(),
                     instrument.executionEnabled(),
                     instrument.status(),
-                    instrument.metadataUpdatedAt());
+                    instrument.metadataUpdatedAt(),
+                    instrument.latestPrice(),
+                    instrument.latestPriceAt());
         }
     }
 

@@ -8,12 +8,28 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.domain.operations.WorkerId;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.infrastructure.exchange.JdbcExchangeAccountControlRepository;
+import io.omnnu.finbot.infrastructure.ingestion.JdbcIngestionRepository;
+import io.omnnu.finbot.infrastructure.network.JdbcNetworkDiagnosticStore;
+import io.omnnu.finbot.infrastructure.setup.JdbcSetupProfileRepository;
 import io.omnnu.finbot.infrastructure.operations.JdbcBackgroundTaskStore;
 import io.omnnu.finbot.infrastructure.operations.TaskPayloadCodec;
+import io.omnnu.finbot.infrastructure.workflow.JdbcWorkflowStore;
+import io.omnnu.finbot.infrastructure.workflow.WorkflowEventCodec;
+import io.omnnu.finbot.application.workflow.StartWorkflowCommand;
+import io.omnnu.finbot.application.setup.SetupProfileId;
+import io.omnnu.finbot.domain.ingestion.SourceId;
+import io.omnnu.finbot.domain.network.OutboundRoute;
+import io.omnnu.finbot.domain.workflow.WorkflowAccepted;
+import io.omnnu.finbot.domain.workflow.WorkflowEventId;
+import io.omnnu.finbot.domain.workflow.WorkflowRunId;
+import io.omnnu.finbot.domain.workflow.WorkflowTrigger;
+import io.omnnu.finbot.domain.workflow.WorkflowType;
+import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
 import java.sql.DriverManager;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import java.util.Map;
 import liquibase.Contexts;
 import liquibase.LabelExpression;
 import liquibase.Liquibase;
@@ -72,13 +88,18 @@ class LiquibasePostgresIntegrationTest {
                             'quant_research_run', 'quant_research_event', 'quant_metric_fact'
                             , 'trade_automation_run', 'trade_execution_ai_stage',
                             'trade_execution_ai_review', 'risk_policy', 'risk_assessment',
-                            'exchange_submission_attempt'
-                            , 'legacy_import_manifest', 'legacy_import_table', 'legacy_archive_row'
+                            'exchange_submission_attempt', 'estimated_trade_projection'
+                            , 'research_feedback', 'setup_profile_application', 'ai_experiment'
+                            , 'network_diagnostic_batch', 'network_diagnostic_run'
+                            , 'product_catalog_sync_run', 'instrument_quote_snapshot'
+                            , 'research_market_scope', 'research_forecast'
+                            , 'legacy_import_manifest'
+                            , 'legacy_import_table', 'legacy_archive_row'
                           )
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
-                assertEquals(63, result.getInt(1));
+                assertEquals(73, result.getInt(1));
             }
         }
 
@@ -119,13 +140,13 @@ class LiquibasePostgresIntegrationTest {
                           (select base_url from ai_provider_profile
                            where profile_id = 'provider_mimo_default') as mimo_base_url,
                           (select provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v3'
+                           where version_id = 'workflowversion_standard_v4'
                              and node_id = 'node_bull_analyst') as bull_provider,
                           (select fallback_provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v3'
+                           where version_id = 'workflowversion_standard_v4'
                              and node_id = 'node_bull_analyst') as bull_fallback_provider,
                           (select fallback_model_name from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v3'
+                           where version_id = 'workflowversion_standard_v4'
                              and node_id = 'node_chair_arbiter') as chair_fallback_model,
                           (select preferred_leverage from risk_policy where active = true)
                             as preferred_leverage,
@@ -144,6 +165,14 @@ class LiquibasePostgresIntegrationTest {
                             as execution_contract_stage_count,
                           (select count(*) from information_schema.columns
                            where table_schema = 'public'
+                             and table_name = 'estimated_trade_projection'
+                             and column_name in (
+                               'quantity', 'entry_reference', 'target_price', 'stop_price',
+                               'leverage', 'initial_margin_usdt', 'estimated_profit_usdt',
+                               'estimated_loss_usdt', 'risk_reward_ratio'
+                             )) as projection_value_column_count,
+                          (select count(*) from information_schema.columns
+                           where table_schema = 'public'
                              and (table_name, column_name) in (
                                ('workflow_node_definition', 'fallback_provider_profile_id'),
                                ('trade_execution_ai_stage', 'fallback_provider_profile_id'),
@@ -152,18 +181,34 @@ class LiquibasePostgresIntegrationTest {
                                ('venue_instrument', 'execution_enabled'),
                                ('exchange_account', 'version')
                              )) as new_control_column_count
+                          , (select value_text from system_setting
+                             where setting_key = 'ai.max_cost_usd_per_run') as default_ai_cost_limit
+                          , (select count(*) from information_schema.columns
+                             where table_schema = 'public'
+                               and table_name = 'workflow_run'
+                               and column_name in (
+                                 'requested_workflow_version_id', 'ai_experiment_id',
+                                 'ai_experiment_variant'
+                               )) as experiment_assignment_column_count
+                          , (select count(*) from information_schema.columns
+                             where table_schema = 'public'
+                               and table_name = 'network_diagnostic_run'
+                               and column_name = 'batch_idempotency_key') as network_idempotency_column_count
+                          , (select count(*) from information_schema.views
+                             where table_schema = 'public'
+                               and table_name = 'trading_activity_projection') as activity_view_count
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
                 assertEquals(15, result.getInt("setting_count"));
                 assertEquals(10, result.getInt("product_count"));
                 assertEquals(2, result.getInt("account_count"));
-                assertEquals(5, result.getInt("schedule_count"));
+                assertEquals(10, result.getInt("schedule_count"));
                 assertEquals(6, result.getInt("role_count"));
-                assertEquals(36, result.getInt("node_count"));
-                assertEquals(12, result.getInt("published_node_count"));
-                assertEquals(3, result.getInt("workflow_version_count"));
-                assertEquals("workflowversion_standard_v3", result.getString("published_version_id"));
+                assertEquals(50, result.getInt("node_count"));
+                assertEquals(14, result.getInt("published_node_count"));
+                assertEquals(4, result.getInt("workflow_version_count"));
+                assertEquals("workflowversion_standard_v4", result.getString("published_version_id"));
                 assertEquals(11, result.getInt("source_count"));
                 assertEquals(4, result.getInt("proxy_route_count"));
                 assertEquals(5, result.getInt("watchlist_item_count"));
@@ -187,7 +232,12 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(7, result.getInt("research_only_instrument_count"));
                 assertEquals("FIRECRAWL", result.getString("x_route"));
                 assertEquals(2, result.getInt("execution_contract_stage_count"));
+                assertEquals(9, result.getInt("projection_value_column_count"));
                 assertEquals(6, result.getInt("new_control_column_count"));
+                assertEquals("25.00", result.getString("default_ai_cost_limit"));
+                assertEquals(3, result.getInt("experiment_assignment_column_count"));
+                assertEquals(1, result.getInt("network_idempotency_column_count"));
+                assertEquals(1, result.getInt("activity_view_count"));
             }
         }
     }
@@ -243,7 +293,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(24, result.getInt("changeset_count"));
+                    assertEquals(29, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
@@ -313,6 +363,158 @@ class LiquibasePostgresIntegrationTest {
                         current.version(),
                         Instant.parse("2026-07-14T09:01:00Z"))
                 .isEmpty());
+    }
+
+    @Test
+    void updatesInformationSourceWithOptimisticVersion() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var repository = new JdbcIngestionRepository(
+                JdbcClient.create(dataSource), new ObjectMapper());
+        var sourceId = new SourceId("source_x_market_search");
+        var current = repository.findSource(sourceId).orElseThrow();
+
+        var updated = repository.setSourceEnabled(
+                        sourceId,
+                        !current.enabled(),
+                        current.version(),
+                        Instant.parse("2026-07-15T01:00:00Z"))
+                .orElseThrow();
+
+        assertEquals(current.version() + 1, updated.version());
+        assertEquals(!current.enabled(), updated.enabled());
+        assertTrue(repository.setSourceEnabled(
+                        sourceId,
+                        current.enabled(),
+                        current.version(),
+                        Instant.parse("2026-07-15T01:01:00Z"))
+                .isEmpty());
+    }
+
+    @Test
+    void deduplicatesNetworkDiagnosticBatchesPerRoute() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var store = new JdbcNetworkDiagnosticStore(JdbcClient.create(dataSource));
+        var startedAt = Instant.parse("2026-07-15T02:00:00Z");
+        var batchKey = "network-diagnostic:test-batch";
+        var claim = store.prepareBatch(
+                "diagnosticbatch_network_1",
+                batchKey,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                startedAt);
+
+        var first = store.start(
+                "diagnostic_network_batch_1",
+                batchKey,
+                OutboundRoute.FIRECRAWL,
+                startedAt);
+        var duplicate = store.start(
+                "diagnostic_network_batch_2",
+                batchKey,
+                OutboundRoute.FIRECRAWL,
+                startedAt.plusSeconds(1));
+        var conflictingClaim = store.prepareBatch(
+                "diagnosticbatch_network_2",
+                batchKey,
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                startedAt.plusSeconds(2));
+
+        assertTrue(claim.created());
+        assertTrue(first.created());
+        assertFalse(duplicate.created());
+        assertFalse(conflictingClaim.created());
+        assertEquals(claim.requestFingerprint(), conflictingClaim.requestFingerprint());
+        assertEquals(first.diagnostic().diagnosticId(), duplicate.diagnostic().diagnosticId());
+    }
+
+    @Test
+    void appliesSetupProfileIdempotentlyWithoutOverwritingUserSettings() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var repository = new JdbcSetupProfileRepository(
+                JdbcClient.create(dataSource), new ObjectMapper());
+        var appliedAt = Instant.parse("2026-07-15T02:30:00Z");
+
+        var first = repository.apply(
+                "setup_profile_test_1",
+                "setup-profile:test-profile",
+                SetupProfileId.ECONOMY,
+                Map.of("ai.max_tokens_per_run", "1000000"),
+                appliedAt);
+        var duplicate = repository.apply(
+                "setup_profile_test_2",
+                "setup-profile:test-profile",
+                SetupProfileId.ECONOMY,
+                Map.of("ai.max_tokens_per_run", "9999999"),
+                appliedAt.plusSeconds(1));
+
+        assertEquals(first.applicationId(), duplicate.applicationId());
+        assertEquals(first.appliedAt(), duplicate.appliedAt());
+    }
+
+    @Test
+    void routesScheduledWorkflowThroughStableAiExperimentAssignment() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        jdbcClient.sql("""
+                insert into ai_experiment (
+                  experiment_id, display_name, status, control_workflow_version_id,
+                  candidate_workflow_version_id, candidate_allocation_basis_points,
+                  evaluation_metric, minimum_sample_size, version, created_at, updated_at
+                ) values (
+                  'experiment_routing_test', 'Routing test', 'RUNNING',
+                  'workflowversion_standard_v4', 'workflowversion_standard_v1',
+                  5000, 'RESEARCH_EFFECTIVENESS', 2, 0,
+                  cast('2026-07-15T03:00:00Z' as timestamptz),
+                  cast('2026-07-15T03:00:00Z' as timestamptz)
+                )
+                """).update();
+        var objectMapper = new ObjectMapper().findAndRegisterModules();
+        var store = new JdbcWorkflowStore(jdbcClient, new WorkflowEventCodec(objectMapper));
+        var command = new StartWorkflowCommand(
+                WorkflowType.SCHEDULED_RESEARCH,
+                WorkflowTrigger.SCHEDULED,
+                new WorkflowVersionId("workflowversion_standard_v4"),
+                "AI experiment routing integration test",
+                candidateIdempotencyKey());
+        var acceptedAt = Instant.parse("2026-07-15T03:01:00Z");
+
+        var first = store.accept(command, new WorkflowAccepted(
+                new WorkflowEventId("event_experiment_routing_1"),
+                new WorkflowRunId("run_experiment_routing_1"),
+                1,
+                command.workflowType(),
+                acceptedAt));
+        var duplicate = store.accept(command, new WorkflowAccepted(
+                new WorkflowEventId("event_experiment_routing_2"),
+                new WorkflowRunId("run_experiment_routing_2"),
+                1,
+                command.workflowType(),
+                acceptedAt.plusSeconds(1)));
+
+        assertEquals(first.runId(), duplicate.runId());
+        var assignment = jdbcClient.sql("""
+                select workflow_version_id, requested_workflow_version_id,
+                       ai_experiment_id, ai_experiment_variant
+                from workflow_run where run_id = :runId
+                """)
+                .param("runId", first.runId().value())
+                .query((resultSet, rowNumber) -> java.util.List.of(
+                        resultSet.getString("workflow_version_id"),
+                        resultSet.getString("requested_workflow_version_id"),
+                        resultSet.getString("ai_experiment_id"),
+                        resultSet.getString("ai_experiment_variant")))
+                .single();
+        assertEquals("workflowversion_standard_v1", assignment.get(0));
+        assertEquals("workflowversion_standard_v4", assignment.get(1));
+        assertEquals("experiment_routing_test", assignment.get(2));
+        assertEquals("CANDIDATE", assignment.get(3));
     }
 
     private static void updateSchema() throws Exception {
@@ -391,5 +593,18 @@ class LiquibasePostgresIntegrationTest {
     private static String jdbcUrl(String databaseName) {
         return "jdbc:postgresql://%s:%d/%s".formatted(
                 POSTGRES.getHost(), POSTGRES.getMappedPort(5432), databaseName);
+    }
+
+    private static String candidateIdempotencyKey() throws Exception {
+        var digest = java.security.MessageDigest.getInstance("SHA-256");
+        for (var index = 0; index < 10_000; index++) {
+            var value = "experiment-routing:" + index;
+            var hash = digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            var bucket = Integer.toUnsignedLong(java.nio.ByteBuffer.wrap(hash).getInt()) % 10_000L;
+            if (bucket < 5_000) {
+                return value;
+            }
+        }
+        throw new IllegalStateException("Unable to find deterministic candidate bucket");
     }
 }

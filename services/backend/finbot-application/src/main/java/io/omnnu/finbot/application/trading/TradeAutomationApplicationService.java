@@ -9,6 +9,9 @@ import io.omnnu.finbot.application.workflow.WorkflowExecutionStore;
 import io.omnnu.finbot.domain.market.Quantity;
 import io.omnnu.finbot.domain.oms.OrderId;
 import io.omnnu.finbot.domain.risk.MarginRiskEngine;
+import io.omnnu.finbot.domain.risk.EstimatedTradeEngine;
+import io.omnnu.finbot.domain.risk.EstimatedTradePlanStatus;
+import io.omnnu.finbot.domain.risk.RiskPolicy;
 import io.omnnu.finbot.domain.risk.RiskAssessmentId;
 import io.omnnu.finbot.domain.risk.RiskAssessmentStatus;
 import io.omnnu.finbot.domain.trading.ApprovalStatus;
@@ -62,6 +65,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
     private final TradeAutomationStore store;
     private final PaperOrderExecutionUseCase orderExecution;
     private final MarginRiskEngine riskEngine;
+    private final EstimatedTradeEngine estimatedTradeEngine;
     private final Clock clock;
     private final Executor executor;
 
@@ -72,6 +76,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             TradeAutomationStore store,
             PaperOrderExecutionUseCase orderExecution,
             MarginRiskEngine riskEngine,
+            EstimatedTradeEngine estimatedTradeEngine,
             Clock clock,
             Executor executor) {
         this.workflowStore = Objects.requireNonNull(workflowStore, "workflowStore");
@@ -80,6 +85,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         this.store = Objects.requireNonNull(store, "store");
         this.orderExecution = Objects.requireNonNull(orderExecution, "orderExecution");
         this.riskEngine = Objects.requireNonNull(riskEngine, "riskEngine");
+        this.estimatedTradeEngine = Objects.requireNonNull(estimatedTradeEngine, "estimatedTradeEngine");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.executor = Objects.requireNonNull(executor, "executor");
     }
@@ -109,10 +115,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         try {
             var workflow = completedWorkflow(workflowRunId);
             var chair = chairMessage(workflowRunId);
-            var stages = store.executionAiStages().stream()
-                    .filter(TradeExecutionAiStageConfig::enabled)
-                    .sorted(Comparator.comparing(TradeExecutionAiStageConfig::stage))
-                    .toList();
+            var stages = executionAiStages(workflow, store.executionAiStages());
             var draftStage = requiredStage(stages, TradeExecutionAiStage.DRAFT);
             var reflectionStage = requiredStage(stages, TradeExecutionAiStage.REFLECTION);
 
@@ -213,17 +216,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         var normalizedSymbol = normalizeSymbol(decision.symbol().value());
         var candidates = store.executionCandidates(normalizedSymbol);
         if (candidates.isEmpty()) {
-            var reasons = List.of("没有与决策标的匹配且可用的模拟交易账户");
-            store.complete(
-                    automationRunId,
-                    TradeAutomationStatus.BLOCKED,
-                    decision,
-                    proposal,
-                    List.of(),
-                    List.of(),
-                    reasons,
-                    clock.instant());
-            return result(automationRunId, TradeAutomationStatus.BLOCKED, decision, List.of(), reasons);
+            return estimateTrade(automationRunId, workflowRunId, decision, proposal, policy, normalizedSymbol);
         }
 
         var assessments = new ArrayList<StoredRiskAssessment>();
@@ -239,6 +232,8 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     workflowRunId,
                     proposal.id(),
                     candidate.accountId(),
+                    candidate.instrumentId(),
+                    candidate.exchange(),
                     policy.version(),
                     plan,
                     clock.instant());
@@ -258,6 +253,8 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                             policy.version(),
                             assessment.assessedAt()),
                     candidate.accountId(),
+                    candidate.instrumentId(),
+                    candidate.exchange(),
                     assessmentId,
                     Quantity.positive(plan.quantity()),
                     plan.leverage());
@@ -269,6 +266,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     candidate.exchange(),
                     candidate.environment(),
                     candidate.accountId(),
+                    candidate.instrumentId(),
                     candidate.symbol(),
                     decision.action(),
                     plan.quantity(),
@@ -302,12 +300,77 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 reasons);
     }
 
+    TradeAutomationResult estimateTrade(
+            String automationRunId,
+            WorkflowRunId workflowRunId,
+            DirectionalTradeDecision decision,
+            TradeProposal proposal,
+            RiskPolicy policy,
+            String normalizedSymbol) {
+        var candidates = store.projectionCandidates(normalizedSymbol);
+        if (candidates.isEmpty()) {
+            var reasons = List.of("没有与决策标的匹配的可执行或仅研究产品");
+            store.complete(
+                    automationRunId,
+                    TradeAutomationStatus.BLOCKED,
+                    decision,
+                    proposal,
+                    List.of(),
+                    List.of(),
+                    reasons,
+                    clock.instant());
+            return result(automationRunId, TradeAutomationStatus.BLOCKED, decision, List.of(), reasons);
+        }
+
+        var reasons = new ArrayList<String>();
+        var estimatedCount = 0;
+        for (var candidate : candidates) {
+            var plan = estimatedTradeEngine.estimate(proposal, decision.confidence(), candidate, policy);
+            var candidateLabel = candidate.exchange().name() + ' ' + candidate.symbol().value();
+            if (plan.status() == EstimatedTradePlanStatus.BLOCKED) {
+                plan.reasons().forEach(reason -> reasons.add(candidateLabel + ": " + reason));
+                continue;
+            }
+            var projection = new StoredEstimatedTradeProjection(
+                    deterministicId(
+                            "projection_",
+                            proposal.id().value() + ':' + candidate.instrumentId().value()),
+                    automationRunId,
+                    workflowRunId,
+                    proposal.id(),
+                    proposal.action(),
+                    candidate,
+                    policy.version(),
+                    proposal.entryReference(),
+                    proposal.targetPrice(),
+                    proposal.invalidationPrice(),
+                    plan,
+                    clock.instant());
+            store.saveEstimatedTradeProjection(projection);
+            estimatedCount++;
+            reasons.add(candidateLabel + ": 已生成预估交易，不会向交易所下单");
+        }
+        var status = estimatedCount > 0
+                ? TradeAutomationStatus.ESTIMATED
+                : TradeAutomationStatus.BLOCKED;
+        store.complete(
+                automationRunId,
+                status,
+                decision,
+                proposal,
+                List.of(),
+                List.of(),
+                reasons,
+                clock.instant());
+        return result(automationRunId, status, decision, List.of(), reasons);
+    }
+
     private <T> ParsedAiStage<T> invokeAndParse(
             WorkflowExecutionContext workflow,
             TradeExecutionAiStageConfig stage,
             String prompt,
             Function<String, T> parser) {
-        var node = executionNode(stage);
+        var node = executionNode(workflow, stage);
         var bindings = stage.fallbackAiBinding() == null
                 ? List.of(stage.primaryAiBinding())
                 : List.of(stage.primaryAiBinding(), stage.fallbackAiBinding());
@@ -391,6 +454,79 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
                         "Required trade execution AI stage is disabled: " + required));
+    }
+
+    private static List<TradeExecutionAiStageConfig> executionAiStages(
+            WorkflowExecutionContext workflow,
+            List<TradeExecutionAiStageConfig> defaults) {
+        var configured = defaults.stream()
+                .filter(TradeExecutionAiStageConfig::enabled)
+                .collect(java.util.stream.Collectors.toMap(
+                        TradeExecutionAiStageConfig::stage,
+                        Function.identity()));
+        for (var node : workflow.definitionVersion().nodes()) {
+            if (!node.enabled() || node.nodeType() != WorkflowNodeType.EXECUTION_REVIEW) {
+                continue;
+            }
+            var stage = executionStage(node);
+            if (configured.put(stage, executionStageConfig(node, stage)) != null
+                    && workflow.definitionVersion().nodes().stream()
+                            .filter(candidate -> candidate.enabled()
+                                    && candidate.nodeType() == WorkflowNodeType.EXECUTION_REVIEW)
+                            .filter(candidate -> executionStage(candidate) == stage)
+                            .count() > 1) {
+                throw new IllegalStateException(
+                        "Workflow contains multiple enabled execution review nodes for " + stage);
+            }
+        }
+        return configured.values().stream()
+                .sorted(Comparator.comparing(TradeExecutionAiStageConfig::stage))
+                .toList();
+    }
+
+    private static TradeExecutionAiStageConfig executionStageConfig(
+            WorkflowNodeDefinition node,
+            TradeExecutionAiStage stage) {
+        var expectedContract = stage == TradeExecutionAiStage.DRAFT
+                ? WorkflowOutputContract.TRADE_DECISIONS
+                : WorkflowOutputContract.EXECUTION_VERDICT;
+        if (node.outputContract() != expectedContract) {
+            throw new IllegalStateException(
+                    "Execution review node " + node.nodeId().value()
+                            + " must use output contract " + expectedContract);
+        }
+        return new TradeExecutionAiStageConfig(
+                stage,
+                node.primaryAiBinding(),
+                node.fallbackAiBinding(),
+                node.systemPrompt(),
+                Objects.requireNonNullElse(node.userPromptTemplate(), "执行工作流指定的模拟交易复核。"),
+                node.maximumOutputTokens(),
+                node.timeoutSeconds(),
+                node.retryPolicy(),
+                true,
+                0);
+    }
+
+    private static TradeExecutionAiStage executionStage(WorkflowNodeDefinition node) {
+        var operation = Objects.requireNonNullElse(node.operation(), "").strip().toUpperCase(Locale.ROOT);
+        return switch (operation) {
+            case "DRAFT", "EXECUTION_DRAFT" -> TradeExecutionAiStage.DRAFT;
+            case "REFLECTION", "EXECUTION_REFLECTION" -> TradeExecutionAiStage.REFLECTION;
+            default -> throw new IllegalStateException(
+                    "Execution review node requires operation draft or reflection: "
+                            + node.nodeId().value());
+        };
+    }
+
+    private static WorkflowNodeDefinition executionNode(
+            WorkflowExecutionContext workflow,
+            TradeExecutionAiStageConfig stage) {
+        return workflow.definitionVersion().nodes().stream()
+                .filter(node -> node.enabled() && node.nodeType() == WorkflowNodeType.EXECUTION_REVIEW)
+                .filter(node -> executionStage(node) == stage.stage())
+                .findFirst()
+                .orElseGet(() -> executionNode(stage));
     }
 
     static WorkflowNodeDefinition executionNode(TradeExecutionAiStageConfig stage) {

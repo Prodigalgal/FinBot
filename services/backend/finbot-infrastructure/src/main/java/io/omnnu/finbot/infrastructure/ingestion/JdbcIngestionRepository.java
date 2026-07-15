@@ -77,6 +77,28 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
     }
 
     @Override
+    @Transactional
+    public Optional<InformationSource> setSourceEnabled(
+            SourceId sourceId,
+            boolean enabled,
+            long expectedVersion,
+            Instant updatedAt) {
+        var changed = jdbcClient.sql("""
+                update information_source
+                set enabled = :enabled,
+                    version = version + 1,
+                    updated_at = :updatedAt
+                where source_id = :sourceId and version = :expectedVersion
+                """)
+                .param("sourceId", sourceId.value())
+                .param("enabled", enabled)
+                .param("expectedVersion", expectedVersion)
+                .param("updatedAt", timestamp(updatedAt))
+                .update();
+        return changed == 1 ? findSource(sourceId) : Optional.empty();
+    }
+
+    @Override
     public void startCollection(SourceCollectionRun collectionRun) {
         jdbcClient.sql("""
                 insert into source_collection_run (

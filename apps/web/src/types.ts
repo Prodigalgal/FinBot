@@ -162,6 +162,7 @@ export interface TradeAutomationSummary {
   action: string | null;
   confidence: number | null;
   orderCount: number;
+  estimatedTradeCount: number;
   errorCode: string | null;
   statusMessage: string | null;
   startedAt: string;
@@ -186,6 +187,15 @@ export interface TradeAutomationDetail {
     reasonsJson: string; quantity: number | null; notionalUsdt: number | null; leverage: number | null;
     initialMarginUsdt: number | null; estimatedMaximumLossUsdt: number | null;
     approximateLiquidationPrice: number | null; assessedAt: string;
+  }>;
+  estimatedTrades: Array<{
+    projectionId: string; proposalId: string; instrumentId: string; exchange: string;
+    symbol: string; side: string; policyVersion: string; entryReference: number;
+    marketPrice: number; targetPrice: number; stopPrice: number; quantity: number;
+    contractSize: number; notionalUsdt: number; leverage: number; initialMarginUsdt: number;
+    estimatedEntryCostUsdt: number; estimatedTargetExitCostUsdt: number;
+    estimatedStopExitCostUsdt: number; estimatedProfitUsdt: number;
+    estimatedLossUsdt: number; riskRewardRatio: number; calculatedAt: string;
   }>;
   orders: Array<{
     orderId: string; intentId: string; exchange: string; environment: string; accountId: string;
@@ -281,10 +291,22 @@ export interface PositionRecord {
 
 export interface ActivityRecord {
   activityId: string; sourceEventId: string; activityType: string; source: string;
-  accountId: string; exchange: string; symbol: string | null; status: string | null;
+  accountId: string | null; exchange: string | null; symbol: string | null; status: string | null;
   side: string | null; quantity: number | null; price: number | null; amount: number | null;
   currency: string | null; exchangeOrderId: string | null; clientOrderId: string | null;
+  title: string; detail: string; detailsJson: string;
   occurredAt: string; receivedAt: string;
+}
+
+export interface ActivityPage {
+  activities: ActivityRecord[];
+  nextCursor: { occurredAt: string; activityId: string } | null;
+  matchedCount: number;
+  counts: Array<{ activityType: string; count: number }>;
+  sources: Array<{
+    source: string; accountId: string | null; exchange: string | null; status: string;
+    complete: boolean; message: string; latestAt: string | null;
+  }>;
 }
 
 export interface ProductSummary {
@@ -292,11 +314,25 @@ export interface ProductSummary {
   category: string; status: string; instrumentCount: number; highestWatchlistMode: string | null;
 }
 
-export interface ProductPage { products: ProductSummary[]; nextCursor: string | null }
+export interface ProductPage { products: ProductSummary[]; nextCursor: string | null; totalCount: number }
+export interface ResearchForecast {
+  forecastId: string; workflowRunId: string; instrumentId: string; exchange: string; symbol: string;
+  intervalSeconds: number; horizonSeconds: number; marketReferencePrice: number;
+  direction: string; expectedLow: number | null; expectedHigh: number | null; invalidationPrice: number | null;
+  confidence: number; thesis: string; evidenceReferences: string[]; status: string;
+  issuedAt: string; targetAt: string; actualPrice: number | null; actualReturn: number | null;
+  directionCorrect: boolean | null; rangeHit: boolean | null; evaluatedAt: string | null;
+}
+export interface CatalogSyncRun {
+  syncRunId: string; exchange: string; marketType: string; status: string;
+  discoveredCount: number; activeCount: number; inactiveCount: number;
+  errorCode: string | null; errorMessage: string | null; startedAt: string; completedAt: string | null;
+}
 export interface InstrumentRecord {
   instrumentId: string; exchange: string; marketType: string; symbol: string; settlementAsset: string;
   contractSize: number; priceTick: number; quantityStep: number; minimumQuantity: number;
   maximumLeverage: number; executionEnabled: boolean; status: string; metadataUpdatedAt: string;
+  latestPrice: number | null; latestPriceAt: string | null;
 }
 export interface ProductDetail extends ProductSummary {
   instruments: InstrumentRecord[];
@@ -321,7 +357,20 @@ export interface WorkflowNode {
 }
 export interface WorkflowEdge {
   edgeId: string; sourceNodeId: string; targetNodeId: string; activationMode: string;
-  contextMode: string; condition: unknown | null; loopEdge: boolean; maximumTraversals: number | null;
+  contextMode: string; condition: WorkflowCondition | null; loopEdge: boolean; maximumTraversals: number | null;
+}
+export type WorkflowConditionOperandType = 'TEXT' | 'DECIMAL' | 'BOOLEAN' | 'TEXT_LIST';
+export interface WorkflowConditionOperand {
+  type: WorkflowConditionOperandType;
+  textValue: string | null;
+  decimalValue: number | null;
+  booleanValue: boolean | null;
+  textValues: string[] | null;
+}
+export interface WorkflowCondition {
+  field: string;
+  operator: string;
+  operand: WorkflowConditionOperand | null;
 }
 export interface WorkflowVersion {
   versionId: string; definitionId: string; versionNumber: number; status: string;
@@ -350,3 +399,226 @@ export interface ConfigurationSnapshot { settings: SystemSetting[]; providers: A
 
 export interface SourceRecord { sourceId: string; displayName: string; mode: string; tier: string; category: string; provider: string; trustWeight: number; pollIntervalSeconds: number; priority: string; assetScope: string[]; outboundRoute: string | null; enabled: boolean; version: number }
 export interface EvidenceDocument { documentId: string; evidenceId: string; sourceId: string; sourceTier: string; category: string; trustWeight: number; canonicalUrl: string | null; title: string; language: string; excerpt: string; assetScope: string[]; publishedAt: string | null; fetchedAt: string }
+
+export interface AutonomousStatus {
+  enabled: boolean;
+  workerOnline: boolean;
+  schedule: ScheduleRecord | null;
+  activeTask: TaskRecord | null;
+  latestRun: ResearchSummary | null;
+  latestConclusion: string | null;
+  generatedAt: string;
+}
+
+export interface ResearchFeedback {
+  feedbackId: string;
+  workflowRunId: string;
+  rating: 'HELPFUL' | 'NEUTRAL' | 'NOT_HELPFUL';
+  effectiveness: 'UNKNOWN' | 'PENDING' | 'WIN' | 'LOSS' | 'NO_TRADE';
+  note: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResearchComparison {
+  left: ResearchSummary;
+  right: ResearchSummary;
+  inputTokenDelta: number;
+  outputTokenDelta: number;
+  costDeltaUsd: number;
+  durationDeltaSeconds: number | null;
+  leftConclusion: string;
+  rightConclusion: string;
+  nodes: Array<{
+    nodeId: string; round: number; leftStatus: string; rightStatus: string;
+    leftSummary: string | null; rightSummary: string | null; changed: boolean;
+  }>;
+}
+
+export interface TradeRiskPreview {
+  mode: 'EXECUTION' | 'ESTIMATE';
+  status: string;
+  reasons: string[];
+  quantity: number | null;
+  notionalUsdt: number | null;
+  leverage: number | null;
+  initialMarginUsdt: number | null;
+  estimatedMaximumLossUsdt: number | null;
+  approximateLiquidationPrice: number | null;
+  estimatedProfitUsdt: number | null;
+  riskRewardRatio: number | null;
+  policy: RiskPolicy;
+  calculatedAt: string;
+}
+
+export interface PlatformReadiness {
+  ready: boolean;
+  score: number;
+  checks: Array<{
+    code: string; title: string; status: string; detail: string;
+    actionPage: string; observedAt: string;
+  }>;
+  latestResearch: null | {
+    runId: string; status: string; requestSummary: string;
+    conclusion: string; completedAt: string | null;
+  };
+  accountSummary: {
+    enabledAccounts: number; synchronizedAccounts: number; currency: string;
+    equity: number; unrealizedPnl: number; realizedPnl: number; snapshotAt: string | null;
+  };
+  pendingTaskCount: number;
+  failedTaskCount: number;
+  generatedAt: string;
+}
+
+export interface IngestionWorkspace {
+  rawEvidenceCount: number;
+  normalizedDocumentCount: number;
+  compressionCount: number;
+  sources: Array<{
+    sourceId: string; displayName: string; mode: string; tier: string; category: string;
+    outboundRoute: string | null; credentialEnvironment: string | null; credentialConfigured: boolean;
+    enabled: boolean; version: number; latestStatus: string | null;
+    fetchedCount: number; insertedCount: number; duplicateCount: number;
+    errorCode: string | null; errorMessage: string | null; lastCollectedAt: string | null;
+  }>;
+  recentRuns: Array<{
+    collectionId: string; workflowRunId: string | null; sourceId: string; sourceName: string;
+    query: string | null; status: string; fetchedCount: number; insertedCount: number;
+    duplicateCount: number; errorCode: string | null; errorMessage: string | null;
+    startedAt: string; completedAt: string | null;
+  }>;
+  generatedAt: string;
+}
+
+export interface QuantWorkspace {
+  runs: Array<{
+    researchRunId: string; workflowRunId: string; requestSummary: string;
+    researchKind: string; strategyId: string; strategyVersion: string; status: string;
+    observationCount: number; resultFingerprint: string | null; metricsJson: string;
+    errorCode: string | null; errorMessage: string | null; requestedAt: string;
+    startedAt: string | null; completedAt: string | null;
+  }>;
+  generatedAt: string;
+}
+
+export interface OperationsReport {
+  fromInclusive: string;
+  toExclusive: string;
+  sections: Array<{
+    code: string; title: string;
+    metrics: Array<{ label: string; value: string; unit: string; status: string }>;
+    entries: Array<{ referenceId: string; title: string; summary: string; status: string; occurredAt: string }>;
+  }>;
+  generatedAt: string;
+}
+
+export interface NetworkWorkspace {
+  routes: Array<{
+    routeId: string; routeType: string; displayName: string; enabled: boolean;
+    requireProxy: boolean; allowDirect: boolean; proxyConfigured: boolean;
+    expectedIpFamily: string; resolvedEndpoint: string; status: string;
+    latestDependencyStatus: string; latestError: string | null;
+    latestActivityAt: string | null; updatedAt: string;
+  }>;
+  generatedAt: string;
+}
+
+export interface NetworkDiagnostic {
+  diagnosticId: string; route: string; status: string; proxyConfigured: boolean;
+  proxied: boolean; safeEndpoint: string; httpStatus: number | null;
+  latencyMilliseconds: number | null; errorCode: string | null; errorMessage: string | null;
+  startedAt: string; completedAt: string | null;
+}
+
+export interface SetupProfileDefinition {
+  profileId: 'RECOMMENDED' | 'ECONOMY' | 'DEEP_RESEARCH';
+  displayName: string;
+  description: string;
+  values: Record<string, string>;
+}
+
+export interface SetupProfilePreview {
+  profile: SetupProfileDefinition;
+  changes: Array<{ key: string; currentValue: string; proposedValue: string }>;
+  preservedKeys: string[];
+  missingKeys: string[];
+}
+
+export interface SetupProfileApplication {
+  applicationId: string;
+  profileId: SetupProfileDefinition['profileId'];
+  appliedKeys: string[];
+  preservedKeys: string[];
+  skippedKeys: string[];
+  appliedAt: string;
+}
+
+export interface ProviderModelCatalog {
+  providerProfileId: string; status: string; models: string[]; httpStatus: number | null;
+  latencyMilliseconds: number | null; errorCode: string | null; errorMessage: string | null;
+  checkedAt: string;
+}
+
+export interface AgentRole {
+  roleTemplateId: string; displayName: string; objective: string; systemPrompt: string;
+  userPromptTemplate: string; outputContract: string; defaultProviderProfileId: string;
+  defaultModelName: string; defaultReasoningEffort: ReasoningEffort; builtIn: boolean;
+  version: number; createdAt: string; updatedAt: string;
+}
+
+export interface AiExperiment {
+  experimentId: string; displayName: string; status: 'DRAFT' | 'RUNNING' | 'PAUSED' | 'COMPLETED';
+  controlWorkflowVersionId: string; candidateWorkflowVersionId: string;
+  candidateAllocationBasisPoints: number; evaluationMetric: string; minimumSampleSize: number;
+  controlSampleCount: number; candidateSampleCount: number; version: number;
+  createdAt: string; updatedAt: string;
+}
+
+export interface WorkflowEstimate {
+  versionId: string; debateRounds: number; estimatedCalls: number;
+  estimatedInputTokens: number; maximumOutputTokens: number; primaryCostUsd: number;
+  fallbackWorstCaseCostUsd: number; configuredCostLimitUsd: number; configuredTokenLimit: number;
+  nodes: Array<{
+    nodeId: string; displayName: string; estimatedCalls: number; estimatedInputTokens: number;
+    maximumOutputTokens: number; primaryProvider: string; primaryModel: string;
+    primaryCostUsd: number; fallbackProvider: string | null; fallbackModel: string | null;
+    fallbackCostUsd: number; rateComplete: boolean;
+  }>;
+  warnings: string[];
+}
+
+export interface WorkflowExecutionPlan {
+  workflowVersionId: string; defaultDebateRounds: number; maximumDebateRounds: number;
+  maximumSteps: number; maximumTokens: number; maximumCostUsd: string;
+  nodes: Array<{
+    sequence: number; nodeId: string; displayName: string; nodeType: string;
+    runtimeHandler: string; invocationPolicy: string; upstreamNodeIds: string[];
+    providerProfileId: string | null; modelName: string | null; reasoningEffort: string | null;
+    fallbackProviderProfileId: string | null; fallbackModelName: string | null; enabled: boolean;
+  }>;
+  warnings: string[];
+}
+
+export interface WorkflowNodeTestResult {
+  runId: string; versionId: string; nodeId: string; status: string;
+  invocationId: string | null; output: string | null; errorCode: string | null;
+  errorMessage: string | null; startedAt: string; completedAt: string;
+}
+
+export interface WorkflowLearning {
+  definitionId: string; versionId: string; runCount: number; completedRunCount: number;
+  failedRunCount: number; totalCostUsd: number;
+  nodes: Array<{
+    nodeId: string; displayName: string; invocationCount: number;
+    successfulInvocationCount: number; failedInvocationCount: number;
+    inputTokens: number; outputTokens: number; costUsd: number;
+    averageLatencyMilliseconds: number | null;
+  }>;
+  recentFailures: Array<{
+    runId: string; nodeId: string; errorCode: string | null;
+    errorMessage: string | null; occurredAt: string;
+  }>;
+  generatedAt: string;
+}

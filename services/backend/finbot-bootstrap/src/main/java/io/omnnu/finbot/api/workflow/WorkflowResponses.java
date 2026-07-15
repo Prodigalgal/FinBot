@@ -1,6 +1,7 @@
 package io.omnnu.finbot.api.workflow;
 
 import io.omnnu.finbot.application.workflow.WorkflowDefinitionSummary;
+import io.omnnu.finbot.application.workflow.ExecutableWorkflowSchema;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplate;
@@ -208,7 +209,7 @@ public final class WorkflowResponses {
             List<WorkflowFailurePolicy> failurePolicies) {
         public static SchemaResponse current() {
             return new SchemaResponse(
-                    List.of(WorkflowNodeType.values()),
+                    ExecutableWorkflowSchema.nodeTypes(),
                     List.of(ReasoningEffort.values()),
                     List.of(WorkflowContextMode.values()),
                     List.of(WorkflowEdgeContextMode.values()),

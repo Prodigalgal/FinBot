@@ -2,6 +2,8 @@ package io.omnnu.finbot.api.operations;
 
 import io.omnnu.finbot.application.operations.AccountTaskPayload;
 import io.omnnu.finbot.application.operations.BackgroundTask;
+import io.omnnu.finbot.application.operations.CatalogSyncTaskPayload;
+import io.omnnu.finbot.application.operations.ForecastEvaluationTaskPayload;
 import io.omnnu.finbot.application.operations.IngestionTaskPayload;
 import io.omnnu.finbot.application.operations.InstantResearchTaskPayload;
 import io.omnnu.finbot.application.operations.MarketDataTaskPayload;
@@ -56,6 +58,9 @@ public record TaskResponse(
             case AccountTaskPayload payload -> payload.accountId().value();
             case MarketDataTaskPayload payload -> payload.instrumentId().value();
             case IngestionTaskPayload payload -> payload.sourceId().value() + ": " + payload.query();
+            case CatalogSyncTaskPayload payload -> payload.scope().exchange().name()
+                    + " / " + payload.scope().marketType().name();
+            case ForecastEvaluationTaskPayload payload -> "最多评估 " + payload.limit() + " 条到期预测";
         };
     }
 }

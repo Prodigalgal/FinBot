@@ -55,6 +55,13 @@ public final class WorkflowManagementController {
         return VersionResponse.from(useCase.version(new WorkflowVersionId(versionId)));
     }
 
+    @GetMapping("/workflow-definitions/{definitionId}/versions")
+    public List<VersionResponse> versions(@PathVariable String definitionId) {
+        return useCase.versions(new WorkflowDefinitionId(definitionId)).stream()
+                .map(VersionResponse::from)
+                .toList();
+    }
+
     @PutMapping("/workflow-drafts")
     public VersionResponse saveDraft(@Valid @RequestBody SaveDraftRequest request) {
         var command = new SaveWorkflowDraftCommand(

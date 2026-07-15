@@ -1,6 +1,7 @@
 package io.omnnu.finbot.application.trading;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.omnnu.finbot.application.ai.AiBudgetReservationStore;
@@ -15,13 +16,27 @@ import io.omnnu.finbot.application.workflow.WorkflowExecutionStore;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.catalog.InstrumentId;
+import io.omnnu.finbot.domain.market.InstrumentSymbol;
+import io.omnnu.finbot.domain.market.Price;
+import io.omnnu.finbot.domain.risk.ProjectionInstrumentSpec;
+import io.omnnu.finbot.domain.risk.RiskPolicy;
 import io.omnnu.finbot.domain.risk.MarginRiskEngine;
+import io.omnnu.finbot.domain.risk.EstimatedTradeEngine;
+import io.omnnu.finbot.domain.trading.Confidence;
+import io.omnnu.finbot.domain.trading.DirectionalAction;
+import io.omnnu.finbot.domain.trading.DirectionalTradeDecision;
+import io.omnnu.finbot.domain.trading.TradeDecisionId;
+import io.omnnu.finbot.domain.trading.TradeProposal;
+import io.omnnu.finbot.domain.trading.TradeProposalId;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeType;
 import io.omnnu.finbot.domain.workflow.WorkflowOutputContract;
 import io.omnnu.finbot.domain.workflow.WorkflowRetryPolicy;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -30,6 +45,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class TradeAutomationApplicationServiceTest {
@@ -77,6 +93,46 @@ class TradeAutomationApplicationServiceTest {
         assertEquals(1, startCalls.get());
     }
 
+    @Test
+    void estimatesResearchOnlyInstrumentWithoutCreatingAnOmsOrder() {
+        var storedProjection = new AtomicReference<StoredEstimatedTradeProjection>();
+        var completedStatus = new AtomicReference<TradeAutomationStatus>();
+        var store = proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
+            case "projectionCandidates" -> List.of(projectionInstrument());
+            case "saveEstimatedTradeProjection" -> {
+                storedProjection.set((StoredEstimatedTradeProjection) arguments[0]);
+                yield null;
+            }
+            case "complete" -> {
+                completedStatus.set((TradeAutomationStatus) arguments[1]);
+                assertEquals(List.of(), arguments[5]);
+                yield null;
+            }
+            default -> throw new AssertionError("Unexpected trade store call: " + method.getName());
+        });
+        var service = service(store);
+        var decision = directionalDecision();
+        var proposal = TradeProposal.from(
+                new TradeProposalId("proposal_projection_service_test"),
+                decision,
+                NOW);
+
+        var result = service.estimateTrade(
+                "automation_projection_service_test",
+                RUN_ID,
+                decision,
+                proposal,
+                riskPolicy(),
+                "AAPLUSDT");
+
+        assertEquals(TradeAutomationStatus.ESTIMATED, result.status());
+        assertEquals(List.of(), result.plannedOrderIds());
+        assertEquals(TradeAutomationStatus.ESTIMATED, completedStatus.get());
+        assertNotNull(storedProjection.get());
+        assertEquals(DirectionalAction.BUY, storedProjection.get().side());
+        assertEquals("AAPLUSDT", storedProjection.get().instrument().symbol().value());
+    }
+
     private static TradeAutomationApplicationService service(TradeAutomationStore store) {
         var workflowStore = proxy(WorkflowExecutionStore.class, (ignored, method, arguments) -> {
             if (method.getName().equals("load")) {
@@ -99,6 +155,7 @@ class TradeAutomationApplicationServiceTest {
                 store,
                 unused(PaperOrderExecutionUseCase.class),
                 new MarginRiskEngine(),
+                new EstimatedTradeEngine(),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Runnable::run);
     }
@@ -127,6 +184,47 @@ class TradeAutomationApplicationServiceTest {
             current = current.getCause();
         }
         return current;
+    }
+
+    private static DirectionalTradeDecision directionalDecision() {
+        return new DirectionalTradeDecision(
+                new TradeDecisionId("decision_projection_service_test"),
+                new InstrumentSymbol("AAPLUSDT"),
+                DirectionalAction.BUY,
+                new Confidence(new BigDecimal("0.82")),
+                new Price(new BigDecimal("100")),
+                new Price(new BigDecimal("110")),
+                new Price(new BigDecimal("95")),
+                List.of("test"),
+                NOW);
+    }
+
+    private static ProjectionInstrumentSpec projectionInstrument() {
+        return new ProjectionInstrumentSpec(
+                new InstrumentId("instrument_bybit_aapl_projection"),
+                ExchangeVenue.BYBIT,
+                new InstrumentSymbol("AAPLUSDT"),
+                BigDecimal.ONE,
+                new BigDecimal("0.1"),
+                new BigDecimal("0.1"),
+                new BigDecimal("100"),
+                Optional.of(new Price(new BigDecimal("100"))));
+    }
+
+    private static RiskPolicy riskPolicy() {
+        return new RiskPolicy(
+                "projection-service-test-v1",
+                true,
+                new BigDecimal("0.65"),
+                new BigDecimal("5"),
+                new BigDecimal("100"),
+                new BigDecimal("20"),
+                new BigDecimal("100"),
+                3,
+                new BigDecimal("0.10"),
+                new BigDecimal("0.0006"),
+                new BigDecimal("0.0005"),
+                new BigDecimal("0.002"));
     }
 
     private static <T> T unused(Class<T> type) {

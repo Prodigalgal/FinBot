@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 
 public final class ResearchPipelineService implements ResearchPipelineUseCase {
     private final StartWorkflowUseCase startWorkflow;
+    private final ResearchWorkflowPlanQuery workflowPlans;
     private final IngestionUseCase ingestion;
     private final CompressionUseCase compression;
     private final MarketDataUseCase marketData;
@@ -32,6 +33,7 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
 
     public ResearchPipelineService(
             StartWorkflowUseCase startWorkflow,
+            ResearchWorkflowPlanQuery workflowPlans,
             IngestionUseCase ingestion,
             CompressionUseCase compression,
             MarketDataUseCase marketData,
@@ -42,6 +44,7 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
             TradeAutomationUseCase tradeAutomation,
             Clock clock) {
         this.startWorkflow = Objects.requireNonNull(startWorkflow, "startWorkflow");
+        this.workflowPlans = Objects.requireNonNull(workflowPlans, "workflowPlans");
         this.ingestion = Objects.requireNonNull(ingestion, "ingestion");
         this.compression = Objects.requireNonNull(compression, "compression");
         this.marketData = Objects.requireNonNull(marketData, "marketData");
@@ -68,9 +71,9 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
                 .status();
         return switch (status) {
             case ACCEPTED -> prepareAndExecute(started, request);
-            case RUNNING -> executeWorkflowAndTrading(started);
+            case RUNNING -> executeWorkflowAndOptionalValidation(started);
             case WAITING_HUMAN -> CompletableFuture.completedFuture(started);
-            case PARTIAL, COMPLETED -> executeTrading(started);
+            case PARTIAL, COMPLETED -> executeOptionalValidation(started);
             case FAILED -> request.taskMode() == ResearchTaskMode.RESUME_FAILED
                     ? prepareAndExecute(started, request)
                     : terminalRunFailure(started, status);
@@ -81,17 +84,23 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
     private CompletionStage<StartWorkflowResult> prepareAndExecute(
             StartWorkflowResult started,
             ResearchPipelineRequest request) {
-        return prepare(started, request.workflowCommand().requestSummary())
+        return prepare(
+                        started,
+                        request.workflowCommand().requestSummary(),
+                        request.marketAnalysisScope())
                 .whenComplete((ignored, failure) -> recordPreparationFailure(started, request, failure))
-                .thenCompose(ignored -> executeWorkflowAndTrading(started));
+                .thenCompose(ignored -> executeWorkflowAndOptionalValidation(started));
     }
 
-    private CompletionStage<StartWorkflowResult> executeWorkflowAndTrading(StartWorkflowResult started) {
+    private CompletionStage<StartWorkflowResult> executeWorkflowAndOptionalValidation(StartWorkflowResult started) {
         return workflowExecution.execute(started.runId())
-                .thenCompose(ignored -> executeTrading(started));
+                .thenCompose(ignored -> executeOptionalValidation(started));
     }
 
-    private CompletionStage<StartWorkflowResult> executeTrading(StartWorkflowResult started) {
+    private CompletionStage<StartWorkflowResult> executeOptionalValidation(StartWorkflowResult started) {
+        if (!workflowPlans.find(started.runId()).validateWithPaperTrading()) {
+            return CompletableFuture.completedFuture(started);
+        }
         return tradeAutomation.execute(started.runId()).thenApply(ignored -> started);
     }
 
@@ -104,16 +113,31 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
 
     private CompletionStage<Void> prepare(
             StartWorkflowResult started,
-            String requestSummary) {
-        return executeStage(
-                        PreparationStage.INGESTION,
-                        () -> ingestion.collectEnabled(started.runId(), requestSummary))
-                .thenCompose(ignored -> executeStage(
-                        PreparationStage.COMPRESSION,
-                        () -> compression.compress(started.runId())))
+            String requestSummary,
+            io.omnnu.finbot.application.market.MarketAnalysisScope marketAnalysisScope) {
+        var plan = workflowPlans.find(started.runId());
+        CompletionStage<Void> preparation = CompletableFuture.completedFuture(null);
+        if (plan.collectEvidence()) {
+            preparation = preparation.thenCompose(ignored -> executeStage(
+                            PreparationStage.INGESTION,
+                            () -> ingestion.collectEnabled(started.runId(), requestSummary))
+                    .thenApply(result -> null));
+        }
+        if (plan.compressEvidence()) {
+            preparation = preparation.thenCompose(ignored -> executeStage(
+                            PreparationStage.COMPRESSION,
+                            () -> compression.compress(started.runId()))
+                    .thenApply(result -> null));
+        }
+        if (!plan.runQuantResearch()) {
+            return preparation;
+        }
+        return preparation
                 .thenCompose(ignored -> executeStage(
                         PreparationStage.MARKET_DATA,
-                        () -> marketData.prepare(started.runId())))
+                        () -> marketAnalysisScope == null
+                                ? marketData.prepare(started.runId())
+                                : marketData.prepare(started.runId(), marketAnalysisScope)))
                 .thenCompose(prepared -> executeStage(
                         PreparationStage.QUANT_RESEARCH,
                         () -> quantResearch.execute(started.runId(), prepared)))

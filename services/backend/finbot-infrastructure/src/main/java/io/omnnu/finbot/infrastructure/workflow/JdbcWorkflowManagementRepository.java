@@ -182,6 +182,24 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
 
     @Override
     @Transactional(readOnly = true)
+    public List<WorkflowDefinitionVersion> listVersions(WorkflowDefinitionId definitionId) {
+        return jdbcClient.sql("""
+                select version_id from workflow_definition_version
+                where definition_id = :definitionId
+                order by version_number desc, id desc
+                """)
+                .param("definitionId", definitionId.value())
+                .query(String.class)
+                .list()
+                .stream()
+                .map(WorkflowVersionId::new)
+                .map(this::findVersion)
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<WorkflowDefinitionVersion> findPublished(WorkflowDefinitionId definitionId) {
         return jdbcClient.sql("""
                 select version_id from workflow_definition_version

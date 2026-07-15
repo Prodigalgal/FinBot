@@ -51,6 +51,8 @@ public record BackgroundTask(
             case ACCOUNT_SYNC, ORDER_RECONCILIATION -> payload instanceof AccountTaskPayload;
             case MARKET_DATA_SYNC -> payload instanceof MarketDataTaskPayload;
             case INGESTION -> payload instanceof IngestionTaskPayload;
+            case CATALOG_SYNC -> payload instanceof CatalogSyncTaskPayload;
+            case FORECAST_EVALUATION -> payload instanceof ForecastEvaluationTaskPayload;
         };
         if (!matches) {
             throw new IllegalArgumentException("Payload type does not match " + type);

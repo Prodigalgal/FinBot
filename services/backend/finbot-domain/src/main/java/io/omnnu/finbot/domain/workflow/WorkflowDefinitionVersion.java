@@ -73,7 +73,7 @@ public record WorkflowDefinitionVersion(
         if (status == WorkflowVersionStatus.DRAFT && publishedAt != null) {
             throw new IllegalArgumentException("Draft workflow must not have publishedAt");
         }
-        validateGraph(nodes, edges);
+        validateGraph(defaultDebateRounds, nodes, edges);
     }
 
     public List<WorkflowNodeDefinition> topologicalNodes() {
@@ -88,6 +88,7 @@ public record WorkflowDefinitionVersion(
     }
 
     private static void validateGraph(
+            int defaultDebateRounds,
             List<WorkflowNodeDefinition> nodes,
             List<WorkflowEdgeDefinition> edges) {
         if (nodes.isEmpty()) {
@@ -99,25 +100,48 @@ public record WorkflowDefinitionVersion(
             if (!nodesById.containsKey(edge.sourceNodeId()) || !nodesById.containsKey(edge.targetNodeId())) {
                 throw new IllegalArgumentException("Workflow edge references an unknown node");
             }
+            if (edge.loopEdge()) {
+                var sourceType = nodesById.get(edge.sourceNodeId()).nodeType();
+                var targetType = nodesById.get(edge.targetNodeId()).nodeType();
+                if (!debateParticipant(sourceType) || !debateParticipant(targetType)) {
+                    throw new IllegalArgumentException(
+                            "Loop edges are supported only between AGENT and AGGREGATOR nodes");
+                }
+            }
         });
+        var maximumConfiguredRounds = defaultDebateRounds + edges.stream()
+                .filter(WorkflowEdgeDefinition::loopEdge)
+                .map(WorkflowEdgeDefinition::maximumTraversals)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+        if (maximumConfiguredRounds > 8) {
+            throw new IllegalArgumentException(
+                    "Default debate rounds plus loop traversals must not exceed 8");
+        }
         var inputs = nodes.stream().filter(node -> node.nodeType() == WorkflowNodeType.INPUT).toList();
         var outputs = nodes.stream().filter(node -> node.nodeType() == WorkflowNodeType.OUTPUT).toList();
         if (inputs.size() != 1 || outputs.size() != 1) {
             throw new IllegalArgumentException("Workflow requires exactly one INPUT and one OUTPUT node");
         }
         var chairs = nodes.stream().filter(node -> node.nodeType() == WorkflowNodeType.CHAIR).toList();
-        var agents = nodes.stream().filter(node -> node.nodeType() == WorkflowNodeType.AGENT).toList();
-        if (!agents.isEmpty() && chairs.size() != 1) {
-            throw new IllegalArgumentException("A workflow with AGENT nodes requires exactly one CHAIR");
+        var debateNodes = nodes.stream()
+                .filter(node -> node.nodeType() == WorkflowNodeType.AGENT
+                        || node.nodeType() == WorkflowNodeType.AGGREGATOR)
+                .toList();
+        if (!debateNodes.isEmpty() && chairs.size() != 1) {
+            throw new IllegalArgumentException(
+                    "A workflow with AGENT or AGGREGATOR nodes requires exactly one CHAIR");
         }
         topological(nodes, edges);
         requireReachability(inputs.getFirst().nodeId(), outputs.getFirst().nodeId(), nodes, edges);
-        if (!agents.isEmpty()) {
+        if (!debateNodes.isEmpty()) {
             var chairId = chairs.getFirst().nodeId();
             var adjacency = adjacency(edges, false);
-            for (var agent : agents) {
-                if (!reachable(agent.nodeId(), chairId, adjacency)) {
-                    throw new IllegalArgumentException("Every AGENT node must flow to the CHAIR");
+            for (var debateNode : debateNodes) {
+                if (!reachable(debateNode.nodeId(), chairId, adjacency)) {
+                    throw new IllegalArgumentException(
+                            "Every AGENT and AGGREGATOR node must flow to the CHAIR");
                 }
             }
         }
@@ -205,6 +229,10 @@ public record WorkflowDefinitionVersion(
                 adjacency.computeIfAbsent(edge.sourceNodeId(), ignored -> new HashSet<>())
                         .add(edge.targetNodeId()));
         return adjacency;
+    }
+
+    private static boolean debateParticipant(WorkflowNodeType nodeType) {
+        return nodeType == WorkflowNodeType.AGENT || nodeType == WorkflowNodeType.AGGREGATOR;
     }
 
     private static <K, V> Map<K, V> uniqueIndex(

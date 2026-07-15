@@ -6,5 +6,7 @@ public enum BackgroundTaskType {
     ACCOUNT_SYNC,
     ORDER_RECONCILIATION,
     MARKET_DATA_SYNC,
-    INGESTION
+    INGESTION,
+    CATALOG_SYNC,
+    FORECAST_EVALUATION
 }

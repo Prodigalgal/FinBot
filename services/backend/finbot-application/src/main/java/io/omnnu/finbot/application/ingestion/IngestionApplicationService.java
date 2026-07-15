@@ -57,6 +57,23 @@ public final class IngestionApplicationService implements IngestionUseCase {
     }
 
     @Override
+    public InformationSource setSourceEnabled(
+            SourceId sourceId,
+            boolean enabled,
+            long expectedVersion) {
+        Objects.requireNonNull(sourceId, "sourceId");
+        if (expectedVersion < 0) {
+            throw new IllegalArgumentException("expectedVersion must not be negative");
+        }
+        if (repository.findSource(sourceId).isEmpty()) {
+            throw new IllegalArgumentException("Information source does not exist");
+        }
+        return repository.setSourceEnabled(sourceId, enabled, expectedVersion, clock.instant())
+                .orElseThrow(() -> new IngestionConflictException(
+                        "信息源配置已被修改，请刷新后重试"));
+    }
+
+    @Override
     public CompletionStage<IngestionBatchResult> collectEnabled(
             WorkflowRunId workflowRunId,
             String requestSummary) {

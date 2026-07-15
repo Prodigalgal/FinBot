@@ -1,5 +1,7 @@
 package io.omnnu.finbot.domain.trading;
 
+import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.market.InstrumentSymbol;
 import io.omnnu.finbot.domain.market.Price;
 import io.omnnu.finbot.domain.market.Quantity;
@@ -15,6 +17,8 @@ public record ApprovedTradeIntent(
         ApprovedTradeIntentId id,
         TradeProposalId proposalId,
         ExchangeAccountId accountId,
+        InstrumentId instrumentId,
+        ExchangeVenue exchange,
         RiskAssessmentId riskAssessmentId,
         InstrumentSymbol symbol,
         DirectionalAction action,
@@ -30,6 +34,8 @@ public record ApprovedTradeIntent(
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(proposalId, "proposalId");
         Objects.requireNonNull(accountId, "accountId");
+        Objects.requireNonNull(instrumentId, "instrumentId");
+        Objects.requireNonNull(exchange, "exchange");
         Objects.requireNonNull(riskAssessmentId, "riskAssessmentId");
         Objects.requireNonNull(symbol, "symbol");
         Objects.requireNonNull(action, "action");
@@ -53,6 +59,8 @@ public record ApprovedTradeIntent(
             TradeProposal proposal,
             ExecutionReview review,
             ExchangeAccountId accountId,
+            InstrumentId instrumentId,
+            ExchangeVenue exchange,
             RiskAssessmentId riskAssessmentId,
             Quantity quantity,
             BigDecimal leverage) {
@@ -66,6 +74,8 @@ public record ApprovedTradeIntent(
                 intentId,
                 proposal.id(),
                 accountId,
+                instrumentId,
+                exchange,
                 riskAssessmentId,
                 proposal.symbol(),
                 proposal.action(),

@@ -1,5 +1,6 @@
 package io.omnnu.finbot.application.operations;
 
+import io.omnnu.finbot.application.market.MarketAnalysisScope;
 import java.util.Objects;
 import io.omnnu.finbot.domain.workflow.WorkflowTrigger;
 import io.omnnu.finbot.domain.workflow.WorkflowType;
@@ -12,7 +13,8 @@ public record InstantResearchTaskPayload(
         WorkflowTrigger trigger,
         WorkflowVersionId workflowVersionId,
         String workflowIdempotencyKey,
-        ResearchTaskMode taskMode) implements BackgroundTaskPayload {
+        ResearchTaskMode taskMode,
+        MarketAnalysisScope marketAnalysisScope) implements BackgroundTaskPayload {
     public InstantResearchTaskPayload {
         requestId = requireText(requestId, "requestId", 80);
         question = requireText(question, "question", 2000);

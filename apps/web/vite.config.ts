@@ -13,8 +13,11 @@ export default defineConfig({
           if (id.indexOf('@xyflow') !== -1) {
             return 'react-flow-vendor';
           }
+          if (id.indexOf('@mui/icons-material') !== -1) {
+            return 'mui-icons';
+          }
           if (id.indexOf('@mui') !== -1 || id.indexOf('@emotion') !== -1) {
-            return 'mui-vendor';
+            return 'mui-core';
           }
           return undefined;
         },

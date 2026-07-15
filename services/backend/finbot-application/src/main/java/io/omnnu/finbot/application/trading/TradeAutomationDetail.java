@@ -14,10 +14,12 @@ public record TradeAutomationDetail(
         Decision decision,
         List<AiReview> aiReviews,
         List<RiskAssessment> riskAssessments,
+        List<EstimatedTrade> estimatedTrades,
         List<Order> orders) {
     public TradeAutomationDetail {
         aiReviews = List.copyOf(aiReviews);
         riskAssessments = List.copyOf(riskAssessments);
+        estimatedTrades = List.copyOf(estimatedTrades);
         orders = List.copyOf(orders);
     }
 
@@ -29,6 +31,7 @@ public record TradeAutomationDetail(
             String action,
             BigDecimal confidence,
             int orderCount,
+            int estimatedTradeCount,
             String errorCode,
             String statusMessage,
             Instant startedAt,
@@ -79,6 +82,32 @@ public record TradeAutomationDetail(
             BigDecimal estimatedMaximumLossUsdt,
             BigDecimal approximateLiquidationPrice,
             Instant assessedAt) {
+    }
+
+    public record EstimatedTrade(
+            String projectionId,
+            String proposalId,
+            String instrumentId,
+            ExchangeVenue exchange,
+            String symbol,
+            String side,
+            String policyVersion,
+            BigDecimal entryReference,
+            BigDecimal marketPrice,
+            BigDecimal targetPrice,
+            BigDecimal stopPrice,
+            BigDecimal quantity,
+            BigDecimal contractSize,
+            BigDecimal notionalUsdt,
+            BigDecimal leverage,
+            BigDecimal initialMarginUsdt,
+            BigDecimal estimatedEntryCostUsdt,
+            BigDecimal estimatedTargetExitCostUsdt,
+            BigDecimal estimatedStopExitCostUsdt,
+            BigDecimal estimatedProfitUsdt,
+            BigDecimal estimatedLossUsdt,
+            BigDecimal riskRewardRatio,
+            Instant calculatedAt) {
     }
 
     public record Order(

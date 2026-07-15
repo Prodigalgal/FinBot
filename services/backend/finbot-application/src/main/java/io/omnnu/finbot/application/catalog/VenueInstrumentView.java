@@ -20,5 +20,7 @@ public record VenueInstrumentView(
         BigDecimal maximumLeverage,
         boolean executionEnabled,
         CatalogStatus status,
-        Instant metadataUpdatedAt) {
+        Instant metadataUpdatedAt,
+        BigDecimal latestPrice,
+        Instant latestPriceAt) {
 }

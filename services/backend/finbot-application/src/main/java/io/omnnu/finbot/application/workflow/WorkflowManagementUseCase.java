@@ -12,6 +12,8 @@ public interface WorkflowManagementUseCase {
 
     WorkflowDefinitionVersion version(WorkflowVersionId versionId);
 
+    List<WorkflowDefinitionVersion> versions(WorkflowDefinitionId definitionId);
+
     WorkflowDefinitionVersion saveDraft(SaveWorkflowDraftCommand command);
 
     WorkflowDefinitionVersion publish(WorkflowVersionId versionId);

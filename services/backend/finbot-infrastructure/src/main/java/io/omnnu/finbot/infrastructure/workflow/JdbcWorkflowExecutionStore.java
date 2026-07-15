@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.workflow.DebateSession;
 import io.omnnu.finbot.application.workflow.WorkflowCheckpoint;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionContext;
+import io.omnnu.finbot.application.market.ResearchMarketScope;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionStore;
 import io.omnnu.finbot.application.workflow.WorkflowManagementRepository;
 import io.omnnu.finbot.domain.workflow.AgentClaim;
@@ -23,6 +24,9 @@ import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
+import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.catalog.InstrumentId;
+import io.omnnu.finbot.domain.research.ForecastSignal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -55,7 +59,11 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
     @Transactional(readOnly = true)
     public Optional<WorkflowExecutionContext> load(WorkflowRunId runId) {
         var run = jdbcClient.sql("""
-                select status, request_summary, workflow_version_id,
+                select workflow_run.status, workflow_run.request_summary,
+                       workflow_run.workflow_version_id,
+                       scope.instrument_id, scope.exchange, scope.symbol,
+                       scope.interval_seconds, scope.forecast_horizon_seconds,
+                       scope.market_reference_price,
                        coalesce((
                          select jsonb_agg(jsonb_build_object(
                            'artifactType', artifact.artifact_type,
@@ -68,14 +76,18 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                              'RISK_ASSESSMENT'
                            )
                        ), '[]') as research_context
-                from workflow_run where run_id = :runId
+                from workflow_run
+                left join research_market_scope scope
+                  on scope.workflow_run_id = workflow_run.run_id
+                where workflow_run.run_id = :runId
                 """)
                 .param("runId", runId.value())
                 .query((resultSet, rowNumber) -> new RunRoot(
                         WorkflowRunStatus.valueOf(resultSet.getString("status")),
                         resultSet.getString("request_summary"),
                         resultSet.getString("research_context"),
-                        resultSet.getString("workflow_version_id")))
+                        resultSet.getString("workflow_version_id"),
+                        researchScope(resultSet)))
                 .optional();
         if (run.isEmpty()) {
             return Optional.empty();
@@ -91,7 +103,8 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 value.status(),
                 value.requestSummary(),
                 value.researchContext(),
-                version));
+                version,
+                value.marketScope()));
     }
 
     @Override
@@ -286,12 +299,13 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 insert into agent_message (
                   message_id, debate_id, run_id, node_id, role_name, round_index,
                   turn_index, message_type, status, summary, argument, confidence,
-                  claims, evidence_refs, challenges, revision_notes, created_at
+                  claims, evidence_refs, challenges, revision_notes, forecast, created_at
                 ) values (
                   :messageId, :debateId, :runId, :nodeId, :roleName, :roundIndex,
                   :turnIndex, :messageType, :status, :summary, :argument, :confidence,
                   cast(:claims as jsonb), cast(:evidenceRefs as jsonb),
-                  cast(:challenges as jsonb), cast(:revisionNotes as jsonb), :createdAt
+                  cast(:challenges as jsonb), cast(:revisionNotes as jsonb),
+                  cast(:forecast as jsonb), :createdAt
                 ) on conflict (message_id) do nothing
                 """)
                 .param("messageId", message.messageId().value())
@@ -310,6 +324,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 .param("evidenceRefs", json(message.content().evidenceReferences()))
                 .param("challenges", json(message.content().challenges()))
                 .param("revisionNotes", json(message.content().revisionNotes()))
+                .param("forecast", message.content().forecast() == null ? null : json(message.content().forecast()))
                 .param("createdAt", timestamp(message.createdAt()))
                 .update();
         for (var index = 0; index < message.repliesTo().size(); index++) {
@@ -323,6 +338,9 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                     .param("replyOrder", index)
                     .update();
         }
+        if (message.content().forecast() != null) {
+            saveForecast(message, message.content().forecast());
+        }
     }
 
     @Override
@@ -333,6 +351,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                        message_type, status, summary, argument, confidence,
                        claims::text as claims, evidence_refs::text as evidence_refs,
                        challenges::text as challenges, revision_notes::text as revision_notes,
+                       forecast::text as forecast,
                        created_at
                 from agent_message
                 where debate_id = :debateId
@@ -412,6 +431,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 strings(resultSet.getString("evidence_refs")),
                 strings(resultSet.getString("challenges")),
                 strings(resultSet.getString("revision_notes")),
+                forecast(resultSet.getString("forecast")),
                 instant(resultSet.getObject("created_at", OffsetDateTime.class)));
     }
 
@@ -431,6 +451,49 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
         }
     }
 
+    private ForecastSignal forecast(String json) {
+        if (json == null) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, ForecastSignal.class);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to decode research forecast", exception);
+        }
+    }
+
+    private void saveForecast(AgentMessage message, ForecastSignal forecast) {
+        jdbcClient.sql("""
+                insert into research_forecast (
+                  forecast_id, workflow_run_id, message_id, instrument_id, exchange,
+                  symbol, interval_seconds, horizon_seconds, market_reference_price, direction,
+                  reference_price, expected_low, expected_high, invalidation_price,
+                  confidence, thesis, evidence_refs, status, issued_at, target_at
+                )
+                select :forecastId, :runId, :messageId, scope.instrument_id, scope.exchange,
+                       scope.symbol, scope.interval_seconds, scope.forecast_horizon_seconds,
+                       scope.market_reference_price, :direction, :referencePrice, :expectedLow, :expectedHigh,
+                       :invalidationPrice, :confidence, :thesis, cast(:evidenceRefs as jsonb),
+                       'PENDING', :issuedAt, :issuedAt + make_interval(secs => scope.forecast_horizon_seconds)
+                from research_market_scope scope
+                where scope.workflow_run_id = :runId
+                on conflict (workflow_run_id) do nothing
+                """)
+                .param("forecastId", "forecast_" + message.messageId().value().substring("message_".length()))
+                .param("runId", message.runId().value())
+                .param("messageId", message.messageId().value())
+                .param("direction", forecast.direction().name())
+                .param("referencePrice", forecast.referencePrice())
+                .param("expectedLow", forecast.expectedLow())
+                .param("expectedHigh", forecast.expectedHigh())
+                .param("invalidationPrice", forecast.invalidationPrice())
+                .param("confidence", forecast.confidence())
+                .param("thesis", forecast.thesis())
+                .param("evidenceRefs", json(forecast.evidenceReferences()))
+                .param("issuedAt", timestamp(message.createdAt()))
+                .update();
+    }
+
     private String json(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -447,11 +510,25 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
         return value == null ? null : value.toInstant();
     }
 
+    private static ResearchMarketScope researchScope(ResultSet resultSet) throws SQLException {
+        var instrumentId = resultSet.getString("instrument_id");
+        return instrumentId == null
+                ? null
+                : new ResearchMarketScope(
+                        new InstrumentId(instrumentId),
+                        ExchangeVenue.valueOf(resultSet.getString("exchange")),
+                        resultSet.getString("symbol"),
+                        resultSet.getInt("interval_seconds"),
+                        resultSet.getInt("forecast_horizon_seconds"),
+                        resultSet.getBigDecimal("market_reference_price"));
+    }
+
     private record RunRoot(
             WorkflowRunStatus status,
             String requestSummary,
             String researchContext,
-            String workflowVersionId) {
+            String workflowVersionId,
+            ResearchMarketScope marketScope) {
     }
 
     private record ReplyRow(AgentMessageId messageId, AgentMessageId repliedToMessageId) {
@@ -473,6 +550,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
             List<String> evidenceReferences,
             List<String> challenges,
             List<String> revisionNotes,
+            ForecastSignal forecast,
             Instant createdAt) {
         AgentMessage toDomain(DebateId debateId, List<AgentMessageId> repliesTo) {
             return new AgentMessage(
@@ -486,7 +564,8 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                     messageType,
                     status,
                     new AgentMessageContent(
-                            summary, argument, confidence, claims, evidenceReferences, challenges, revisionNotes),
+                            summary, argument, confidence, claims, evidenceReferences,
+                            challenges, revisionNotes, forecast),
                     repliesTo,
                     createdAt);
         }

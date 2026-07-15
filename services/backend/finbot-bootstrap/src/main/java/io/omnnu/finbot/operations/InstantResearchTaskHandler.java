@@ -41,7 +41,8 @@ public final class InstantResearchTaskHandler implements BackgroundTaskHandler {
                         workflowCommand,
                         payload.taskMode().forAttempt(task.attemptCount()),
                         task.attemptCount(),
-                        task.maximumAttempts()))
+                        task.maximumAttempts(),
+                        payload.marketAnalysisScope()))
                 .thenApply(ignored -> null);
     }
 }

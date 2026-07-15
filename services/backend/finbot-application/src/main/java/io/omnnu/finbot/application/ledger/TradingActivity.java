@@ -23,6 +23,9 @@ public record TradingActivity(
         String currency,
         String exchangeOrderId,
         String clientOrderId,
+        String title,
+        String detail,
+        String detailsJson,
         Instant occurredAt,
         Instant receivedAt) {
 }

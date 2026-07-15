@@ -2,6 +2,7 @@ package io.omnnu.finbot.application.trading;
 
 import io.omnnu.finbot.domain.risk.RiskInstrumentSpec;
 import io.omnnu.finbot.domain.risk.RiskPolicy;
+import io.omnnu.finbot.domain.risk.ProjectionInstrumentSpec;
 import io.omnnu.finbot.domain.trading.ApprovedTradeIntent;
 import io.omnnu.finbot.domain.trading.TradeDecision;
 import io.omnnu.finbot.domain.trading.TradeProposal;
@@ -22,6 +23,8 @@ public interface TradeAutomationStore {
 
     List<RiskInstrumentSpec> executionCandidates(String normalizedSymbol);
 
+    List<ProjectionInstrumentSpec> projectionCandidates(String normalizedSymbol);
+
     void saveExecutionAiReview(StoredExecutionAiReview review);
 
     void saveExecutionAiFailure(
@@ -38,6 +41,8 @@ public interface TradeAutomationStore {
     void saveProposal(TradeProposal proposal);
 
     void saveRiskAssessment(StoredRiskAssessment assessment);
+
+    void saveEstimatedTradeProjection(StoredEstimatedTradeProjection projection);
 
     void saveApprovedIntentAndOrder(ApprovedTradeIntent intent, PlannedOrder order);
 

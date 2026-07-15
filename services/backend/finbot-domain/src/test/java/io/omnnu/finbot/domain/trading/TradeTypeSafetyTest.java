@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.omnnu.finbot.domain.market.InstrumentSymbol;
+import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.market.Price;
 import io.omnnu.finbot.domain.market.Quantity;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
@@ -36,6 +38,8 @@ class TradeTypeSafetyTest {
                 proposal,
                 review,
                 new ExchangeAccountId("account_gate_test"),
+                new InstrumentId("instrument_gate_btc_test"),
+                ExchangeVenue.GATE,
                 new RiskAssessmentId("assessment_01j00000"),
                 Quantity.positive(new BigDecimal("0.001")),
                 new BigDecimal("10"));
@@ -66,6 +70,8 @@ class TradeTypeSafetyTest {
                         proposal,
                         review,
                         new ExchangeAccountId("account_bybit_test"),
+                        new InstrumentId("instrument_bybit_eth_test"),
+                        ExchangeVenue.BYBIT,
                         new RiskAssessmentId("assessment_01j00001"),
                         Quantity.positive(BigDecimal.ONE),
                         new BigDecimal("5")));

@@ -64,6 +64,7 @@ jobs:
           python -m mypy src tests
           python -m pytest -q
           python -m openapi_spec_validator ../../contracts/quant-research.openapi.yaml
+          python -m openapi_spec_validator ../../contracts/finbot-control-plane.openapi.yaml
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

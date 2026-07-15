@@ -7,6 +7,7 @@ import io.omnnu.finbot.application.exchange.ExchangeSubmissionStatus;
 import io.omnnu.finbot.application.exchange.ExecutableOrder;
 import io.omnnu.finbot.application.exchange.OmsExecutionStore;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.market.InstrumentSymbol;
@@ -153,7 +154,7 @@ public final class JdbcOmsExecutionStore implements OmsExecutionStore {
 
     private ExecutableOrder load(OrderId orderId, int attemptNumber, Instant claimedUntil) {
         return jdbcClient.sql("""
-                select exchange, environment, account_ref, symbol, side,
+                select exchange, environment, account_ref, instrument_id, symbol, side,
                        requested_quantity, leverage, client_order_id
                 from oms_order where order_id = :orderId
                 """)
@@ -164,6 +165,7 @@ public final class JdbcOmsExecutionStore implements OmsExecutionStore {
                         ExchangeVenue.valueOf(resultSet.getString("exchange")),
                         ExchangeEnvironment.valueOf(resultSet.getString("environment")),
                         new ExchangeAccountId(resultSet.getString("account_ref")),
+                        new InstrumentId(resultSet.getString("instrument_id")),
                         new InstrumentSymbol(resultSet.getString("symbol")),
                         DirectionalAction.valueOf(resultSet.getString("side")),
                         resultSet.getBigDecimal("requested_quantity"),
@@ -239,6 +241,7 @@ public final class JdbcOmsExecutionStore implements OmsExecutionStore {
     private static String requestHash(ExecutableOrder order) {
         return hash(order.exchange().name() + '|' + order.environment().name() + '|'
                 + order.accountId().value() + '|' + order.symbol().value() + '|'
+                + order.instrumentId().value() + '|'
                 + order.side().name() + '|' + order.quantity().toPlainString() + '|'
                 + order.leverage().toPlainString() + '|' + order.clientOrderId());
     }

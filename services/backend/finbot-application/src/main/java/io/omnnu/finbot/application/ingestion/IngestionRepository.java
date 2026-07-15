@@ -13,6 +13,12 @@ public interface IngestionRepository {
 
     Optional<InformationSource> findSource(SourceId sourceId);
 
+    Optional<InformationSource> setSourceEnabled(
+            SourceId sourceId,
+            boolean enabled,
+            long expectedVersion,
+            Instant updatedAt);
+
     void startCollection(SourceCollectionRun collectionRun);
 
     PersistEvidenceResult saveEvidence(

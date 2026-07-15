@@ -26,6 +26,9 @@ try {
   await page.addStyleTag({ content: '*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; caret-color: transparent !important; }' });
   const mathQuestion = page.getByTestId('auth-math-question');
   await mathQuestion.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => /^\d+\s+[+-]\s+\d+\s+=\s+\?$/.test(
+    document.querySelector('[data-testid="auth-math-question"]')?.textContent || '',
+  ));
   await page.screenshot({ path: path.join(outputDir, 'login-desktop.png'), fullPage: true });
 
   await page.getByLabel('用户名').fill(username);
@@ -36,29 +39,38 @@ try {
     { timeout: 30_000 },
   );
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await page.getByRole('heading', { name: '研究与交易工作台', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '研究决策工作台', exact: true }).waitFor();
   await operationsResponse;
   await page.getByText('账户权益', { exact: true }).first().waitFor();
 
   const pages = [
-    ['即时研究', '即时研究流水线', '研究问题'],
-    ['研究历史', '研究历史与多轮辩论', '研究问题'],
-    ['产品与自选', '规范化产品库与自选', '产品库'],
-    ['模拟交易', '账户、盈亏与执行审计', '账户盈亏'],
-    ['AI 工作流', 'AI 调度小组与工作流', '辩论轮次'],
-    ['运行与调度', '常驻任务、信息源与证据', '常驻服务与调度'],
-    ['系统配置', '模型、费率与风险配置', '运行参数'],
+    ['研究决策工作台', '研究决策工作台', '系统就绪度'],
+    ['产品与自选', '产品库与自选列表', '产品库'],
+    ['发起研究', '即时研究流水线', '研究问题'],
+    ['自动研究', '自动研究循环', '自动循环'],
+    ['复核与效果', '研究复核与效果反馈', '基准运行'],
+    ['走势预测', '实盘行情走势预测', '分析目标'],
+    ['量化验证', '量化结果与风控预览', '仓位与风控预览'],
+    ['模拟验证', '模拟交易验证与永久审计', '账户概览'],
+    ['采集与处理', '信息采集、清理与证据', '信息源状态'],
+    ['运行报告', '结构化运行报告', '生成报告'],
+    ['系统设置', '系统、模型与交易配置', '快速启用'],
+    ['AI 工作流', 'AI 调度小组与自由工作流', '辩论轮次'],
+    ['网络诊断', '代理路由与网络诊断', '出站路由'],
   ];
+  const mainNavigation = page.getByRole('navigation', { name: '主导航' });
   for (const [navigation, heading, readyText] of pages) {
-    await page.getByRole('button', { name: navigation, exact: true }).click();
+    await mainNavigation.getByRole('button', { name: navigation, exact: true }).click();
     await page.getByRole('heading', { name: heading, exact: true }).waitFor();
-    await page.getByText(readyText, { exact: true }).first().waitFor();
+    await page.getByText(readyText, { exact: false }).first().waitFor();
   }
-  await page.screenshot({ path: path.join(outputDir, 'settings-desktop.png'), fullPage: true });
+  const csrfConflictStatus = await probeAuthenticatedCsrfWrite(page, appUrl);
+  await page.screenshot({ path: path.join(outputDir, 'all-workspaces-desktop.png'), fullPage: true });
   const desktopOverflow = await horizontalOverflow(page);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('tab', { name: '即时研究', exact: true }).click();
+  await page.getByRole('combobox').first().click();
+  await page.getByRole('option', { name: '发起研究', exact: true }).click();
   await page.getByRole('heading', { name: '即时研究流水线', exact: true }).waitFor();
   const mobileOverflow = await horizontalOverflow(page);
   await page.screenshot({ path: path.join(outputDir, 'research-mobile.png'), fullPage: true });
@@ -69,10 +81,11 @@ try {
   if (browserProblems.length > 0) {
     throw new Error(`浏览器控制台存在错误: ${JSON.stringify(browserProblems)}`);
   }
-  const sseHeartbeat = sseRunId === null
+  const operationsSse = await probeOperationsSse(page, appUrl);
+  const workflowSseHeartbeat = sseRunId === null
     ? null
     : await probeSseHeartbeat(page, appUrl, sseRunId);
-  console.log(JSON.stringify({ ok: true, pagesChecked: pages.length + 1, desktopOverflow, mobileOverflow, sseHeartbeat }));
+  console.log(JSON.stringify({ ok: true, pagesChecked: pages.length, desktopOverflow, mobileOverflow, csrfConflictStatus, operationsSse, workflowSseHeartbeat }));
 } catch (error) {
   await page.screenshot({ path: path.join(outputDir, 'system-smoke-failure.png'), fullPage: true });
   throw error;
@@ -135,4 +148,50 @@ async function probeSseHeartbeat(targetPage, baseUrl, runId) {
       await reader?.cancel().catch(() => undefined);
     }
   }, { url: streamUrl, timeoutMs: 35_000 });
+}
+
+async function probeAuthenticatedCsrfWrite(targetPage, baseUrl) {
+  return targetPage.evaluate(async (url) => {
+    const sourcesResponse = await fetch(new URL('/api/v2/sources', url), { credentials: 'include' });
+    if (!sourcesResponse.ok) throw new Error(`读取信息源失败: HTTP ${sourcesResponse.status}`);
+    const sources = await sourcesResponse.json();
+    if (!Array.isArray(sources) || sources.length === 0) throw new Error('没有可用于 CSRF smoke 的信息源');
+    const source = sources[0];
+    const csrf = document.cookie.split('; ').find((item) => item.startsWith('XSRF-TOKEN='))?.split('=', 2)[1];
+    if (!csrf) throw new Error('登录后缺少 XSRF-TOKEN cookie');
+    const response = await fetch(new URL(`/api/v2/sources/${encodeURIComponent(source.sourceId)}/status`, url), {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': decodeURIComponent(csrf) },
+      body: JSON.stringify({ enabled: source.enabled, expectedVersion: source.version + 1_000_000 }),
+    });
+    if (response.status !== 409) throw new Error(`CSRF 写链路未进入业务冲突层: HTTP ${response.status}`);
+    return response.status;
+  }, baseUrl);
+}
+
+async function probeOperationsSse(targetPage, baseUrl) {
+  const streamUrl = new URL('/api/v2/operations/events', baseUrl).toString();
+  return targetPage.evaluate(async ({ url, timeoutMs }) => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+    let reader;
+    try {
+      const response = await fetch(url, { credentials: 'include', headers: { Accept: 'text/event-stream' }, signal: controller.signal });
+      if (!response.ok || response.body === null) throw new Error(`Operations SSE 连接失败: HTTP ${response.status}`);
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let received = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) throw new Error('Operations SSE 在快照前结束');
+        received += decoder.decode(value, { stream: true });
+        if (received.includes('event:operations.snapshot') || received.includes('event: operations.snapshot')) return true;
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      controller.abort();
+      await reader?.cancel().catch(() => undefined);
+    }
+  }, { url: streamUrl, timeoutMs: 20_000 });
 }

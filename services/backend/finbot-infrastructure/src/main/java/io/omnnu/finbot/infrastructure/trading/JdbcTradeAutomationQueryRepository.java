@@ -34,6 +34,8 @@ public final class JdbcTradeAutomationQueryRepository implements TradeAutomation
                     join trade_proposal proposal on proposal.proposal_id = intent.proposal_id
                     join trade_decision nested_decision on nested_decision.decision_id = proposal.decision_id
                     where nested_decision.workflow_run_id = automation.workflow_run_id) as order_count,
+                   (select count(*) from estimated_trade_projection projection
+                    where projection.workflow_run_id = automation.workflow_run_id) as estimated_trade_count,
                    automation.error_code, automation.error_message,
                    automation.started_at, automation.completed_at
             from trade_automation_run automation
@@ -70,6 +72,7 @@ public final class JdbcTradeAutomationQueryRepository implements TradeAutomation
                 decision(workflowRunId).orElse(null),
                 reviews(workflowRunId),
                 assessments(workflowRunId),
+                estimatedTrades(workflowRunId),
                 orders(workflowRunId)));
     }
 
@@ -158,6 +161,46 @@ public final class JdbcTradeAutomationQueryRepository implements TradeAutomation
                         resultSet.getBigDecimal("estimated_max_loss_usdt"),
                         resultSet.getBigDecimal("approximate_liquidation_price"),
                         instant(resultSet, "assessed_at")))
+                .list();
+    }
+
+    private List<TradeAutomationDetail.EstimatedTrade> estimatedTrades(WorkflowRunId workflowRunId) {
+        return jdbcClient.sql("""
+                select projection_id, proposal_id, instrument_id, exchange, symbol, side,
+                       policy_version, entry_reference, market_price, target_price, stop_price,
+                       quantity, contract_size, notional_usdt, leverage, initial_margin_usdt,
+                       estimated_entry_cost_usdt, estimated_target_exit_cost_usdt,
+                       estimated_stop_exit_cost_usdt, estimated_profit_usdt,
+                       estimated_loss_usdt, risk_reward_ratio, calculated_at
+                from estimated_trade_projection
+                where workflow_run_id = :workflowRunId
+                order by calculated_at, exchange, instrument_id
+                """)
+                .param("workflowRunId", workflowRunId.value())
+                .query((resultSet, rowNumber) -> new TradeAutomationDetail.EstimatedTrade(
+                        resultSet.getString("projection_id"),
+                        resultSet.getString("proposal_id"),
+                        resultSet.getString("instrument_id"),
+                        ExchangeVenue.valueOf(resultSet.getString("exchange")),
+                        resultSet.getString("symbol"),
+                        resultSet.getString("side"),
+                        resultSet.getString("policy_version"),
+                        resultSet.getBigDecimal("entry_reference"),
+                        resultSet.getBigDecimal("market_price"),
+                        resultSet.getBigDecimal("target_price"),
+                        resultSet.getBigDecimal("stop_price"),
+                        resultSet.getBigDecimal("quantity"),
+                        resultSet.getBigDecimal("contract_size"),
+                        resultSet.getBigDecimal("notional_usdt"),
+                        resultSet.getBigDecimal("leverage"),
+                        resultSet.getBigDecimal("initial_margin_usdt"),
+                        resultSet.getBigDecimal("estimated_entry_cost_usdt"),
+                        resultSet.getBigDecimal("estimated_target_exit_cost_usdt"),
+                        resultSet.getBigDecimal("estimated_stop_exit_cost_usdt"),
+                        resultSet.getBigDecimal("estimated_profit_usdt"),
+                        resultSet.getBigDecimal("estimated_loss_usdt"),
+                        resultSet.getBigDecimal("risk_reward_ratio"),
+                        instant(resultSet, "calculated_at")))
                 .list();
     }
 
@@ -283,6 +326,7 @@ public final class JdbcTradeAutomationQueryRepository implements TradeAutomation
                 resultSet.getString("action"),
                 resultSet.getBigDecimal("confidence"),
                 resultSet.getInt("order_count"),
+                resultSet.getInt("estimated_trade_count"),
                 resultSet.getString("error_code"),
                 resultSet.getString("error_message"),
                 instant(resultSet, "started_at"),

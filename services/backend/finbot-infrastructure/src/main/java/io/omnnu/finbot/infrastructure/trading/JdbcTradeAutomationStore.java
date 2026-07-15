@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.trading.PlannedOrder;
 import io.omnnu.finbot.application.trading.StoredExecutionAiReview;
+import io.omnnu.finbot.application.trading.StoredEstimatedTradeProjection;
 import io.omnnu.finbot.application.trading.StoredRiskAssessment;
 import io.omnnu.finbot.application.trading.TradeAutomationResult;
 import io.omnnu.finbot.application.trading.TradeAutomationStatus;
@@ -26,6 +27,7 @@ import io.omnnu.finbot.domain.market.Price;
 import io.omnnu.finbot.domain.oms.OrderId;
 import io.omnnu.finbot.domain.risk.RiskInstrumentSpec;
 import io.omnnu.finbot.domain.risk.RiskPolicy;
+import io.omnnu.finbot.domain.risk.ProjectionInstrumentSpec;
 import io.omnnu.finbot.domain.trading.ApprovedTradeIntent;
 import io.omnnu.finbot.domain.trading.DirectionalTradeDecision;
 import io.omnnu.finbot.domain.trading.NonDirectionalTradeDecision;
@@ -236,6 +238,40 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<ProjectionInstrumentSpec> projectionCandidates(String normalizedSymbol) {
+        return jdbcClient.sql("""
+                select instrument.instrument_id, instrument.exchange, instrument.symbol,
+                       instrument.contract_size, instrument.quantity_step,
+                       instrument.minimum_quantity, instrument.maximum_leverage,
+                       latest.close_price
+                from venue_instrument instrument
+                left join lateral (
+                  select candle.close_price
+                  from market_candle_fact candle
+                  where candle.instrument_id = instrument.instrument_id
+                  order by candle.open_time desc, candle.id desc
+                  limit 1
+                ) latest on true
+                where instrument.status = 'ACTIVE'
+                  and instrument.execution_enabled = false
+                  and replace(replace(upper(instrument.symbol), '_', ''), '-', '') = :normalizedSymbol
+                order by instrument.exchange, instrument.instrument_id
+                """)
+                .param("normalizedSymbol", normalizedSymbol)
+                .query((resultSet, rowNumber) -> new ProjectionInstrumentSpec(
+                        new InstrumentId(resultSet.getString("instrument_id")),
+                        ExchangeVenue.valueOf(resultSet.getString("exchange")),
+                        new InstrumentSymbol(resultSet.getString("symbol")),
+                        resultSet.getBigDecimal("contract_size"),
+                        resultSet.getBigDecimal("quantity_step"),
+                        resultSet.getBigDecimal("minimum_quantity"),
+                        resultSet.getBigDecimal("maximum_leverage"),
+                        Optional.ofNullable(resultSet.getBigDecimal("close_price")).map(Price::new)))
+                .list();
+    }
+
+    @Override
     public void saveExecutionAiReview(StoredExecutionAiReview review) {
         jdbcClient.sql("""
                 insert into trade_execution_ai_review (
@@ -357,12 +393,12 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
         jdbcClient.sql("""
                 insert into risk_assessment (
                   assessment_id, automation_run_id, workflow_run_id, proposal_id,
-                  account_id, policy_version, status, reasons, quantity, notional_usdt,
+                  account_id, instrument_id, exchange, policy_version, status, reasons, quantity, notional_usdt,
                   leverage, initial_margin_usdt, estimated_max_loss_usdt,
                   approximate_liquidation_price, assessed_at
                 ) values (
                   :assessmentId, :automationRunId, :workflowRunId, :proposalId,
-                  :accountId, :policyVersion, :status, cast(:reasons as jsonb),
+                  :accountId, :instrumentId, :exchange, :policyVersion, :status, cast(:reasons as jsonb),
                   :quantity, :notionalUsdt, :leverage, :initialMarginUsdt,
                   :estimatedMaxLossUsdt, :approximateLiquidationPrice, :assessedAt
                 ) on conflict (proposal_id, account_id) do nothing
@@ -372,6 +408,8 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 .param("workflowRunId", assessment.workflowRunId().value())
                 .param("proposalId", assessment.proposalId().value())
                 .param("accountId", assessment.accountId().value())
+                .param("instrumentId", assessment.instrumentId().value())
+                .param("exchange", assessment.exchange().name())
                 .param("policyVersion", assessment.policyVersion())
                 .param("status", plan.status().name())
                 .param("reasons", json(plan.reasons()))
@@ -386,16 +424,69 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
     }
 
     @Override
+    public void saveEstimatedTradeProjection(StoredEstimatedTradeProjection projection) {
+        var instrument = projection.instrument();
+        var plan = projection.plan();
+        jdbcClient.sql("""
+                insert into estimated_trade_projection (
+                  projection_id, automation_run_id, workflow_run_id, proposal_id,
+                  instrument_id, exchange, symbol, side, policy_version,
+                  entry_reference, market_price, target_price, stop_price,
+                  quantity, contract_size, notional_usdt, leverage,
+                  initial_margin_usdt, estimated_entry_cost_usdt,
+                  estimated_target_exit_cost_usdt, estimated_stop_exit_cost_usdt,
+                  estimated_profit_usdt, estimated_loss_usdt, risk_reward_ratio,
+                  calculated_at
+                ) values (
+                  :projectionId, :automationRunId, :workflowRunId, :proposalId,
+                  :instrumentId, :exchange, :symbol, :side, :policyVersion,
+                  :entryReference, :marketPrice, :targetPrice, :stopPrice,
+                  :quantity, :contractSize, :notionalUsdt, :leverage,
+                  :initialMarginUsdt, :estimatedEntryCostUsdt,
+                  :estimatedTargetExitCostUsdt, :estimatedStopExitCostUsdt,
+                  :estimatedProfitUsdt, :estimatedLossUsdt, :riskRewardRatio,
+                  :calculatedAt
+                ) on conflict (proposal_id, instrument_id) do nothing
+                """)
+                .param("projectionId", projection.projectionId())
+                .param("automationRunId", projection.automationRunId())
+                .param("workflowRunId", projection.workflowRunId().value())
+                .param("proposalId", projection.proposalId().value())
+                .param("instrumentId", instrument.instrumentId().value())
+                .param("exchange", instrument.exchange().name())
+                .param("symbol", instrument.symbol().value())
+                .param("side", projection.side().name())
+                .param("policyVersion", projection.policyVersion())
+                .param("entryReference", projection.entryReference().value())
+                .param("marketPrice", instrument.currentPrice().orElseThrow().value())
+                .param("targetPrice", projection.targetPrice().value())
+                .param("stopPrice", projection.stopPrice().value())
+                .param("quantity", plan.quantity())
+                .param("contractSize", instrument.contractSize())
+                .param("notionalUsdt", plan.notionalUsdt())
+                .param("leverage", plan.leverage())
+                .param("initialMarginUsdt", plan.initialMarginUsdt())
+                .param("estimatedEntryCostUsdt", plan.estimatedEntryCostUsdt())
+                .param("estimatedTargetExitCostUsdt", plan.estimatedTargetExitCostUsdt())
+                .param("estimatedStopExitCostUsdt", plan.estimatedStopExitCostUsdt())
+                .param("estimatedProfitUsdt", plan.estimatedProfitUsdt())
+                .param("estimatedLossUsdt", plan.estimatedLossUsdt())
+                .param("riskRewardRatio", plan.riskRewardRatio())
+                .param("calculatedAt", timestamp(projection.calculatedAt()))
+                .update();
+    }
+
+    @Override
     @Transactional
     public void saveApprovedIntentAndOrder(ApprovedTradeIntent intent, PlannedOrder order) {
         jdbcClient.sql("""
                 insert into approved_trade_intent (
                   intent_id, proposal_id, account_id, risk_assessment_id, symbol, action,
-                  quantity, leverage, entry_reference, target_price, invalidation_price,
+                  instrument_id, exchange, quantity, leverage, entry_reference, target_price, invalidation_price,
                   policy_version, approved_at
                 ) values (
                   :intentId, :proposalId, :accountId, :riskAssessmentId, :symbol, :action,
-                  :quantity, :leverage, :entryReference, :targetPrice, :invalidationPrice,
+                  :instrumentId, :exchange, :quantity, :leverage, :entryReference, :targetPrice, :invalidationPrice,
                   :policyVersion, :approvedAt
                 ) on conflict (proposal_id, account_id) do nothing
                 """)
@@ -405,6 +496,8 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 .param("riskAssessmentId", intent.riskAssessmentId().value())
                 .param("symbol", intent.symbol().value())
                 .param("action", intent.action().name())
+                .param("instrumentId", intent.instrumentId().value())
+                .param("exchange", intent.exchange().name())
                 .param("quantity", intent.quantity().value())
                 .param("leverage", intent.leverage())
                 .param("entryReference", intent.entryReference().value())
@@ -416,11 +509,11 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
         var inserted = jdbcClient.sql("""
                 insert into oms_order (
                   order_id, intent_id, idempotency_key, exchange, environment,
-                  account_ref, symbol, side, status, requested_quantity,
+                  account_ref, instrument_id, symbol, side, status, requested_quantity,
                   filled_quantity, leverage, client_order_id, created_at, updated_at
                 ) values (
                   :orderId, :intentId, :idempotencyKey, :exchange, :environment,
-                  :accountRef, :symbol, :side, 'PLANNED', :requestedQuantity,
+                  :accountRef, :instrumentId, :symbol, :side, 'PLANNED', :requestedQuantity,
                   0, :leverage, :clientOrderId, :createdAt, :createdAt
                 ) on conflict (idempotency_key) do nothing
                 """)
@@ -430,6 +523,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 .param("exchange", order.exchange().name())
                 .param("environment", order.environment().name())
                 .param("accountRef", order.accountId().value())
+                .param("instrumentId", order.instrumentId().value())
                 .param("symbol", order.symbol().value())
                 .param("side", order.side().name())
                 .param("requestedQuantity", order.quantity())

@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.omnnu.finbot.application.workflow.StructuredAiOutputParser;
 import io.omnnu.finbot.domain.workflow.AgentClaim;
 import io.omnnu.finbot.domain.workflow.AgentMessageContent;
+import io.omnnu.finbot.domain.research.ForecastDirection;
+import io.omnnu.finbot.domain.research.ForecastSignal;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -23,7 +25,10 @@ public final class JacksonStructuredAiOutputParser implements StructuredAiOutput
     private static final Set<String> CHAIR_FIELDS = Set.of(
             "debate_summary", "major_disagreements", "missing_evidence", "verdicts",
             "confidence", "summary", "argument", "claims", "evidence_refs",
-            "challenges", "revision_notes");
+            "challenges", "revision_notes", "forecast");
+    private static final Set<String> FORECAST_FIELDS = Set.of(
+            "direction", "reference_price", "expected_low", "expected_high",
+            "invalidation_price", "confidence", "thesis", "evidence_refs");
 
     private final ObjectMapper objectMapper;
 
@@ -69,7 +74,45 @@ public final class JacksonStructuredAiOutputParser implements StructuredAiOutput
                 parsedClaims,
                 strings(root.path("evidence_refs")),
                 challenges,
-                revisions);
+                revisions,
+                forecast(root.path("forecast")));
+    }
+
+    private static ForecastSignal forecast(JsonNode node) {
+        if (node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IllegalArgumentException("AI forecast must be an object or null");
+        }
+        requireAllowedFields((ObjectNode) node, FORECAST_FIELDS);
+        var direction = ForecastDirection.valueOf(requiredText((ObjectNode) node, "direction"));
+        var uncertain = direction == ForecastDirection.UNCERTAIN;
+        return new ForecastSignal(
+                direction,
+                uncertain ? requireNullDecimal(node, "reference_price") : requiredDecimal(node, "reference_price"),
+                uncertain ? requireNullDecimal(node, "expected_low") : requiredDecimal(node, "expected_low"),
+                uncertain ? requireNullDecimal(node, "expected_high") : requiredDecimal(node, "expected_high"),
+                optionalDecimal((ObjectNode) node, "invalidation_price"),
+                requiredDecimal(node, "confidence"),
+                requiredText((ObjectNode) node, "thesis"),
+                strings(node.path("evidence_refs")));
+    }
+
+    private static BigDecimal requiredDecimal(JsonNode node, String fieldName) {
+        var value = node.get(fieldName);
+        if (value == null || !value.isNumber()) {
+            throw new IllegalArgumentException("AI forecast decimal is required: " + fieldName);
+        }
+        return value.decimalValue();
+    }
+
+    private static BigDecimal requireNullDecimal(JsonNode node, String fieldName) {
+        var value = node.get(fieldName);
+        if (value != null && !value.isNull()) {
+            throw new IllegalArgumentException("Uncertain AI forecast field must be null: " + fieldName);
+        }
+        return null;
     }
 
     private ObjectNode parseObject(String output) {

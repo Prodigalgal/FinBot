@@ -27,7 +27,7 @@ final class WorkflowPromptComposer {
     private static final String CHAIR_SCHEMA = """
 
 只返回一个 JSON 对象，不要使用 Markdown 代码块，也不要输出隐藏思维链。结构必须为：
-{"debate_summary":["..."],"major_disagreements":["..."],"missing_evidence":["..."],"verdicts":[{"summary":"...","evidence_refs":["..."]}],"confidence":0.0,"evidence_refs":["..."]}
+{"debate_summary":["..."],"major_disagreements":["..."],"missing_evidence":["..."],"verdicts":[{"summary":"...","evidence_refs":["..."]}],"confidence":0.0,"evidence_refs":["..."],"forecast":null}
 """;
 
     PromptMaterial composeAgent(
@@ -36,7 +36,7 @@ final class WorkflowPromptComposer {
             int roundIndex,
             List<AgentMessage> messages) {
         var selected = selectAgentContext(execution.definitionVersion(), node, roundIndex, messages);
-        var context = renderContext(selected, node.contextMode());
+        var context = renderContext(execution.definitionVersion(), node, selected);
         var prompt = expandTemplate(
                 node.userPromptTemplate(),
                 execution.requestSummary(),
@@ -50,19 +50,41 @@ final class WorkflowPromptComposer {
             WorkflowExecutionContext execution,
             WorkflowNodeDefinition chair,
             List<AgentMessage> messages) {
-        var selected = messages.stream()
-                .filter(message -> message.roundIndex() > 0)
-                .sorted(messageOrder())
-                .toList();
-        selected = takeLatest(selected, chair.contextMaximumMessages());
-        var context = renderContext(selected, WorkflowContextMode.UPSTREAM);
+        var completedRounds = messages.stream()
+                .mapToInt(AgentMessage::roundIndex)
+                .max()
+                .orElse(execution.definitionVersion().defaultDebateRounds());
+        var selected = selectAgentContext(
+                execution.definitionVersion(),
+                chair,
+                completedRounds + 1,
+                messages);
+        var context = renderContext(execution.definitionVersion(), chair, selected);
         var prompt = expandTemplate(
                 chair.userPromptTemplate(),
                 execution.requestSummary(),
                 execution.researchContext(),
-                execution.definitionVersion().defaultDebateRounds(),
+                completedRounds,
                 context);
-        return new PromptMaterial(prompt + CHAIR_SCHEMA, messageIds(selected));
+        return new PromptMaterial(prompt + chairSchema(execution), messageIds(selected));
+    }
+
+    private static String chairSchema(WorkflowExecutionContext execution) {
+        if (execution.marketScope() == null) {
+            return CHAIR_SCHEMA;
+        }
+        var scope = execution.marketScope();
+        return """
+
+本次是单产品定时域预测，必须依据实盘公开行情输出 forecast。预测标的是 %s %s，K 线周期 %d 秒，预测期限 %d 秒，系统记录的实盘参考价为 %s。预测期限由系统确定，不得改写；非 UNCERTAIN 时 reference_price 必须使用系统参考价。只返回一个 JSON 对象，不要使用 Markdown 代码块，也不要输出隐藏思维链。结构必须为：
+{"debate_summary":["..."],"major_disagreements":["..."],"missing_evidence":["..."],"verdicts":[{"summary":"...","evidence_refs":["..."]}],"confidence":0.0,"evidence_refs":["..."],"forecast":{"direction":"UP|DOWN|SIDEWAYS|UNCERTAIN","reference_price":0.0,"expected_low":0.0,"expected_high":0.0,"invalidation_price":0.0,"confidence":0.0,"thesis":"...","evidence_refs":["..."]}}
+direction 为 UNCERTAIN 时四个价格字段必须为 null；其他方向必须给出正数 reference_price、expected_low、expected_high，invalidation_price 可为 null。expected_low 不得高于 expected_high。证据不足时使用 UNCERTAIN，不得猜测价格。
+""".formatted(
+                scope.exchange().name(),
+                scope.symbol(),
+                scope.intervalSeconds(),
+                scope.forecastHorizonSeconds(),
+                scope.marketReferencePrice().toPlainString());
     }
 
     private static List<AgentMessage> selectAgentContext(
@@ -100,9 +122,27 @@ final class WorkflowPromptComposer {
             }
             history.forEach(message -> selected.put(message.messageId(), message));
         }
-        return takeLatest(
+        var bounded = takeLatest(
                 selected.values().stream().sorted(messageOrder()).toList(),
                 node.contextMaximumMessages());
+        var latestOnlySources = version.edges().stream()
+                .filter(edge -> !edge.loopEdge())
+                .filter(edge -> edge.targetNodeId().equals(node.nodeId()))
+                .filter(edge -> edge.contextMode() == WorkflowEdgeContextMode.LATEST)
+                .map(edge -> edge.sourceNodeId())
+                .collect(Collectors.toUnmodifiableSet());
+        if (latestOnlySources.isEmpty()) {
+            return bounded;
+        }
+        var latest = latestPerNode(bounded.stream()
+                .filter(message -> latestOnlySources.contains(message.nodeId()))
+                .toList()).stream()
+                .map(AgentMessage::messageId)
+                .collect(Collectors.toUnmodifiableSet());
+        return bounded.stream()
+                .filter(message -> !latestOnlySources.contains(message.nodeId())
+                        || latest.contains(message.messageId()))
+                .toList();
     }
 
     private static boolean historyVisible(
@@ -135,14 +175,15 @@ final class WorkflowPromptComposer {
     }
 
     private static String renderContext(
-            List<AgentMessage> messages,
-            WorkflowContextMode contextMode) {
+            WorkflowDefinitionVersion version,
+            WorkflowNodeDefinition node,
+            List<AgentMessage> messages) {
         if (messages.isEmpty()) {
             return "无可用上游观点。";
         }
         var result = new StringBuilder(Math.min(MAX_CONTEXT_CHARACTERS, messages.size() * 2_000));
         for (var message : messages) {
-            var block = renderMessage(message, contextMode);
+            var block = renderMessage(message, effectiveContextMode(version, node, message));
             if (result.length() + block.length() > MAX_CONTEXT_CHARACTERS) {
                 var remaining = MAX_CONTEXT_CHARACTERS - result.length();
                 if (remaining > 0) {
@@ -153,6 +194,25 @@ final class WorkflowPromptComposer {
             result.append(block);
         }
         return result.toString();
+    }
+
+    private static WorkflowContextMode effectiveContextMode(
+            WorkflowDefinitionVersion version,
+            WorkflowNodeDefinition node,
+            AgentMessage message) {
+        var edgeMode = version.edges().stream()
+                .filter(edge -> !edge.loopEdge())
+                .filter(edge -> edge.sourceNodeId().equals(message.nodeId()))
+                .filter(edge -> edge.targetNodeId().equals(node.nodeId()))
+                .map(edge -> edge.contextMode())
+                .findFirst()
+                .orElse(WorkflowEdgeContextMode.INHERIT);
+        return switch (edgeMode) {
+            case CLAIMS_ONLY -> WorkflowContextMode.CLAIMS_ONLY;
+            case SUMMARY -> WorkflowContextMode.SUMMARY;
+            case INCLUDE, LATEST -> WorkflowContextMode.UPSTREAM;
+            case INHERIT, EXCLUDE -> node.contextMode();
+        };
     }
 
     private static String renderMessage(

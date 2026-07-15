@@ -5,6 +5,8 @@ import io.omnnu.finbot.application.ledger.PositionView;
 import io.omnnu.finbot.application.ledger.TradingAccountsOverview;
 import io.omnnu.finbot.application.ledger.TradingActivity;
 import io.omnnu.finbot.application.ledger.TradingActivityPage;
+import io.omnnu.finbot.application.ledger.TradingActivityCount;
+import io.omnnu.finbot.application.ledger.TradingActivitySourceStatus;
 import io.omnnu.finbot.application.ledger.TradingTimeRange;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
@@ -119,7 +121,10 @@ public final class TradingResponses {
 
     public record ActivityPageResponse(
             List<ActivityResponse> activities,
-            ActivityCursorResponse nextCursor) {
+            ActivityCursorResponse nextCursor,
+            long matchedCount,
+            List<ActivityCountResponse> counts,
+            List<ActivitySourceStatusResponse> sources) {
         public static ActivityPageResponse from(TradingActivityPage page) {
             return new ActivityPageResponse(
                     page.activities().stream().map(ActivityResponse::from).toList(),
@@ -127,7 +132,10 @@ public final class TradingResponses {
                             ? null
                             : new ActivityCursorResponse(
                                     page.nextCursor().occurredAt(),
-                                    page.nextCursor().activityId()));
+                                    page.nextCursor().activityId()),
+                    page.matchedCount(),
+                    page.counts().stream().map(ActivityCountResponse::from).toList(),
+                    page.sources().stream().map(ActivitySourceStatusResponse::from).toList());
         }
     }
 
@@ -150,6 +158,9 @@ public final class TradingResponses {
             String currency,
             String exchangeOrderId,
             String clientOrderId,
+            String title,
+            String detail,
+            String detailsJson,
             Instant occurredAt,
             Instant receivedAt) {
         static ActivityResponse from(TradingActivity activity) {
@@ -158,7 +169,7 @@ public final class TradingResponses {
                     activity.sourceEventId(),
                     activity.activityType(),
                     activity.source(),
-                    activity.accountId().value(),
+                    activity.accountId() == null ? null : activity.accountId().value(),
                     activity.exchange(),
                     activity.symbol(),
                     activity.status(),
@@ -169,8 +180,37 @@ public final class TradingResponses {
                     activity.currency(),
                     activity.exchangeOrderId(),
                     activity.clientOrderId(),
+                    activity.title(),
+                    activity.detail(),
+                    activity.detailsJson(),
                     activity.occurredAt(),
                     activity.receivedAt());
+        }
+    }
+
+    public record ActivityCountResponse(TradingActivityType activityType, long count) {
+        static ActivityCountResponse from(TradingActivityCount count) {
+            return new ActivityCountResponse(count.activityType(), count.count());
+        }
+    }
+
+    public record ActivitySourceStatusResponse(
+            TradingActivitySource source,
+            String accountId,
+            ExchangeVenue exchange,
+            String status,
+            boolean complete,
+            String message,
+            Instant latestAt) {
+        static ActivitySourceStatusResponse from(TradingActivitySourceStatus status) {
+            return new ActivitySourceStatusResponse(
+                    status.source(),
+                    status.accountId() == null ? null : status.accountId().value(),
+                    status.exchange(),
+                    status.status(),
+                    status.complete(),
+                    status.message(),
+                    status.latestAt());
         }
     }
 }

@@ -8,7 +8,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.http.ProblemDetail;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -54,12 +53,14 @@ public class SecurityConfiguration {
                                 response,
                                 HttpStatus.UNAUTHORIZED,
                                 "Authentication required",
-                                "请先完成管理员登录"))
+                                "请先完成管理员登录",
+                                "AUTHENTICATION_REQUIRED"))
                         .accessDeniedHandler((request, response, exception) -> writeProblem(
                                 response,
                                 HttpStatus.FORBIDDEN,
                                 "Access denied",
-                                "请求缺少有效的 CSRF 凭据或权限")))
+                                "请求缺少有效的 CSRF 凭据或权限",
+                                "ACCESS_DENIED_OR_INVALID_CSRF")))
                 .addFilterBefore(sessionAuthenticationFilter, AnonymousAuthenticationFilter.class)
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
@@ -71,12 +72,21 @@ public class SecurityConfiguration {
             HttpServletResponse response,
             HttpStatus status,
             String title,
-            String detail) throws IOException {
-        var problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setTitle(title);
+            String detail,
+            String code) throws IOException {
         response.setStatus(status.value());
         response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8.name());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        objectMapper.writeValue(response.getOutputStream(), problem);
+        objectMapper.writeValue(
+                response.getOutputStream(),
+                new SecurityProblem("about:blank", title, status.value(), detail, code));
+    }
+
+    private record SecurityProblem(
+            String type,
+            String title,
+            int status,
+            String detail,
+            String code) {
     }
 }

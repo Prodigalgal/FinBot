@@ -11,9 +11,11 @@ import io.omnnu.finbot.application.ledger.PositionSnapshotFact;
 import io.omnnu.finbot.application.ledger.PositionView;
 import io.omnnu.finbot.application.ledger.RealizedPnlFact;
 import io.omnnu.finbot.application.ledger.TradingActivity;
+import io.omnnu.finbot.application.ledger.TradingActivityCount;
 import io.omnnu.finbot.application.ledger.TradingActivityCriteria;
 import io.omnnu.finbot.application.ledger.TradingActivityCursor;
 import io.omnnu.finbot.application.ledger.TradingActivityPage;
+import io.omnnu.finbot.application.ledger.TradingActivitySourceStatus;
 import io.omnnu.finbot.application.ledger.TradingLedgerQueryRepository;
 import io.omnnu.finbot.application.ledger.TradingLedgerWriter;
 import io.omnnu.finbot.application.ledger.TradingTimeRange;
@@ -289,80 +291,20 @@ public class JdbcTradingLedgerStore implements TradingLedgerWriter, TradingLedge
     @Override
     @Transactional(readOnly = true)
     public TradingActivityPage activity(TradingActivityCriteria criteria) {
-        var sql = new StringBuilder("""
-                select activity_id, source_event_id, activity_type, account_id, exchange,
-                       symbol, status, side, quantity, price, amount, currency,
-                       exchange_order_id, client_order_id, occurred_at, received_at
-                from (
-                  select s.snapshot_id as activity_id, s.source_event_id, 'ACCOUNT' as activity_type,
-                         s.account_id, a.exchange, null::varchar as symbol, 'SNAPSHOT' as status,
-                         null::varchar as side, null::numeric as quantity, null::numeric as price,
-                         s.equity as amount, s.currency, null::varchar as exchange_order_id,
-                         null::varchar as client_order_id, s.occurred_at, s.received_at
-                  from exchange_account_snapshot s join exchange_account a using (account_id)
-                  union all
-                  select b.fact_id, b.source_event_id, 'BALANCE', b.account_id, a.exchange,
-                         null, b.reason, null, null, null, coalesce(b.change_amount, b.total),
-                         b.currency, null, null, b.occurred_at, b.received_at
-                  from exchange_balance_fact b join exchange_account a using (account_id)
-                  union all
-                  select o.fact_id, o.source_event_id, 'ORDER', o.account_id, a.exchange,
-                         o.symbol, o.status, o.side, o.quantity,
-                         coalesce(o.average_fill_price, o.limit_price), null::numeric, null::varchar,
-                         o.exchange_order_id, o.client_order_id, o.occurred_at, o.received_at
-                  from exchange_order_fact o join exchange_account a using (account_id)
-                  union all
-                  select f.fact_id, f.source_event_id, 'FILL', f.account_id, a.exchange,
-                         f.symbol, 'FILLED', f.side, f.quantity, f.price, f.realized_pnl,
-                         f.fee_currency, f.exchange_order_id, f.client_order_id,
-                         f.occurred_at, f.received_at
-                  from exchange_fill_fact f join exchange_account a using (account_id)
-                  union all
-                  select p.snapshot_id, p.source_event_id, 'POSITION', p.account_id, a.exchange,
-                         p.symbol, p.side, p.side, p.quantity, p.mark_price, p.unrealized_pnl,
-                         'USDT', null, null, p.occurred_at, p.received_at
-                  from exchange_position_snapshot p join exchange_account a using (account_id)
-                  union all
-                  select r.fact_id, r.source_event_id, 'REALIZED_PNL', r.account_id, a.exchange,
-                         r.symbol, r.source_type, null, null, null, r.amount, r.currency,
-                         r.related_order_id, null, r.occurred_at, r.received_at
-                  from realized_pnl_fact r join exchange_account a using (account_id)
-                  union all
-                  select x.reconciliation_id, x.reconciliation_id, 'RECONCILIATION',
-                         x.account_id, a.exchange, null, x.status, null, null, null,
-                         x.discrepancy_count::numeric, null, null, null, x.started_at,
-                         coalesce(x.completed_at, x.started_at)
-                  from exchange_reconciliation_run x join exchange_account a using (account_id)
-                ) activity
-                where occurred_at >= :fromInclusive and occurred_at < :toExclusive
-                """);
-        if (criteria.accountId() != null) {
-            sql.append(" and account_id = :accountId");
-        }
-        if (criteria.activityType() != null) {
-            sql.append(" and activity_type = :activityType");
-        }
-        if (criteria.before() != null) {
-            sql.append(" and (occurred_at, activity_id) < (:beforeOccurredAt, :beforeActivityId)");
-        }
-        sql.append(" order by occurred_at desc, activity_id desc limit :limit");
-
-        var statement = jdbcClient.sql(sql.toString())
-                .param("fromInclusive", timestamp(criteria.range().fromInclusive()))
-                .param("toExclusive", timestamp(criteria.range().toExclusive()))
-                .param("limit", criteria.limit() + 1);
-        if (criteria.accountId() != null) {
-            statement = statement.param("accountId", criteria.accountId().value());
-        }
-        if (criteria.activityType() != null) {
-            statement = statement.param("activityType", criteria.activityType().name());
-        }
-        if (criteria.before() != null) {
-            statement = statement
-                    .param("beforeOccurredAt", timestamp(criteria.before().occurredAt()))
-                    .param("beforeActivityId", criteria.before().activityId());
-        }
-        var rows = new ArrayList<>(statement
+        var pageSql = """
+                select activity_id, source_event_id, activity_type, source,
+                       account_id, exchange, symbol, status, side, quantity, price,
+                       amount, currency, exchange_order_id, client_order_id,
+                       title, detail, details::text as details_json,
+                       occurred_at, received_at
+                from trading_activity_projection
+                """ + activityWhere(criteria, true)
+                + " order by occurred_at desc, activity_id desc limit :limit";
+        var rows = new ArrayList<>(bindActivityCriteria(
+                        jdbcClient.sql(pageSql),
+                        criteria,
+                        true)
+                .param("limit", criteria.limit() + 1)
                 .query((resultSet, rowNumber) -> activity(resultSet))
                 .list());
         var hasMore = rows.size() > criteria.limit();
@@ -372,7 +314,135 @@ public class JdbcTradingLedgerStore implements TradingLedgerWriter, TradingLedge
         var next = hasMore && !rows.isEmpty()
                 ? new TradingActivityCursor(rows.getLast().occurredAt(), rows.getLast().activityId())
                 : null;
-        return new TradingActivityPage(rows, next);
+        var counts = bindActivityCriteria(
+                        jdbcClient.sql("""
+                                select activity_type, count(*) as activity_count
+                                from trading_activity_projection
+                                """ + activityWhere(criteria, false)
+                                + " group by activity_type order by activity_type"),
+                        criteria,
+                        false)
+                .query((resultSet, rowNumber) -> new TradingActivityCount(
+                        TradingActivityType.valueOf(resultSet.getString("activity_type")),
+                        resultSet.getLong("activity_count")))
+                .list();
+        var matchedCount = counts.stream().mapToLong(TradingActivityCount::count).sum();
+        return new TradingActivityPage(rows, next, matchedCount, counts, activitySources());
+    }
+
+    private static String activityWhere(TradingActivityCriteria criteria, boolean includeCursor) {
+        var where = new StringBuilder(
+                " where occurred_at >= :fromInclusive and occurred_at < :toExclusive");
+        if (criteria.accountId() != null) {
+            where.append(" and account_id = :accountId");
+        }
+        if (criteria.source() != null) {
+            where.append(" and source = :source");
+        }
+        if (criteria.activityType() != null) {
+            where.append(" and activity_type = :activityType");
+        }
+        if (criteria.status() != null) {
+            where.append(" and upper(status) = upper(:status)");
+        }
+        if (criteria.symbol() != null) {
+            where.append(" and upper(symbol) like '%' || upper(:symbol) || '%'");
+        }
+        if (includeCursor && criteria.before() != null) {
+            where.append(" and (occurred_at, activity_id) < (:beforeOccurredAt, :beforeActivityId)");
+        }
+        return where.toString();
+    }
+
+    private static JdbcClient.StatementSpec bindActivityCriteria(
+            JdbcClient.StatementSpec statement,
+            TradingActivityCriteria criteria,
+            boolean includeCursor) {
+        var bound = statement
+                .param("fromInclusive", timestamp(criteria.range().fromInclusive()))
+                .param("toExclusive", timestamp(criteria.range().toExclusive()));
+        if (criteria.accountId() != null) {
+            bound = bound.param("accountId", criteria.accountId().value());
+        }
+        if (criteria.source() != null) {
+            bound = bound.param("source", criteria.source().name());
+        }
+        if (criteria.activityType() != null) {
+            bound = bound.param("activityType", criteria.activityType().name());
+        }
+        if (criteria.status() != null) {
+            bound = bound.param("status", criteria.status());
+        }
+        if (criteria.symbol() != null) {
+            bound = bound.param("symbol", criteria.symbol());
+        }
+        if (includeCursor && criteria.before() != null) {
+            bound = bound
+                    .param("beforeOccurredAt", timestamp(criteria.before().occurredAt()))
+                    .param("beforeActivityId", criteria.before().activityId());
+        }
+        return bound;
+    }
+
+    private List<TradingActivitySourceStatus> activitySources() {
+        return jdbcClient.sql("""
+                select source, account_id, exchange, status, complete, message, latest_at
+                from (
+                  select 'LOCAL_OMS'::varchar as source, null::varchar as account_id,
+                         null::varchar as exchange, 'READY'::varchar as status,
+                         true as complete, '本地决策、风控、预估和 OMS 永久审计可用'::text as message,
+                         (select max(occurred_at) from trading_activity_projection
+                          where source = 'LOCAL_OMS') as latest_at,
+                         0 as source_order
+                  union all
+                  select 'EXCHANGE', account.account_id, account.exchange,
+                         case
+                           when not account.enabled then 'DISABLED'
+                           when reconciliation.status is not null then reconciliation.status
+                           when latest_activity.latest_at is not null then 'READY'
+                           else 'NOT_SYNCED'
+                         end,
+                         account.enabled and reconciliation.status = 'COMPLETED',
+                         case
+                           when not account.enabled then '账户已停用；保留既有交易所事实'
+                           when reconciliation.status = 'COMPLETED' then '最近一次交易所对账完成'
+                           when reconciliation.status = 'PARTIAL' then coalesce(reconciliation.error_message, '最近一次交易所对账部分完成')
+                           when reconciliation.status = 'FAILED' then coalesce(reconciliation.error_message, '最近一次交易所对账失败')
+                           when latest_activity.latest_at is not null then '已保存交易所事实，尚无完成的对账记录'
+                           else '尚未同步到交易所账户事实'
+                         end,
+                         greatest(reconciliation.completed_at, reconciliation.started_at, latest_activity.latest_at),
+                         1
+                  from exchange_account account
+                  left join lateral (
+                    select run.status, run.error_message, run.started_at, run.completed_at
+                    from exchange_reconciliation_run run
+                    where run.account_id = account.account_id
+                    order by run.started_at desc, run.id desc
+                    limit 1
+                  ) reconciliation on true
+                  left join lateral (
+                    select max(activity.occurred_at) as latest_at
+                    from trading_activity_projection activity
+                    where activity.source = 'EXCHANGE'
+                      and activity.account_id = account.account_id
+                  ) latest_activity on true
+                ) source_status
+                order by source_order, exchange nulls first, account_id nulls first
+                """)
+                .query((resultSet, rowNumber) -> {
+                    var accountId = resultSet.getString("account_id");
+                    var exchange = resultSet.getString("exchange");
+                    return new TradingActivitySourceStatus(
+                            TradingActivitySource.valueOf(resultSet.getString("source")),
+                            accountId == null ? null : new ExchangeAccountId(accountId),
+                            exchange == null ? null : ExchangeVenue.valueOf(exchange),
+                            resultSet.getString("status"),
+                            resultSet.getBoolean("complete"),
+                            resultSet.getString("message"),
+                            nullableInstant(resultSet.getObject("latest_at", OffsetDateTime.class)));
+                })
+                .list();
     }
 
     private static AccountLedgerProjection accountProjection(ResultSet resultSet) throws SQLException {
@@ -397,13 +467,15 @@ public class JdbcTradingLedgerStore implements TradingLedgerWriter, TradingLedge
     }
 
     private static TradingActivity activity(ResultSet resultSet) throws SQLException {
+        var accountId = resultSet.getString("account_id");
+        var exchange = resultSet.getString("exchange");
         return new TradingActivity(
                 resultSet.getString("activity_id"),
                 resultSet.getString("source_event_id"),
                 TradingActivityType.valueOf(resultSet.getString("activity_type")),
-                TradingActivitySource.EXCHANGE,
-                new ExchangeAccountId(resultSet.getString("account_id")),
-                ExchangeVenue.valueOf(resultSet.getString("exchange")),
+                TradingActivitySource.valueOf(resultSet.getString("source")),
+                accountId == null ? null : new ExchangeAccountId(accountId),
+                exchange == null ? null : ExchangeVenue.valueOf(exchange),
                 resultSet.getString("symbol"),
                 resultSet.getString("status"),
                 resultSet.getString("side"),
@@ -413,6 +485,9 @@ public class JdbcTradingLedgerStore implements TradingLedgerWriter, TradingLedge
                 resultSet.getString("currency"),
                 resultSet.getString("exchange_order_id"),
                 resultSet.getString("client_order_id"),
+                resultSet.getString("title"),
+                resultSet.getString("detail"),
+                resultSet.getString("details_json"),
                 instant(resultSet.getObject("occurred_at", OffsetDateTime.class)),
                 instant(resultSet.getObject("received_at", OffsetDateTime.class)));
     }

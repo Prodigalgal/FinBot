@@ -74,6 +74,7 @@ final class ResearchPipelineServiceTest {
         };
         var service = new ResearchPipelineService(
                 startWorkflow,
+                runId -> new ResearchWorkflowPlan(true, true, true, true),
                 ingestion,
                 compression,
                 marketData,
@@ -120,6 +121,7 @@ final class ResearchPipelineServiceTest {
         var recordedFailure = new AtomicReference<RecordedFailure>();
         var service = new ResearchPipelineService(
                 startWorkflow,
+                runId -> new ResearchWorkflowPlan(true, true, true, true),
                 successfulIngestion(),
                 compression,
                 marketData,
@@ -156,6 +158,7 @@ final class ResearchPipelineServiceTest {
         StartWorkflowUseCase startWorkflow = command -> CompletableFuture.completedFuture(started);
         var service = new ResearchPipelineService(
                 startWorkflow,
+                runId -> new ResearchWorkflowPlan(true, true, true, true),
                 rejectingIngestion(),
                 runId -> CompletableFuture.failedStage(new AssertionError("Compression must not start")),
                 runId -> CompletableFuture.failedStage(new AssertionError("Market data must not start")),
@@ -193,6 +196,11 @@ final class ResearchPipelineServiceTest {
             }
 
             @Override
+            public InformationSource setSourceEnabled(SourceId sourceId, boolean enabled, long expectedVersion) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
+            }
+
+            @Override
             public java.util.concurrent.CompletionStage<IngestionBatchResult> collectEnabled(
                     WorkflowRunId workflowRunId,
                     String requestSummary) {
@@ -224,6 +232,11 @@ final class ResearchPipelineServiceTest {
             @Override
             public List<NormalizedDocument> listRecentDocuments(SourceId sourceId, int limit) {
                 return List.of();
+            }
+
+            @Override
+            public InformationSource setSourceEnabled(SourceId sourceId, boolean enabled, long expectedVersion) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
             }
 
             @Override

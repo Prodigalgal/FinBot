@@ -51,6 +51,12 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
     }
 
     @Override
+    public List<WorkflowDefinitionVersion> versions(WorkflowDefinitionId definitionId) {
+        Objects.requireNonNull(definitionId, "definitionId");
+        return repository.listVersions(definitionId);
+    }
+
+    @Override
     public WorkflowDefinitionVersion saveDraft(SaveWorkflowDraftCommand command) {
         Objects.requireNonNull(command, "command");
         var now = clock.instant();
@@ -107,6 +113,7 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
         if (draft.status() != WorkflowVersionStatus.DRAFT) {
             throw new WorkflowManagementConflictException("只有草稿版本可以发布");
         }
+        WorkflowPublicationValidator.validate(draft);
         return repository.publish(versionId, clock.instant());
     }
 
@@ -140,6 +147,7 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
                 "admin",
                 target.nodes(),
                 target.edges());
+        WorkflowPublicationValidator.validate(copy);
         var saved = repository.saveDraft(
                 summary.name(), summary.description(), summary.builtIn(), copy, null, now);
         return repository.publish(saved.versionId(), now);

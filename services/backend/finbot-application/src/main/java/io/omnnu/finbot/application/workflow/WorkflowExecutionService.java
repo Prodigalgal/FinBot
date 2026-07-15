@@ -46,6 +46,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
     private final Clock clock;
     private final Executor executor;
     private final WorkflowPromptComposer promptComposer = new WorkflowPromptComposer();
+    private final WorkflowConditionEvaluator conditionEvaluator = new WorkflowConditionEvaluator();
 
     public WorkflowExecutionService(
             WorkflowExecutionStore executionStore,
@@ -117,8 +118,9 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     false);
         }
         var agents = layers.stream().flatMap(List::stream).toList();
+        var maximumRounds = maximumDebateRounds(version);
         var requiredSteps = Math.addExact(
-                Math.multiplyExact(agents.size(), version.defaultDebateRounds()),
+                Math.multiplyExact(agents.size(), maximumRounds),
                 1);
         if (requiredSteps > version.maximumSteps()) {
             throw new TerminalWorkflowFailure(
@@ -134,6 +136,12 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     "Persisted debate chair does not match the workflow version",
                     false);
         }
+        if (session.configuredRounds() != maximumRounds) {
+            throw new TerminalWorkflowFailure(
+                    "DEBATE_ROUND_BUDGET_MISMATCH",
+                    "Persisted debate round budget does not match the workflow version",
+                    false);
+        }
         var attemptStartedAt = clock.instant();
         var deadlineBase = session.startedAt().isAfter(attemptStartedAt)
                 ? session.startedAt()
@@ -142,56 +150,88 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         var messages = new ArrayList<>(executionStore.messages(session.debateId()));
         var turnIndexes = turnIndexes(agents);
         var partial = messages.stream().anyMatch(message -> message.status() == AgentMessageStatus.FAILED);
+        var completedRounds = 0;
 
         publishStageStarted(execution.runId(), WorkflowStage.DEBATE, agents.getFirst().nodeId());
-        for (var round = 1; round <= session.configuredRounds(); round++) {
-            var currentRound = round;
-            for (var layer : layers) {
-                var visibleMessages = List.copyOf(messages);
-                var futures = layer.stream()
-                        .map(node -> CompletableFuture.supplyAsync(
-                                () -> executeAgentWithPolicy(
-                                        execution,
-                                        session,
-                                        node,
-                                        currentRound,
-                                        turnIndexes.get(node.nodeId()),
-                                        visibleMessages,
-                                        deadline),
-                                executor))
-                        .toList();
-                awaitLayer(futures);
-                var results = futures.stream()
-                        .map(CompletableFuture::join)
-                        .sorted(Comparator.comparingInt(result -> result.message().turnIndex()))
-                        .toList();
-                results.forEach(result -> {
-                    if (messages.stream().noneMatch(existing ->
-                            existing.messageId().equals(result.message().messageId()))) {
-                        messages.add(result.message());
-                    }
-                });
-                partial = partial || results.stream().anyMatch(NodeResult::partial);
-            }
+        for (var round = 1; round <= version.defaultDebateRounds(); round++) {
+            partial = executeRound(
+                    execution,
+                    session,
+                    layers,
+                    turnIndexes,
+                    messages,
+                    round,
+                    deadline) || partial;
+            completedRounds++;
             executionStore.updateDebate(
                     session.debateId(),
                     DebateStatus.RUNNING,
-                    currentRound,
+                    completedRounds,
                     null);
             publishProgress(
                     execution.runId(),
                     chair.nodeId(),
-                    Math.min(85, currentRound * 80 / session.configuredRounds()),
-                    "已完成第 " + currentRound + " / " + session.configuredRounds() + " 轮辩论");
+                    Math.min(85, completedRounds * 80 / maximumRounds),
+                    "已完成第 " + completedRounds + " / " + maximumRounds + " 轮辩论");
         }
 
+        var loopRoundOffset = version.defaultDebateRounds();
+        for (var loopEdge : version.edges().stream()
+                .filter(io.omnnu.finbot.domain.workflow.WorkflowEdgeDefinition::loopEdge)
+                .sorted(Comparator.comparing(edge -> edge.edgeId().value()))
+                .toList()) {
+            for (var traversal = 1; traversal <= loopEdge.maximumTraversals(); traversal++) {
+                var loopRound = loopRoundOffset + traversal;
+                var alreadyStarted = messages.stream().anyMatch(message -> message.roundIndex() == loopRound);
+                if (!alreadyStarted && !conditionEvaluator.passes(
+                        execution,
+                        loopEdge,
+                        Math.max(1, latestRound(messages)),
+                        List.copyOf(messages))) {
+                    break;
+                }
+                partial = executeRound(
+                        execution,
+                        session,
+                        layers,
+                        turnIndexes,
+                        messages,
+                        loopRound,
+                        deadline) || partial;
+                completedRounds++;
+                executionStore.updateDebate(
+                        session.debateId(),
+                        DebateStatus.RUNNING,
+                        completedRounds,
+                        null);
+                publishProgress(
+                        execution.runId(),
+                        chair.nodeId(),
+                        Math.min(85, completedRounds * 80 / maximumRounds),
+                        "条件循环已触发第 " + traversal + " 次修订，累计完成 "
+                                + completedRounds + " / " + maximumRounds + " 轮");
+            }
+            loopRoundOffset += loopEdge.maximumTraversals();
+        }
+
+        if (!conditionEvaluator.isActive(
+                execution,
+                chair,
+                Math.max(1, latestRound(messages)),
+                List.copyOf(messages))) {
+            throw new TerminalWorkflowFailure(
+                    "WORKFLOW_CHAIR_NOT_ACTIVATED",
+                    "Workflow edge conditions did not activate the chair node",
+                    false);
+        }
         var chairMessage = executeChair(
                 execution,
                 session,
                 chair,
                 agents.size() + 1,
                 List.copyOf(messages),
-                deadline);
+                deadline,
+                Math.max(1, latestRound(messages)));
         if (messages.stream().noneMatch(message -> message.messageId().equals(chairMessage.messageId()))) {
             messages.add(chairMessage);
         }
@@ -200,7 +240,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         executionStore.updateDebate(
                 session.debateId(),
                 partial ? DebateStatus.PARTIAL : DebateStatus.COMPLETED,
-                session.configuredRounds(),
+                completedRounds,
                 completedAt);
         executionStore.completeRun(execution.runId(), partial, completedAt);
         eventPublisher.publish(execution.runId(), (eventId, sequence, occurredAt) ->
@@ -223,13 +263,66 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 WorkflowExecutionIds.debate(execution.runId()),
                 execution.runId(),
                 DebateStatus.RUNNING,
-                execution.definitionVersion().defaultDebateRounds(),
+                maximumDebateRounds(execution.definitionVersion()),
                 0,
                 chair.nodeId(),
                 clock.instant(),
                 null);
         executionStore.startDebate(proposed);
         return executionStore.findDebate(execution.runId()).orElse(proposed);
+    }
+
+    private boolean executeRound(
+            WorkflowExecutionContext execution,
+            DebateSession session,
+            List<List<WorkflowNodeDefinition>> layers,
+            Map<WorkflowNodeId, Integer> turnIndexes,
+            List<AgentMessage> messages,
+            int round,
+            Instant deadline) {
+        var partial = false;
+        for (var layer : layers) {
+            var visibleMessages = List.copyOf(messages);
+            var activeNodes = layer.stream()
+                    .filter(node -> conditionEvaluator.isActive(
+                            execution,
+                            node,
+                            round,
+                            visibleMessages))
+                    .toList();
+            layer.stream()
+                    .filter(node -> !activeNodes.contains(node))
+                    .forEach(node -> saveSkippedCheckpoint(
+                            execution.runId(),
+                            node,
+                            round,
+                            "Incoming workflow edge conditions were not satisfied"));
+            var futures = activeNodes.stream()
+                    .map(node -> CompletableFuture.supplyAsync(
+                            () -> executeAgentWithPolicy(
+                                    execution,
+                                    session,
+                                    node,
+                                    round,
+                                    turnIndexes.get(node.nodeId()),
+                                    visibleMessages,
+                                    deadline),
+                            executor))
+                    .toList();
+            awaitLayer(futures);
+            var results = futures.stream()
+                    .map(CompletableFuture::join)
+                    .sorted(Comparator.comparingInt(result -> result.message().turnIndex()))
+                    .toList();
+            results.forEach(result -> {
+                if (messages.stream().noneMatch(existing ->
+                        existing.messageId().equals(result.message().messageId()))) {
+                    messages.add(result.message());
+                }
+            });
+            partial = partial || results.stream().anyMatch(NodeResult::partial);
+        }
+        return partial;
     }
 
     private NodeResult executeAgentWithPolicy(
@@ -330,7 +423,8 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             WorkflowNodeDefinition chair,
             int turnIndex,
             List<AgentMessage> messages,
-            Instant deadline) {
+            Instant deadline,
+            int eventRound) {
         var messageId = WorkflowExecutionIds.message(execution.runId(), chair.nodeId(), 0);
         var existing = findMessage(messages, messageId)
                 .or(() -> findMessage(executionStore.messages(session.debateId()), messageId));
@@ -340,7 +434,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         }
         publishStageStarted(execution.runId(), WorkflowStage.PRODUCT_SELECTION, chair.nodeId());
         var prompt = promptComposer.composeChair(execution, chair, messages);
-        final AgentMessageContent content;
+        AgentMessageContent content;
         try {
             content = invokeWithRetry(execution, chair, 0, prompt.userPrompt(), deadline, true);
         } catch (NodeExecutionFailure failure) {
@@ -361,8 +455,37 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 clock.instant());
         executionStore.saveMessage(message);
         saveCompletedCheckpoint(execution.runId(), chair, 0, message.content().summary());
-        publishMessage(message, session.configuredRounds());
+        publishMessage(message, eventRound);
         return message;
+    }
+
+    private static AgentMessageContent normalizeForecastReference(
+            AgentMessageContent content,
+            WorkflowExecutionContext execution) {
+        var forecast = content.forecast();
+        if (forecast == null
+                || execution.marketScope() == null
+                || forecast.direction() == io.omnnu.finbot.domain.research.ForecastDirection.UNCERTAIN) {
+            return content;
+        }
+        var normalized = new io.omnnu.finbot.domain.research.ForecastSignal(
+                forecast.direction(),
+                execution.marketScope().marketReferencePrice(),
+                forecast.expectedLow(),
+                forecast.expectedHigh(),
+                forecast.invalidationPrice(),
+                forecast.confidence(),
+                forecast.thesis(),
+                forecast.evidenceReferences());
+        return new AgentMessageContent(
+                content.summary(),
+                content.argument(),
+                content.confidence(),
+                content.claims(),
+                content.evidenceReferences(),
+                content.challenges(),
+                content.revisionNotes(),
+                normalized);
     }
 
     private AgentMessageContent invokeWithRetry(
@@ -396,7 +519,12 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                         binding,
                         userPrompt,
                         deadline).output();
-                return chair ? outputParser.parseChair(output) : outputParser.parseAgent(output);
+                var parsed = chair ? outputParser.parseChair(output) : outputParser.parseAgent(output);
+                if (chair && execution.marketScope() != null && parsed.forecast() == null) {
+                    throw new IllegalArgumentException(
+                            "Market analysis chair did not return the required structured forecast");
+                }
+                return chair ? normalizeForecastReference(parsed, execution) : parsed;
             } catch (AiInvocationRejectedException exception) {
                 lastFailure = new NodeExecutionFailure(
                         exception.errorCode(),
@@ -513,6 +641,32 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 now));
     }
 
+    private void saveSkippedCheckpoint(
+            WorkflowRunId runId,
+            WorkflowNodeDefinition node,
+            int round,
+            String summary) {
+        var existing = executionStore.findCheckpoint(runId, node.nodeId(), round, 0);
+        if (existing.filter(value -> value.status().finalStatus()).isPresent()) {
+            return;
+        }
+        var now = clock.instant();
+        executionStore.saveCheckpoint(new WorkflowCheckpoint(
+                WorkflowExecutionIds.checkpoint(runId, node.nodeId(), round),
+                runId,
+                node.nodeId(),
+                round,
+                0,
+                1,
+                WorkflowCheckpointStatus.SKIPPED,
+                summary,
+                null,
+                null,
+                now,
+                now,
+                now));
+    }
+
     private void publishMessage(AgentMessage message, int eventRound) {
         eventPublisher.publish(message.runId(), (eventId, sequence, occurredAt) ->
                 new AgentMessagePublished(
@@ -569,7 +723,8 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
     private static List<List<WorkflowNodeDefinition>> agentLayers(WorkflowDefinitionVersion version) {
         var orderedAgents = version.topologicalNodes().stream()
                 .filter(WorkflowNodeDefinition::enabled)
-                .filter(node -> node.nodeType() == WorkflowNodeType.AGENT)
+                .filter(node -> node.nodeType() == WorkflowNodeType.AGENT
+                        || node.nodeType() == WorkflowNodeType.AGGREGATOR)
                 .toList();
         var agentIds = orderedAgents.stream()
                 .map(WorkflowNodeDefinition::nodeId)
@@ -592,6 +747,19 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                         .sorted(Comparator.comparing(node -> node.nodeId().value()))
                         .toList())
                 .toList();
+    }
+
+    private static int maximumDebateRounds(WorkflowDefinitionVersion version) {
+        return version.defaultDebateRounds() + version.edges().stream()
+                .filter(io.omnnu.finbot.domain.workflow.WorkflowEdgeDefinition::loopEdge)
+                .map(io.omnnu.finbot.domain.workflow.WorkflowEdgeDefinition::maximumTraversals)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+    }
+
+    private static int latestRound(List<AgentMessage> messages) {
+        return messages.stream().mapToInt(AgentMessage::roundIndex).max().orElse(0);
     }
 
     private static Map<WorkflowNodeId, Integer> turnIndexes(List<WorkflowNodeDefinition> agents) {

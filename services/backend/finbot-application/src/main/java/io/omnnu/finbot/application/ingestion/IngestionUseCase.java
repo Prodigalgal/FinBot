@@ -11,6 +11,11 @@ public interface IngestionUseCase {
 
     List<NormalizedDocument> listRecentDocuments(SourceId sourceId, int limit);
 
+    InformationSource setSourceEnabled(
+            SourceId sourceId,
+            boolean enabled,
+            long expectedVersion);
+
     CompletionStage<IngestionBatchResult> collectEnabled(
             WorkflowRunId workflowRunId,
             String requestSummary);

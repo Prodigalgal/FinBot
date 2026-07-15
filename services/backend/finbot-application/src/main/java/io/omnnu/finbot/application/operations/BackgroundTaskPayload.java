@@ -5,5 +5,7 @@ public sealed interface BackgroundTaskPayload permits
         InstantResearchTaskPayload,
         AccountTaskPayload,
         MarketDataTaskPayload,
-        IngestionTaskPayload {
+        IngestionTaskPayload,
+        CatalogSyncTaskPayload,
+        ForecastEvaluationTaskPayload {
 }
