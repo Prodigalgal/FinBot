@@ -396,8 +396,9 @@ class LiquibasePostgresIntegrationTest {
     void acceptsSingleCharacterAssetsPublishedByRealExchangeCatalogs() throws Exception {
         updateSchema();
         try (var connection = DriverManager.getConnection(
-                        POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-                var statement = connection.prepareStatement("""
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            connection.setAutoCommit(false);
+            try (var statement = connection.prepareStatement("""
                         insert into canonical_product (
                           product_id, base_asset, quote_asset, display_name,
                           category, status, created_at, updated_at
@@ -406,7 +407,10 @@ class LiquibasePostgresIntegrationTest {
                           'CRYPTO', 'ACTIVE', current_timestamp, current_timestamp
                         )
                         """)) {
-            assertEquals(1, statement.executeUpdate());
+                assertEquals(1, statement.executeUpdate());
+            } finally {
+                connection.rollback();
+            }
         }
     }
 
