@@ -202,11 +202,11 @@ final class LegacyTransformations {
                 WHERE lower(content ->> 'provider') IN ('gate', 'bybit')
             )
             INSERT INTO market_candle_fact (
-                instrument_id, exchange, symbol, interval_seconds, open_time,
+                instrument_id, exchange, environment, symbol, interval_seconds, open_time,
                 open_price, high_price, low_price, close_price, volume, turnover,
                 source_endpoint, observed_at
             )
-            SELECT instrument.instrument_id, n.exchange, n.symbol, n.interval_seconds, n.open_time,
+            SELECT instrument.instrument_id, n.exchange, 'LIVE', n.symbol, n.interval_seconds, n.open_time,
                    n.open_price, n.high_price, n.low_price, n.close_price, n.volume, n.turnover,
                    'legacy://sqlite/market_candles', n.observed_at
             FROM normalized n
@@ -219,6 +219,6 @@ final class LegacyTransformations {
               AND n.high_price >= greatest(n.open_price, n.close_price, n.low_price)
               AND n.low_price <= least(n.open_price, n.close_price, n.high_price)
               AND n.volume >= 0 AND (n.turnover IS NULL OR n.turnover >= 0)
-            ON CONFLICT (instrument_id, interval_seconds, open_time) DO NOTHING
+            ON CONFLICT (instrument_id, environment, interval_seconds, open_time) DO NOTHING
             """;
 }

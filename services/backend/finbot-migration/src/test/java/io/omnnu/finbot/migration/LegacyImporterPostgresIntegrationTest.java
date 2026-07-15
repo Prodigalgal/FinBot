@@ -67,7 +67,10 @@ final class LegacyImporterPostgresIntegrationTest {
                           (SELECT count(*) FROM canonical_product WHERE base_asset = 'TEST') AS products,
                           (SELECT count(*) FROM venue_instrument WHERE symbol = 'TESTUSDT') AS instruments,
                           (SELECT count(*) FROM instrument_alias WHERE alias = 'TEST-USDT') AS aliases,
-                          (SELECT count(*) FROM market_candle_fact WHERE symbol = 'TESTUSDT') AS candles
+                          (SELECT count(*) FROM market_candle_fact
+                           WHERE symbol = 'TESTUSDT' AND environment = 'LIVE') AS candles,
+                          (SELECT count(*) FROM market_candle_fact
+                           WHERE symbol = 'TESTUSDT' AND environment <> 'LIVE') AS non_live_candles
                         """);
                 var result = statement.executeQuery()) {
             result.next();
@@ -77,6 +80,7 @@ final class LegacyImporterPostgresIntegrationTest {
             assertEquals(1, result.getLong("instruments"));
             assertEquals(1, result.getLong("aliases"));
             assertEquals(1, result.getLong("candles"));
+            assertEquals(0, result.getLong("non_live_candles"));
         }
     }
 
