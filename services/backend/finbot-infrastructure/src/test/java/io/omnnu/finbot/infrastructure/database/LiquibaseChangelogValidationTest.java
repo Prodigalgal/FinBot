@@ -23,7 +23,7 @@ class LiquibaseChangelogValidationTest {
         try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, database)) {
             liquibase.validate();
             var changeSets = liquibase.getDatabaseChangeLog().getChangeSets();
-            assertEquals(31, changeSets.size());
+            assertEquals(32, changeSets.size());
             assertEquals("001-foundation", changeSets.getFirst().getId());
             assertEquals("002-platform-foundation", changeSets.get(1).getId());
             assertEquals("003-background-operations", changeSets.get(2).getId());
@@ -54,7 +54,8 @@ class LiquibaseChangelogValidationTest {
             assertEquals("026-product-catalog-and-execution-isolation", changeSets.get(27).getId());
             assertEquals("027-research-forecast", changeSets.get(28).getId());
             assertEquals("028-single-character-assets", changeSets.get(29).getId());
-            assertEquals("029-workflow-fallback-attempts", changeSets.getLast().getId());
+            assertEquals("029-workflow-fallback-attempts", changeSets.get(30).getId());
+            assertEquals("030-segmented-environment-research", changeSets.getLast().getId());
             assertTrue(changeSets.getFirst().getChanges().size() >= 1);
         }
     }

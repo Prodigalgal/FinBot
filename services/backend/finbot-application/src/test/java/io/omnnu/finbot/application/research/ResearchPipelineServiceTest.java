@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.omnnu.finbot.application.ingestion.IngestionBatchResult;
 import io.omnnu.finbot.application.ingestion.IngestionUseCase;
@@ -23,6 +24,9 @@ import io.omnnu.finbot.application.workflow.WorkflowRunSnapshot;
 import io.omnnu.finbot.domain.ingestion.InformationSource;
 import io.omnnu.finbot.domain.ingestion.SourceId;
 import io.omnnu.finbot.domain.research.ResearchArtifactId;
+import io.omnnu.finbot.domain.research.ResearchCaseId;
+import io.omnnu.finbot.domain.research.ResearchCaseStatus;
+import io.omnnu.finbot.domain.research.ResearchSegmentId;
 import io.omnnu.finbot.domain.workflow.WorkflowEventId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunStatus;
@@ -33,8 +37,11 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -83,6 +90,7 @@ final class ResearchPipelineServiceTest {
                 workflowFailure,
                 workflowRuns(WorkflowRunStatus.ACCEPTED),
                 tradeAutomation,
+                segmentation(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var thrown = assertThrows(
@@ -136,6 +144,7 @@ final class ResearchPipelineServiceTest {
                 workflowRuns(WorkflowRunStatus.ACCEPTED),
                 runId -> CompletableFuture.failedStage(
                         new AssertionError("Trade automation must not start")),
+                segmentation(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var thrown = assertThrows(
@@ -169,6 +178,7 @@ final class ResearchPipelineServiceTest {
                 },
                 workflowRuns(WorkflowRunStatus.FAILED),
                 runId -> CompletableFuture.failedStage(new AssertionError("Trading must not start")),
+                segmentation(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var thrown = assertThrows(
@@ -181,6 +191,96 @@ final class ResearchPipelineServiceTest {
         assertEquals(
                 "Workflow run run_pipeline_test001 is already FAILED",
                 rootCause(thrown).getMessage());
+    }
+
+    @Test
+    void startsLiveAndDemoBranchesIndependentlyAfterEvidenceCompression() {
+        var demoRunId = new WorkflowRunId("run_pipeline_demo001");
+        var startCount = new AtomicInteger();
+        StartWorkflowUseCase startWorkflow = command -> {
+            var sequence = startCount.incrementAndGet();
+            return CompletableFuture.completedFuture(new StartWorkflowResult(
+                    sequence == 1 ? RUN_ID : demoRunId,
+                    new WorkflowEventId(sequence == 1
+                            ? "event_pipeline_live001"
+                            : "event_pipeline_demo001"),
+                    NOW));
+        };
+        var liveCompletion = new CompletableFuture<Void>();
+        var demoCompletion = new CompletableFuture<Void>();
+        var startedBranches = ConcurrentHashMap.<WorkflowRunId>newKeySet();
+        WorkflowExecutionUseCase workflowExecution = runId -> {
+            startedBranches.add(runId);
+            return runId.equals(RUN_ID) ? liveCompletion : demoCompletion;
+        };
+        var segmentation = new SnapshotSegmentationStore();
+        var service = new ResearchPipelineService(
+                startWorkflow,
+                runId -> new ResearchWorkflowPlan(true, true, false, false),
+                successfulIngestion(),
+                runId -> CompletableFuture.completedFuture(new CompressionBatchResult(
+                        new ResearchArtifactId("artifact_compression_test001"),
+                        1,
+                        0,
+                        0)),
+                runId -> CompletableFuture.failedStage(new AssertionError("Market data must not start")),
+                (runId, prepared) -> CompletableFuture.failedStage(new AssertionError("Quant must not start")),
+                workflowExecution,
+                (runId, code, message, retryable, failedAt) -> true,
+                workflowRuns(WorkflowRunStatus.ACCEPTED),
+                runId -> CompletableFuture.failedStage(new AssertionError("Trading must not start")),
+                new ResearchSegmentationService(segmentation),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        var result = service.execute(new ResearchPipelineRequest(
+                        command(), ResearchTaskMode.STANDARD, 1, 3))
+                .toCompletableFuture();
+
+        assertEquals(Set.of(RUN_ID, demoRunId), startedBranches);
+        assertEquals(2, startCount.get());
+        assertFalse(result.isDone());
+        liveCompletion.complete(null);
+        assertFalse(result.isDone());
+        demoCompletion.complete(null);
+        assertEquals(RUN_ID, result.join().runId());
+        assertTrue(segmentation.demoRegistered);
+    }
+
+    @Test
+    void workflowWithoutCompressionSkipsEvidenceAndRunsOnlyTheLiveBranch() {
+        var startCount = new AtomicInteger();
+        var segmentation = new SnapshotSegmentationStore();
+        var service = new ResearchPipelineService(
+                command -> {
+                    startCount.incrementAndGet();
+                    return CompletableFuture.completedFuture(new StartWorkflowResult(
+                            RUN_ID,
+                            new WorkflowEventId("event_pipeline_live001"),
+                            NOW));
+                },
+                runId -> new ResearchWorkflowPlan(false, false, false, false),
+                rejectingIngestion(),
+                runId -> CompletableFuture.failedStage(new AssertionError("Compression must not start")),
+                runId -> CompletableFuture.failedStage(new AssertionError("Market data must not start")),
+                (runId, prepared) -> CompletableFuture.failedStage(new AssertionError("Quant must not start")),
+                runId -> CompletableFuture.completedFuture(null),
+                (runId, code, message, retryable, failedAt) -> true,
+                workflowRuns(WorkflowRunStatus.ACCEPTED),
+                runId -> CompletableFuture.failedStage(new AssertionError("Trading must not start")),
+                new ResearchSegmentationService(segmentation),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        var result = service.execute(new ResearchPipelineRequest(
+                        command(), ResearchTaskMode.STANDARD, 1, 3))
+                .toCompletableFuture()
+                .join();
+
+        assertEquals(RUN_ID, result.runId());
+        assertEquals(1, startCount.get());
+        assertEquals(
+                io.omnnu.finbot.domain.research.ResearchSegmentStatus.SKIPPED,
+                segmentation.evidenceStatus);
+        assertFalse(segmentation.demoRegistered);
     }
 
     private static IngestionUseCase successfulIngestion() {
@@ -274,6 +374,134 @@ final class ResearchPipelineServiceTest {
                 "Execute scheduled research",
                 NOW,
                 NOW));
+    }
+
+    private static ResearchSegmentationService segmentation() {
+        return new ResearchSegmentationService(new ResearchSegmentationStore() {
+            @Override
+            public void ensureLiveCase(
+                    io.omnnu.finbot.domain.research.ResearchCaseId caseId,
+                    io.omnnu.finbot.domain.research.ResearchSegmentId evidenceSegmentId,
+                    io.omnnu.finbot.domain.research.ResearchSegmentId liveSegmentId,
+                    WorkflowRunId liveRunId,
+                    WorkflowTrigger trigger,
+                    String requestSummary,
+                    Instant startedAt) {
+            }
+
+            @Override
+            public void recordEvidenceSnapshot(
+                    WorkflowRunId liveRunId,
+                    ResearchArtifactId artifactId,
+                    Instant completedAt) {
+            }
+
+            @Override
+            public void transitionEvidence(
+                    WorkflowRunId liveRunId,
+                    io.omnnu.finbot.domain.research.ResearchSegmentStatus status,
+                    String errorCode,
+                    String errorMessage,
+                    Instant changedAt) {
+            }
+
+            @Override
+            public void registerDemoBranch(
+                    WorkflowRunId liveRunId,
+                    io.omnnu.finbot.domain.research.ResearchSegmentId demoSegmentId,
+                    WorkflowRunId demoRunId,
+                    Instant startedAt) {
+            }
+
+            @Override
+            public void transition(
+                    WorkflowRunId workflowRunId,
+                    io.omnnu.finbot.domain.research.ResearchSegmentStatus status,
+                    String errorCode,
+                    String errorMessage,
+                    Instant changedAt) {
+            }
+
+            @Override
+            public Optional<ResearchCaseView> findByRunId(WorkflowRunId workflowRunId) {
+                return Optional.empty();
+            }
+        });
+    }
+
+    private static final class SnapshotSegmentationStore implements ResearchSegmentationStore {
+        private ResearchCaseId caseId;
+        private WorkflowRunId liveRunId;
+        private ResearchArtifactId evidenceArtifactId;
+        private boolean demoRegistered;
+        private io.omnnu.finbot.domain.research.ResearchSegmentStatus evidenceStatus;
+
+        @Override
+        public void ensureLiveCase(
+                ResearchCaseId nextCaseId,
+                ResearchSegmentId evidenceSegmentId,
+                ResearchSegmentId liveSegmentId,
+                WorkflowRunId nextLiveRunId,
+                WorkflowTrigger trigger,
+                String requestSummary,
+                Instant startedAt) {
+            caseId = nextCaseId;
+            liveRunId = nextLiveRunId;
+        }
+
+        @Override
+        public void recordEvidenceSnapshot(
+                WorkflowRunId workflowRunId,
+                ResearchArtifactId artifactId,
+                Instant completedAt) {
+            assertEquals(liveRunId, workflowRunId);
+            evidenceArtifactId = artifactId;
+        }
+
+        @Override
+        public void transitionEvidence(
+                WorkflowRunId workflowRunId,
+                io.omnnu.finbot.domain.research.ResearchSegmentStatus status,
+                String errorCode,
+                String errorMessage,
+                Instant changedAt) {
+            evidenceStatus = status;
+        }
+
+        @Override
+        public void registerDemoBranch(
+                WorkflowRunId workflowRunId,
+                ResearchSegmentId demoSegmentId,
+                WorkflowRunId demoRunId,
+                Instant startedAt) {
+            assertEquals(liveRunId, workflowRunId);
+            demoRegistered = true;
+        }
+
+        @Override
+        public void transition(
+                WorkflowRunId workflowRunId,
+                io.omnnu.finbot.domain.research.ResearchSegmentStatus status,
+                String errorCode,
+                String errorMessage,
+                Instant changedAt) {
+        }
+
+        @Override
+        public Optional<ResearchCaseView> findByRunId(WorkflowRunId workflowRunId) {
+            if (!workflowRunId.equals(liveRunId) || evidenceArtifactId == null) {
+                return Optional.empty();
+            }
+            return Optional.of(new ResearchCaseView(
+                    caseId,
+                    ResearchCaseStatus.RUNNING,
+                    "Execute scheduled research",
+                    evidenceArtifactId,
+                    List.of(),
+                    NOW,
+                    null,
+                    NOW));
+        }
     }
 
     private static Throwable rootCause(Throwable failure) {

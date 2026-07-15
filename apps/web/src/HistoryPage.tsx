@@ -9,7 +9,8 @@ import { ApiError, api } from './api';
 import { ResearchTurnCard, orderedResearchTurns } from './ResearchTurnCard';
 import { TradingExecutionDetail } from './TradingExecutionDetail';
 import { ForecastPanel } from './ForecastPanel';
-import type { ResearchComparison, ResearchFeedback, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, ResearchSummary, TradeAutomationDetail } from './types';
+import { ResearchCasePanel } from './ResearchCasePanel';
+import type { ResearchCase, ResearchComparison, ResearchFeedback, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, ResearchSummary, TradeAutomationDetail } from './types';
 import { EmptyBlock, ErrorBlock, LoadingBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
 
 export function HistoryPage({ onOpenRun }: { onOpenRun?: (launch: ResearchLaunch) => void }) {
@@ -17,6 +18,7 @@ export function HistoryPage({ onOpenRun }: { onOpenRun?: (launch: ResearchLaunch
   const [detail, setDetail] = useState<ResearchHistoryDetail | null>(null);
   const [automation, setAutomation] = useState<TradeAutomationDetail | null>(null);
   const [forecast, setForecast] = useState<ResearchForecast | null>(null);
+  const [researchCase, setResearchCase] = useState<ResearchCase | null>(null);
   const [feedback, setFeedback] = useState<ResearchFeedback[]>([]);
   const [rating, setRating] = useState<ResearchFeedback['rating']>('HELPFUL');
   const [effectiveness, setEffectiveness] = useState<ResearchFeedback['effectiveness']>('UNKNOWN');
@@ -29,7 +31,7 @@ export function HistoryPage({ onOpenRun }: { onOpenRun?: (launch: ResearchLaunch
   const [busy, setBusy] = useState(false);
   const refresh = () => Promise.all([api.researchHistory(undefined, 100), api.researchFeedback(100)]).then(([items, savedFeedback]) => { setRuns(items); setFeedback(savedFeedback); setLeftRunId((current) => current || items[1]?.runId || items[0]?.runId || ''); setRightRunId((current) => current || items[0]?.runId || ''); }).catch(setError);
   useEffect(() => { void refresh(); }, []);
-  const select = async (runId: string) => { setBusy(true); setError(null); try { const [next, execution, researchForecast] = await Promise.all([api.researchDetail(runId), optionalAutomation(runId), optionalForecast(runId)]); setDetail(next); setAutomation(execution); setForecast(researchForecast); const saved = feedback.find((item) => item.workflowRunId === runId); setRating(saved?.rating || 'HELPFUL'); setEffectiveness(saved?.effectiveness || 'UNKNOWN'); setNote(saved?.note || ''); setResumeNodeId(next.checkpoints.find((item) => item.status === 'FAILED')?.nodeId || ''); } catch (cause) { setError(cause); } finally { setBusy(false); } };
+  const select = async (runId: string) => { setBusy(true); setError(null); try { const nextCase = await optionalResearchCase(runId); const demoRunId = nextCase?.segments.find((segment) => segment.segmentType === 'DEMO_AUTOTRADE')?.workflowRunId || runId; const [next, execution, researchForecast] = await Promise.all([api.researchDetail(runId), optionalAutomation(demoRunId), optionalForecast(runId)]); setResearchCase(nextCase); setDetail(next); setAutomation(execution); setForecast(researchForecast); const saved = feedback.find((item) => item.workflowRunId === runId); setRating(saved?.rating || 'HELPFUL'); setEffectiveness(saved?.effectiveness || 'UNKNOWN'); setNote(saved?.note || ''); setResumeNodeId(next.checkpoints.find((item) => item.status === 'FAILED')?.nodeId || ''); } catch (cause) { setError(cause); } finally { setBusy(false); } };
   const action = async (kind: 'replay' | 'resume') => {
     if (!detail) return;
     setBusy(true); setError(null);
@@ -56,6 +58,7 @@ export function HistoryPage({ onOpenRun }: { onOpenRun?: (launch: ResearchLaunch
     {detail && !busy && <>
       <SectionTitle title="运行详情" action={<Stack direction="row" spacing={1}><Button startIcon={<ReplayIcon />} onClick={() => void action('replay')}>重放</Button>{detail.summary.status === 'FAILED' && <Button variant="contained" startIcon={<RestartAltIcon />} onClick={() => void action('resume')}>从失败点续跑</Button>}</Stack>} />
       <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} divider={<Divider orientation="vertical" flexItem />} spacing={2}><Summary label="工作流版本" value={detail.summary.workflowVersionId} /><Summary label="开始" value={formatTime(detail.summary.startedAt || detail.summary.acceptedAt)} /><Summary label="完成" value={formatTime(detail.summary.completedAt)} /><Summary label="成本" value={`$${Number(detail.summary.costUsd).toFixed(6)}`} /></Stack></Paper>
+      {researchCase && <ResearchCasePanel researchCase={researchCase} />}
       {forecast && <ForecastPanel forecast={forecast} />}
       {detail.summary.status === 'FAILED' && <TextField select label="失败 checkpoint" value={resumeNodeId} onChange={(event) => setResumeNodeId(event.target.value)}>{detail.checkpoints.filter((item) => item.status === 'FAILED').map((item) => <MenuItem key={`${item.nodeId}-${item.round}`} value={item.nodeId}>{item.displayName} · 第 {item.round} 轮 · {item.errorCode}</MenuItem>)}</TextField>}
       <SectionTitle title="人工反馈与效果" />
@@ -74,3 +77,4 @@ export function HistoryPage({ onOpenRun }: { onOpenRun?: (launch: ResearchLaunch
 function Summary({ label, value }: { label: string; value: string }) { return <Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={700} sx={{ wordBreak: 'break-all' }}>{value}</Typography></Box>; }
 async function optionalAutomation(runId: string): Promise<TradeAutomationDetail | null> { try { return await api.tradeAutomation(runId); } catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; } }
 async function optionalForecast(runId: string): Promise<ResearchForecast | null> { try { return await api.researchForecast(runId); } catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; } }
+async function optionalResearchCase(runId: string): Promise<ResearchCase | null> { try { return await api.researchCase(runId); } catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; } }

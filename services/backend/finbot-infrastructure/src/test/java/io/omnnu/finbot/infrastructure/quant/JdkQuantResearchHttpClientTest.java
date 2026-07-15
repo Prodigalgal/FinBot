@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.omnnu.finbot.domain.market.InstrumentSymbol;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.quant.ArtifactKind;
 import io.omnnu.finbot.domain.quant.QuantExchange;
 import io.omnnu.finbot.domain.quant.QuantInstrument;
@@ -157,6 +158,7 @@ class JdkQuantResearchHttpClientTest {
                         ResearchKind.BACKTEST,
                         List.of(new QuantInstrument(
                                 QuantExchange.GATE,
+                                ExchangeEnvironment.LIVE,
                                 new InstrumentSymbol("BTC_USDT"),
                                 QuantMarketType.PERPETUAL,
                                 "USDT")),

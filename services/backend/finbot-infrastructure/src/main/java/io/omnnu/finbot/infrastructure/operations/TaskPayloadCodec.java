@@ -43,6 +43,9 @@ public final class TaskPayloadCodec {
                     .put("workflowVersionId", instant.workflowVersionId() == null
                             ? null
                             : instant.workflowVersionId().value())
+                    .put("demoWorkflowVersionId", instant.demoWorkflowVersionId() == null
+                            ? null
+                            : instant.demoWorkflowVersionId().value())
                     .put("workflowIdempotencyKey", instant.workflowIdempotencyKey())
                     .put("taskMode", instant.taskMode().name())
                     .put("marketSymbol", instant.marketAnalysisScope() == null
@@ -54,6 +57,9 @@ public final class TaskPayloadCodec {
                     .put("marketExchange", instant.marketAnalysisScope() == null
                             ? null
                             : instant.marketAnalysisScope().exchange().name())
+                    .put("marketEnvironment", instant.marketAnalysisScope() == null
+                            ? null
+                            : instant.marketAnalysisScope().environment().name())
                     .put("marketIntervalSeconds", instant.marketAnalysisScope() == null
                             ? null
                             : instant.marketAnalysisScope().intervalSeconds())
@@ -86,15 +92,17 @@ public final class TaskPayloadCodec {
             case INSTANT_RESEARCH -> {
                 requireOnlyFields(node, Set.of(
                         "requestId", "question", "workflowType", "trigger",
-                        "workflowVersionId", "workflowIdempotencyKey", "taskMode",
-                        "marketInstrumentId", "marketSymbol", "marketExchange", "marketIntervalSeconds",
+                        "workflowVersionId", "demoWorkflowVersionId", "workflowIdempotencyKey", "taskMode",
+                        "marketInstrumentId", "marketSymbol", "marketExchange", "marketEnvironment", "marketIntervalSeconds",
                         "forecastHorizonSeconds"));
                 var marketInstrumentId = nullableText(node, "marketInstrumentId");
                 var marketSymbol = nullableText(node, "marketSymbol");
                 var marketExchange = nullableText(node, "marketExchange");
+                var marketEnvironment = nullableText(node, "marketEnvironment");
                 var marketInterval = nullableInteger(node, "marketIntervalSeconds");
                 var forecastHorizon = nullableInteger(node, "forecastHorizonSeconds");
                 var marketScope = marketInstrumentId == null && marketSymbol == null && marketExchange == null
+                                && marketEnvironment == null
                                 && marketInterval == null && forecastHorizon == null
                         ? null
                         : new MarketAnalysisScope(
@@ -102,6 +110,9 @@ public final class TaskPayloadCodec {
                                 Objects.requireNonNull(marketSymbol, "marketSymbol"),
                                 io.omnnu.finbot.domain.catalog.ExchangeVenue.valueOf(
                                         Objects.requireNonNull(marketExchange, "marketExchange")),
+                                marketEnvironment == null
+                                        ? io.omnnu.finbot.domain.ledger.ExchangeEnvironment.LIVE
+                                        : io.omnnu.finbot.domain.ledger.ExchangeEnvironment.valueOf(marketEnvironment),
                                 Objects.requireNonNull(marketInterval, "marketIntervalSeconds"),
                                 Objects.requireNonNull(forecastHorizon, "forecastHorizonSeconds"));
                 yield new InstantResearchTaskPayload(
@@ -113,6 +124,10 @@ public final class TaskPayloadCodec {
                                 ? null
                                 : new io.omnnu.finbot.domain.workflow.WorkflowVersionId(
                                         nullableText(node, "workflowVersionId")),
+                        nullableText(node, "demoWorkflowVersionId") == null
+                                ? null
+                                : new io.omnnu.finbot.domain.workflow.WorkflowVersionId(
+                                        nullableText(node, "demoWorkflowVersionId")),
                         requiredText(node, "workflowIdempotencyKey"),
                         ResearchTaskMode.valueOf(requiredText(node, "taskMode")),
                         marketScope);

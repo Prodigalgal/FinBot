@@ -11,4 +11,9 @@ public record ExchangeAccountConfiguration(
         String apiKeyEnvironmentVariable,
         String apiSecretEnvironmentVariable,
         boolean enabled) {
+    public ExchangeAccountConfiguration {
+        if (environment == ExchangeEnvironment.LIVE) {
+            throw new IllegalArgumentException("Live exchange accounts are outside the current execution boundary");
+        }
+    }
 }

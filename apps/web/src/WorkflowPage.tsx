@@ -254,7 +254,9 @@ function NodeEditor({ node, schema, providers, models, roles, update, remove }: 
     });
   };
   return <Stack spacing={1.5}><SectionTitle title="节点配置" action={<Button color="error" size="small" startIcon={<DeleteOutlineIcon />} onClick={remove}>删除</Button>} /><TextField label="节点 ID" value={node.nodeId} disabled /><TextField label="标题" value={node.displayName} onChange={(event) => update({ displayName: event.target.value })} /><TextField select label="节点类型" value={node.nodeType} onChange={(event) => changeNodeType(event.target.value)}>{schema.nodeTypes.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField><FormControlLabel control={<Switch checked={node.enabled} onChange={(event) => update({ enabled: event.target.checked })} />} label="启用节点" />
-    <TextField label="受控操作" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="填写后端登记的 operation ID，不执行任意脚本或 URL" />
+    {node.nodeType === 'QUANT'
+      ? <TextField select label="量化方案" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="每种策略都会附带 MACD、均线交叉、RSI、布林带、ATR、支撑与压力指标供后续 AI 参考">{QUANT_OPERATIONS.map((operation) => <MenuItem key={operation.id} value={operation.id}>{operation.label}</MenuItem>)}</TextField>
+      : <TextField label="受控操作" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="填写后端登记的 operation ID，不执行任意脚本或 URL" />}
     {llmBacked && node.primaryAiBinding && <><TextField select label="角色模板" value={node.roleTemplateId || ''} onChange={(event) => { const role = roles.find((item) => item.roleTemplateId === event.target.value); if (!role) { update({ roleTemplateId: null }); return; } update({ roleTemplateId: role.roleTemplateId, roleName: role.displayName, systemPrompt: role.systemPrompt, userPromptTemplate: role.userPromptTemplate, outputContract: role.outputContract, primaryAiBinding: { providerProfileId: role.defaultProviderProfileId, modelName: role.defaultModelName, reasoningEffort: role.defaultReasoningEffort } }); }}><MenuItem value="">不绑定模板</MenuItem>{roles.map((role) => <MenuItem key={role.roleTemplateId} value={role.roleTemplateId}>{role.displayName}</MenuItem>)}</TextField><TextField label="角色名称" value={node.roleName || ''} onChange={(event) => update({ roleName: event.target.value })} /><TextField select label="输出契约" value={node.outputContract || ''} onChange={(event) => update({ outputContract: event.target.value })}>{schema.outputContracts.map((contract) => <MenuItem key={contract} value={contract}>{contract}</MenuItem>)}</TextField><AiBindingEditor title="主模型" binding={node.primaryAiBinding} providers={providers} models={models} efforts={schema.reasoningEfforts} update={(primaryAiBinding) => update({ primaryAiBinding })} /><FormControlLabel control={<Switch checked={node.fallbackAiBinding !== null} onChange={(event) => {
       if (!event.target.checked) { update({ fallbackAiBinding: null }); return; }
       const fallbackModel = models.find((model) => model.enabled && model.providerProfileId !== providerId(node.primaryAiBinding!)) || models.find((model) => model.enabled) || models[0];
@@ -327,6 +329,16 @@ const NODE_LABELS: Record<string, string> = {
   INPUT: '研究输入', ROUTER: '条件路由', DETERMINISTIC: '确定性处理', COLLECTOR: '信息采集', CLEANER: '证据清洗', COMPRESSOR: 'AI 信息压缩', AGENT: 'AI 分析角色', GATE: '条件门禁', QUANT: '量化研究', RISK: '确定性风控', SUBFLOW: '子工作流', HUMAN_REVIEW: '人工复核', AGGREGATOR: 'AI 聚合', CHAIR: '主席仲裁', EXECUTION_REVIEW: '执行机器人', OUTPUT: '研究输出',
 };
 
+const QUANT_OPERATIONS = [
+  { id: 'multi_strategy_ensemble', label: '多策略投票集成（推荐）' },
+  { id: 'moving_average_crossover', label: '均线交叉趋势' },
+  { id: 'breakout', label: '区间突破' },
+  { id: 'mean_reversion', label: '均值回归' },
+  { id: 'rsi_momentum', label: 'RSI 动量' },
+  { id: 'volume_confirmed_trend', label: '成交量确认趋势' },
+  { id: 'statistical_analysis', label: '仅统计分析' },
+] as const;
+
 function nodeTypeLabel(nodeType: string): string {
   return `${NODE_LABELS[nodeType] || nodeType} · ${nodeType}`;
 }
@@ -336,7 +348,7 @@ function defaultNodeName(nodeType: string): string {
 }
 
 function defaultOperation(nodeType: string): string | null {
-  return ({ INPUT: 'research_input', ROUTER: 'route_candidate', DETERMINISTIC: 'transform_research_state', COLLECTOR: 'collect_enabled_sources', CLEANER: 'normalize_and_deduplicate', QUANT: 'statistical_analysis', GATE: 'evaluate_research_gate', RISK: 'evaluate_risk_gate', SUBFLOW: 'invoke_published_subflow', HUMAN_REVIEW: 'operator_review', EXECUTION_REVIEW: 'draft', OUTPUT: 'research_output' } as Record<string, string>)[nodeType] || null;
+  return ({ INPUT: 'research_input', ROUTER: 'route_candidate', DETERMINISTIC: 'transform_research_state', COLLECTOR: 'collect_enabled_sources', CLEANER: 'normalize_and_deduplicate', QUANT: 'multi_strategy_ensemble', GATE: 'evaluate_research_gate', RISK: 'evaluate_risk_gate', SUBFLOW: 'invoke_published_subflow', HUMAN_REVIEW: 'operator_review', EXECUTION_REVIEW: 'draft', OUTPUT: 'research_output' } as Record<string, string>)[nodeType] || null;
 }
 
 function defaultOutputContract(nodeType: string): string {

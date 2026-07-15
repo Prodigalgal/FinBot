@@ -38,10 +38,12 @@ async def test_http_loader_rejects_file_uri() -> None:
 def test_market_data_rejects_string_and_non_finite_numbers() -> None:
     candles = [_candle("1.0"), _candle(1.0)]
     root = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
+        "dataPlane": "LIVE",
         "instruments": [
             {
                 "exchange": "GATE",
+                "environment": "LIVE",
                 "symbol": "BTC_USDT",
                 "marketType": "PERPETUAL",
                 "quoteCurrency": "USDT",

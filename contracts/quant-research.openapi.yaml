@@ -8,6 +8,19 @@ servers:
 security:
   - internalBearer: []
 paths:
+  /internal/v1/capabilities:
+    get:
+      operationId: quantCapabilities
+      summary: List strategy and indicator capabilities that may be referenced by workflow AI nodes.
+      responses:
+        '200':
+          description: Versioned quant capability catalog.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuantCapabilitiesResponse'
+        '401':
+          $ref: '#/components/responses/Problem'
   /internal/v1/research-runs:stream:
     post:
       operationId: streamResearchRun
@@ -72,6 +85,35 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
   schemas:
+    CapabilityDescriptor:
+      type: object
+      additionalProperties: false
+      required: [capabilityId, description]
+      properties:
+        capabilityId:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{2,79}$'
+        description:
+          type: string
+          minLength: 1
+          maxLength: 500
+    QuantCapabilitiesResponse:
+      type: object
+      additionalProperties: false
+      required: [contractVersion, strategies, indicators]
+      properties:
+        contractVersion:
+          const: 1.0.0
+        strategies:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CapabilityDescriptor'
+        indicators:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CapabilityDescriptor'
     StartResearchRequest:
       type: object
       additionalProperties: false
@@ -136,11 +178,14 @@ components:
     Instrument:
       type: object
       additionalProperties: false
-      required: [exchange, symbol, marketType, quoteCurrency]
+      required: [exchange, environment, symbol, marketType, quoteCurrency]
       properties:
         exchange:
           type: string
           enum: [GATE, BYBIT]
+        environment:
+          type: string
+          enum: [LIVE, TESTNET, DEMO]
         symbol:
           type: string
           pattern: '^[A-Z0-9_]{2,32}$'

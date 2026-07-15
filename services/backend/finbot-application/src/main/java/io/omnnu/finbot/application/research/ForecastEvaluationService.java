@@ -24,7 +24,8 @@ public final class ForecastEvaluationService implements ForecastEvaluationUseCas
     public CompletionStage<Integer> evaluateDue(int limit) {
         var candidates = repository.due(clock.instant(), Math.max(1, Math.min(limit, 200)));
         var evaluations = candidates.stream()
-                .map(candidate -> marketData.refresh(candidate.instrumentId(), candidate.intervalSeconds())
+                .map(candidate -> marketData.refresh(
+                                candidate.instrumentId(), candidate.intervalSeconds(), candidate.environment())
                         .handle((ignored, failure) -> repository.evaluate(candidate.forecastId(), clock.instant()) ? 1 : 0)
                         .toCompletableFuture())
                 .toList();

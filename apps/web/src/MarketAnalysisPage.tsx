@@ -19,6 +19,7 @@ export function MarketAnalysisPage({ onOpenRun }: { onOpenRun: (launch: Research
   const [question, setQuestion] = useState('研究未来目标时段的方向、预期价格区间、关键驱动、证据冲突和失效条件');
   const [definitions, setDefinitions] = useState<WorkflowDefinitionSummary[]>([]);
   const [workflowVersionId, setWorkflowVersionId] = useState('');
+  const [demoWorkflowVersionId, setDemoWorkflowVersionId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   useEffect(() => { api.workflowDefinitions().then((items) => { setDefinitions(items); setWorkflowVersionId(items.find((item) => item.active)?.publishedVersionId || ''); }).catch(setError); }, []);
@@ -36,7 +37,7 @@ export function MarketAnalysisPage({ onOpenRun }: { onOpenRun: (launch: Research
   const start = async () => {
     setBusy(true); setError(null);
     try {
-      const launch = await api.marketAnalysis({ instrumentId, symbol, exchange, intervalSeconds, forecastHorizonSeconds, question, workflowVersionId: workflowVersionId || null }, crypto.randomUUID());
+      const launch = await api.marketAnalysis({ instrumentId, symbol, exchange, intervalSeconds, forecastHorizonSeconds, question, workflowVersionId: workflowVersionId || null, demoWorkflowVersionId: demoWorkflowVersionId || null }, crypto.randomUUID());
       onOpenRun(launch);
     } catch (cause) { setError(cause); } finally { setBusy(false); }
   };
@@ -50,6 +51,7 @@ export function MarketAnalysisPage({ onOpenRun }: { onOpenRun: (launch: Research
         <TextField select label="K 线周期" value={intervalSeconds} onChange={(event) => { const next = Number(event.target.value); setIntervalSeconds(next); setForecastHorizonSeconds((current) => Math.max(current, next)); }} sx={{ minWidth: 150 }}>{[[60, '1 分钟'], [300, '5 分钟'], [900, '15 分钟'], [3600, '1 小时'], [14400, '4 小时'], [86400, '1 天']].map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</TextField>
         <TextField select label="预测期限" value={forecastHorizonSeconds} onChange={(event) => setForecastHorizonSeconds(Number(event.target.value))} sx={{ minWidth: 150 }}>{[[3600, '未来 1 小时'], [14400, '未来 4 小时'], [86400, '未来 1 天'], [259200, '未来 3 天'], [604800, '未来 7 天'], [2592000, '未来 30 天']].filter(([value]) => Number(value) >= intervalSeconds).map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</TextField>
         <TextField select label="工作流" value={workflowVersionId} onChange={(event) => setWorkflowVersionId(event.target.value)} fullWidth><MenuItem value="">系统自动选择</MenuItem>{definitions.filter((item) => item.publishedVersionId).map((item) => <MenuItem key={item.definitionId} value={item.publishedVersionId!}>{item.name} v{item.publishedVersionNumber}</MenuItem>)}</TextField>
+        <TextField select label="模拟验证工作流" value={demoWorkflowVersionId} onChange={(event) => setDemoWorkflowVersionId(event.target.value)} fullWidth><MenuItem value="">与实盘工作流相同</MenuItem>{definitions.filter((item) => item.publishedVersionId).map((item) => <MenuItem key={item.definitionId} value={item.publishedVersionId!}>{item.name} v{item.publishedVersionNumber}</MenuItem>)}</TextField>
       </Stack>
       <TextField multiline minRows={5} label="分析目标" value={question} onChange={(event) => setQuestion(event.target.value)} inputProps={{ maxLength: 1500 }} />
       {!definitions.some((item) => item.active && item.publishedVersionId) && <Alert severity="warning">当前没有激活的已发布工作流，请在 AI 工作流中发布并激活后运行。</Alert>}

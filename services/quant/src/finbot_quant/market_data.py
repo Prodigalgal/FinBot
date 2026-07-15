@@ -10,7 +10,14 @@ from urllib.parse import urlparse
 
 import httpx
 
-from finbot_quant.models import ArtifactReference, Exchange, Instrument, MarketType
+from finbot_quant.models import (
+    ArtifactReference,
+    Exchange,
+    ExchangeEnvironment,
+    Instrument,
+    MarketType,
+    ResearchDataPlane,
+)
 
 MAXIMUM_ARTIFACT_BYTES = 64 * 1024 * 1024
 
@@ -54,6 +61,7 @@ class InstrumentSeries:
 @dataclass(frozen=True, slots=True)
 class MarketDataSet:
     schema_version: int
+    data_plane: ResearchDataPlane
     series: tuple[InstrumentSeries, ...]
 
 
@@ -126,19 +134,27 @@ def parse_market_data(payload: bytes) -> MarketDataSet:
         root = json.loads(payload)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise MarketDataArtifactError("market data artifact is not valid UTF-8 JSON") from exc
-    if not isinstance(root, dict) or set(root) != {"schemaVersion", "instruments"}:
+    if not isinstance(root, dict) or set(root) != {"schemaVersion", "dataPlane", "instruments"}:
         raise MarketDataArtifactError("market data artifact root has an invalid shape")
-    if root["schemaVersion"] != 1 or not isinstance(root["instruments"], list):
+    if root["schemaVersion"] != 2 or not isinstance(root["instruments"], list):
         raise MarketDataArtifactError("market data artifact schema version is unsupported")
-    series = tuple(_instrument_series(value) for value in root["instruments"])
+    try:
+        data_plane = ResearchDataPlane(root["dataPlane"])
+    except (TypeError, ValueError) as exc:
+        raise MarketDataArtifactError("market data artifact data plane is invalid") from exc
+    series = tuple(_instrument_series(value, data_plane) for value in root["instruments"])
     if not series:
         raise MarketDataArtifactError("market data artifact contains no instruments")
-    return MarketDataSet(schema_version=1, series=series)
+    return MarketDataSet(schema_version=2, data_plane=data_plane, series=series)
 
 
-def _instrument_series(value: object) -> InstrumentSeries:
+def _instrument_series(
+    value: object,
+    data_plane: ResearchDataPlane,
+) -> InstrumentSeries:
     if not isinstance(value, dict) or set(value) != {
         "exchange",
+        "environment",
         "symbol",
         "marketType",
         "quoteCurrency",
@@ -147,18 +163,26 @@ def _instrument_series(value: object) -> InstrumentSeries:
         raise MarketDataArtifactError("instrument series has an invalid shape")
     if not all(
         isinstance(value[field], str)
-        for field in ("exchange", "symbol", "marketType", "quoteCurrency")
+        for field in ("exchange", "environment", "symbol", "marketType", "quoteCurrency")
     ):
         raise MarketDataArtifactError("instrument series identity is invalid")
     try:
         instrument = Instrument(
             exchange=Exchange(value["exchange"]),
+            environment=ExchangeEnvironment(value["environment"]),
             symbol=value["symbol"],
             market_type=MarketType(value["marketType"]),
             quote_currency=value["quoteCurrency"],
         )
     except ValueError as exc:
         raise MarketDataArtifactError("instrument series identity is invalid") from exc
+    if (
+        data_plane is ResearchDataPlane.LIVE
+        and instrument.environment is not ExchangeEnvironment.LIVE
+    ):
+        raise MarketDataArtifactError("live artifact contains a paper instrument environment")
+    if data_plane is ResearchDataPlane.PAPER and instrument.environment is ExchangeEnvironment.LIVE:
+        raise MarketDataArtifactError("paper artifact contains a live instrument environment")
     raw_candles = value["candles"]
     if not isinstance(raw_candles, list):
         raise MarketDataArtifactError("instrument candles must be an array")

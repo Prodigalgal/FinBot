@@ -88,12 +88,39 @@ async def test_internal_stream_requires_service_token() -> None:
     assert "token" in response.json()["detail"]
 
 
+@pytest.mark.asyncio
+async def test_internal_capabilities_describe_strategies_and_indicators() -> None:
+    app = create_app(FakeResearchEngine(), service_token=SERVICE_TOKEN)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://quant.test"
+    ) as client:
+        response = await client.get(
+            "/internal/v1/capabilities",
+            headers={"Authorization": f"Bearer {SERVICE_TOKEN}"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert {value["capabilityId"] for value in payload["strategies"]} >= {
+        "multi_strategy_ensemble",
+        "breakout",
+        "mean_reversion",
+    }
+    assert {value["capabilityId"] for value in payload["indicators"]} >= {
+        "macd_histogram",
+        "golden_cross_event_50_200",
+        "support_level_20",
+        "resistance_level_20",
+    }
+
+
 def test_openapi_contract_declares_the_runtime_path_and_event_union() -> None:
     contract_path = REPOSITORY_ROOT / "contracts" / "quant-research.openapi.yaml"
     contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
 
     assert contract["openapi"] == "3.1.0"
     assert "/internal/v1/research-runs:stream" in contract["paths"]
+    assert "/internal/v1/capabilities" in contract["paths"]
     assert len(contract["components"]["schemas"]["ResearchEvent"]["oneOf"]) == 5
 
 
@@ -107,6 +134,7 @@ def _request() -> dict[str, object]:
             "instruments": [
                 {
                     "exchange": "GATE",
+                    "environment": "LIVE",
                     "symbol": "BTC_USDT",
                     "marketType": "PERPETUAL",
                     "quoteCurrency": "USDT",

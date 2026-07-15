@@ -144,6 +144,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
                   select candle.close_price, candle.observed_at
                   from market_candle_fact candle
                   where candle.instrument_id = instrument.instrument_id
+                    and candle.environment = 'LIVE'
                   order by candle.open_time desc, candle.id desc
                   limit 1
                 ) latest on true

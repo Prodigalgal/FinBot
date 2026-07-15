@@ -20,6 +20,7 @@ from finbot_quant.models import (
     ArtifactKind,
     ArtifactReference,
     Exchange,
+    ExchangeEnvironment,
     Instrument,
     MarketType,
     ResearchJob,
@@ -39,6 +40,7 @@ class ContractModel(BaseModel):
 
 class InstrumentRequest(ContractModel):
     exchange: Exchange
+    environment: ExchangeEnvironment
     symbol: str = Field(pattern=r"^[A-Z0-9_]{2,32}$")
     market_type: MarketType
     quote_currency: str = Field(pattern=r"^[A-Z0-9]{2,12}$")
@@ -155,6 +157,7 @@ class StartResearchRequest(ContractModel):
             instruments=tuple(
                 Instrument(
                     value.exchange,
+                    value.environment,
                     value.symbol,
                     value.market_type,
                     value.quote_currency,
@@ -177,3 +180,14 @@ class StartResearchRequest(ContractModel):
 class HealthResponse(ContractModel):
     status: Literal["UP"] = "UP"
     contract_version: Literal["1.0.0"] = "1.0.0"
+
+
+class CapabilityDescriptor(ContractModel):
+    capability_id: str
+    description: str
+
+
+class QuantCapabilitiesResponse(ContractModel):
+    contract_version: Literal["1.0.0"] = "1.0.0"
+    strategies: tuple[CapabilityDescriptor, ...]
+    indicators: tuple[CapabilityDescriptor, ...]

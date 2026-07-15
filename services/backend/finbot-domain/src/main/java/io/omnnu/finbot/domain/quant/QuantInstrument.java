@@ -1,6 +1,7 @@
 package io.omnnu.finbot.domain.quant;
 
 import io.omnnu.finbot.domain.market.InstrumentSymbol;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.shared.DomainText;
 import java.util.Locale;
 import java.util.Objects;
@@ -8,6 +9,7 @@ import java.util.regex.Pattern;
 
 public record QuantInstrument(
         QuantExchange exchange,
+        ExchangeEnvironment environment,
         InstrumentSymbol symbol,
         QuantMarketType marketType,
         String quoteCurrency) {
@@ -15,6 +17,7 @@ public record QuantInstrument(
 
     public QuantInstrument {
         Objects.requireNonNull(exchange, "exchange");
+        Objects.requireNonNull(environment, "environment");
         Objects.requireNonNull(symbol, "symbol");
         Objects.requireNonNull(marketType, "marketType");
         quoteCurrency = DomainText.required(quoteCurrency, "quoteCurrency", 12).toUpperCase(Locale.ROOT);

@@ -2,6 +2,7 @@ package io.omnnu.finbot.application.research;
 
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.research.ForecastDirection;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import java.math.BigDecimal;
@@ -13,6 +14,7 @@ public record ResearchForecastView(
         WorkflowRunId workflowRunId,
         InstrumentId instrumentId,
         ExchangeVenue exchange,
+        ExchangeEnvironment environment,
         String symbol,
         int intervalSeconds,
         int horizonSeconds,
@@ -29,6 +31,8 @@ public record ResearchForecastView(
         Instant targetAt,
         BigDecimal actualPrice,
         BigDecimal actualReturn,
+        BigDecimal shadowNotionalUsdt,
+        BigDecimal shadowPnlUsdt,
         Boolean directionCorrect,
         Boolean rangeHit,
         Instant evaluatedAt) {

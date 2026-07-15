@@ -10,6 +10,7 @@ import io.omnnu.finbot.application.operations.ResearchTaskMode;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.workflow.WorkflowTrigger;
 import io.omnnu.finbot.domain.workflow.WorkflowType;
 import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
@@ -26,6 +27,7 @@ class TaskPayloadCodecTest {
                 WorkflowType.INSTANT_RESEARCH,
                 WorkflowTrigger.API,
                 new WorkflowVersionId("workflowversion_01j0000000001"),
+                new WorkflowVersionId("workflowversion_01j0000000002"),
                 "instant-research:01j0000000001",
                 ResearchTaskMode.RESUME_FAILED,
                 null);
@@ -45,12 +47,14 @@ class TaskPayloadCodecTest {
                 WorkflowType.INSTANT_RESEARCH,
                 WorkflowTrigger.API,
                 new WorkflowVersionId("workflowversion_01j0000000001"),
+                null,
                 "market-analysis:01j0000000002",
                 ResearchTaskMode.STANDARD,
                 new MarketAnalysisScope(
                         new InstrumentId("instrument_gate_ethusdt"),
                         "ETHUSDT",
                         ExchangeVenue.GATE,
+                        ExchangeEnvironment.LIVE,
                         900,
                         86_400));
 

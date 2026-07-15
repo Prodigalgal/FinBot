@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import org.junit.jupiter.api.Test;
 
 class QuantResearchTypeTest {
@@ -48,6 +49,7 @@ class QuantResearchTypeTest {
                 ResearchKind.BACKTEST,
                 List.of(new QuantInstrument(
                         QuantExchange.GATE,
+                        ExchangeEnvironment.LIVE,
                         new io.omnnu.finbot.domain.market.InstrumentSymbol("BTC_USDT"),
                         QuantMarketType.PERPETUAL,
                         "USDT")),

@@ -92,6 +92,28 @@ export interface ResearchLaunch {
   taskUrl: string;
 }
 
+export interface ResearchCase {
+  caseId: string;
+  status: string;
+  requestSummary: string;
+  evidenceArtifactId: string | null;
+  segments: Array<{
+    segmentId: string;
+    segmentType: 'EVIDENCE' | 'LIVE_RESEARCH' | 'DEMO_AUTOTRADE';
+    dataPlane: 'LIVE' | 'PAPER' | null;
+    workflowRunId: string | null;
+    evidenceArtifactId: string | null;
+    status: string;
+    errorCode: string | null;
+    errorMessage: string | null;
+    startedAt: string | null;
+    completedAt: string | null;
+  }>;
+  createdAt: string;
+  completedAt: string | null;
+  updatedAt: string;
+}
+
 export interface WorkflowRun {
   runId: string;
   workflowType: string;
@@ -316,11 +338,12 @@ export interface ProductSummary {
 
 export interface ProductPage { products: ProductSummary[]; nextCursor: string | null; totalCount: number }
 export interface ResearchForecast {
-  forecastId: string; workflowRunId: string; instrumentId: string; exchange: string; symbol: string;
+  forecastId: string; workflowRunId: string; instrumentId: string; exchange: string; environment: 'LIVE' | 'TESTNET' | 'DEMO'; symbol: string;
   intervalSeconds: number; horizonSeconds: number; marketReferencePrice: number;
   direction: string; expectedLow: number | null; expectedHigh: number | null; invalidationPrice: number | null;
   confidence: number; thesis: string; evidenceReferences: string[]; status: string;
   issuedAt: string; targetAt: string; actualPrice: number | null; actualReturn: number | null;
+  shadowNotionalUsdt: number; shadowPnlUsdt: number | null;
   directionCorrect: boolean | null; rangeHit: boolean | null; evaluatedAt: string | null;
 }
 export interface CatalogSyncRun {

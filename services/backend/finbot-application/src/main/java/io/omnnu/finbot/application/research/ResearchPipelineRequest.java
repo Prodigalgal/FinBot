@@ -3,6 +3,7 @@ package io.omnnu.finbot.application.research;
 import io.omnnu.finbot.application.market.MarketAnalysisScope;
 import io.omnnu.finbot.application.operations.ResearchTaskMode;
 import io.omnnu.finbot.application.workflow.StartWorkflowCommand;
+import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
 import java.util.Objects;
 
 public record ResearchPipelineRequest(
@@ -10,13 +11,23 @@ public record ResearchPipelineRequest(
         ResearchTaskMode taskMode,
         int attemptNumber,
         int maximumAttempts,
-        MarketAnalysisScope marketAnalysisScope) {
+        MarketAnalysisScope marketAnalysisScope,
+        WorkflowVersionId demoWorkflowVersionId) {
     public ResearchPipelineRequest(
             StartWorkflowCommand workflowCommand,
             ResearchTaskMode taskMode,
             int attemptNumber,
             int maximumAttempts) {
-        this(workflowCommand, taskMode, attemptNumber, maximumAttempts, null);
+        this(workflowCommand, taskMode, attemptNumber, maximumAttempts, null, null);
+    }
+
+    public ResearchPipelineRequest(
+            StartWorkflowCommand workflowCommand,
+            ResearchTaskMode taskMode,
+            int attemptNumber,
+            int maximumAttempts,
+            MarketAnalysisScope marketAnalysisScope) {
+        this(workflowCommand, taskMode, attemptNumber, maximumAttempts, marketAnalysisScope, null);
     }
 
     public ResearchPipelineRequest {

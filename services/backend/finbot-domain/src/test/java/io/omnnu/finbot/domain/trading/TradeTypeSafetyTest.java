@@ -9,6 +9,7 @@ import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.market.Price;
 import io.omnnu.finbot.domain.market.Quantity;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.risk.RiskAssessmentId;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -40,6 +41,7 @@ class TradeTypeSafetyTest {
                 new ExchangeAccountId("account_gate_test"),
                 new InstrumentId("instrument_gate_btc_test"),
                 ExchangeVenue.GATE,
+                ExchangeEnvironment.TESTNET,
                 new RiskAssessmentId("assessment_01j00000"),
                 Quantity.positive(new BigDecimal("0.001")),
                 new BigDecimal("10"));
@@ -72,6 +74,7 @@ class TradeTypeSafetyTest {
                         new ExchangeAccountId("account_bybit_test"),
                         new InstrumentId("instrument_bybit_eth_test"),
                         ExchangeVenue.BYBIT,
+                        ExchangeEnvironment.DEMO,
                         new RiskAssessmentId("assessment_01j00001"),
                         Quantity.positive(BigDecimal.ONE),
                         new BigDecimal("5")));

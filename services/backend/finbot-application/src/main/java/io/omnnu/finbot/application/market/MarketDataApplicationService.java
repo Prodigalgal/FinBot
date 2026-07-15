@@ -1,9 +1,12 @@
 package io.omnnu.finbot.application.market;
 
+import io.omnnu.finbot.application.exchange.ExchangeCapabilityQuery;
 import io.omnnu.finbot.domain.quant.ArtifactKind;
 import io.omnnu.finbot.domain.quant.ResearchArtifact;
 import io.omnnu.finbot.domain.research.ResearchArtifactId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
+import io.omnnu.finbot.domain.research.ResearchDataPlane;
 import java.time.Clock;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -22,6 +25,7 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
 
     private final MarketDataRepository repository;
     private final MarketDataGateway gateway;
+    private final ExchangeCapabilityQuery capabilities;
     private final MarketDataArtifactEncoder artifactEncoder;
     private final MarketDataArtifactUriFactory artifactUriFactory;
     private final Clock clock;
@@ -30,12 +34,14 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
     public MarketDataApplicationService(
             MarketDataRepository repository,
             MarketDataGateway gateway,
+            ExchangeCapabilityQuery capabilities,
             MarketDataArtifactEncoder artifactEncoder,
             MarketDataArtifactUriFactory artifactUriFactory,
             Clock clock,
             Executor executor) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.gateway = Objects.requireNonNull(gateway, "gateway");
+        this.capabilities = Objects.requireNonNull(capabilities, "capabilities");
         this.artifactEncoder = Objects.requireNonNull(artifactEncoder, "artifactEncoder");
         this.artifactUriFactory = Objects.requireNonNull(artifactUriFactory, "artifactUriFactory");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -45,7 +51,9 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
     @Override
     public CompletionStage<MarketDataPreparationResult> prepare(WorkflowRunId workflowRunId) {
         Objects.requireNonNull(workflowRunId, "workflowRunId");
-        return CompletableFuture.supplyAsync(() -> prepareSynchronously(workflowRunId, null), executor);
+        return CompletableFuture.supplyAsync(
+                () -> prepareSynchronously(workflowRunId, null, ResearchDataPlane.LIVE),
+                executor);
     }
 
     @Override
@@ -54,7 +62,23 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
             MarketAnalysisScope scope) {
         Objects.requireNonNull(workflowRunId, "workflowRunId");
         Objects.requireNonNull(scope, "scope");
-        return CompletableFuture.supplyAsync(() -> prepareSynchronously(workflowRunId, scope), executor);
+        var dataPlane = scope.environment() == ExchangeEnvironment.LIVE
+                ? ResearchDataPlane.LIVE
+                : ResearchDataPlane.PAPER;
+        return CompletableFuture.supplyAsync(
+                () -> prepareSynchronously(workflowRunId, scope, dataPlane),
+                executor);
+    }
+
+    @Override
+    public CompletionStage<MarketDataPreparationResult> prepare(
+            WorkflowRunId workflowRunId,
+            ResearchDataPlane dataPlane) {
+        Objects.requireNonNull(workflowRunId, "workflowRunId");
+        Objects.requireNonNull(dataPlane, "dataPlane");
+        return CompletableFuture.supplyAsync(
+                () -> prepareSynchronously(workflowRunId, null, dataPlane),
+                executor);
     }
 
     @Override
@@ -67,20 +91,30 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
     public CompletionStage<MarketDataRefreshResult> refresh(
             io.omnnu.finbot.domain.catalog.InstrumentId instrumentId,
             int intervalSeconds) {
+        return refresh(instrumentId, intervalSeconds, ExchangeEnvironment.LIVE);
+    }
+
+    @Override
+    public CompletionStage<MarketDataRefreshResult> refresh(
+            io.omnnu.finbot.domain.catalog.InstrumentId instrumentId,
+            int intervalSeconds,
+            ExchangeEnvironment environment) {
         Objects.requireNonNull(instrumentId, "instrumentId");
+        Objects.requireNonNull(environment, "environment");
         return CompletableFuture.supplyAsync(
-                () -> refreshSynchronously(instrumentId, intervalSeconds),
+                () -> refreshSynchronously(instrumentId, intervalSeconds, environment),
                 executor);
     }
 
     private MarketDataRefreshResult refreshSynchronously(
             io.omnnu.finbot.domain.catalog.InstrumentId instrumentId,
-            int intervalSeconds) {
+            int intervalSeconds,
+            ExchangeEnvironment environment) {
         var instrument = repository.findInstrument(instrumentId)
                 .orElseThrow(() -> new MarketDataFetchException(
                         "INSTRUMENT_NOT_FOUND",
                         "Active venue instrument was not found"));
-        var outcome = fetch(instrument, intervalSeconds);
+        var outcome = fetch(instrument, environment, intervalSeconds);
         if (outcome.series() == null) {
             throw new MarketDataFetchException(
                     Objects.requireNonNullElse(outcome.source().errorCode(), "MARKET_DATA_FETCH_FAILED"),
@@ -95,7 +129,8 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
 
     private MarketDataPreparationResult prepareSynchronously(
             WorkflowRunId workflowRunId,
-            MarketAnalysisScope scope) {
+            MarketAnalysisScope scope,
+            ResearchDataPlane dataPlane) {
         var instruments = scope == null
                 ? repository.listResearchInstruments()
                 : repository.findInstrument(scope.instrumentId())
@@ -113,7 +148,13 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
         var intervalSeconds = scope == null ? RESEARCH_INTERVAL_SECONDS : scope.intervalSeconds();
         var futures = instruments.stream()
                 .map(instrument -> CompletableFuture.supplyAsync(
-                        () -> fetch(instrument, intervalSeconds), executor))
+                        () -> fetch(
+                                instrument,
+                                scope == null
+                                        ? environment(instrument.exchange(), dataPlane)
+                                        : scope.environment(),
+                                intervalSeconds),
+                        executor))
                 .toList();
         awaitAll(futures);
         var outcomes = futures.stream().map(CompletableFuture::join).toList();
@@ -137,12 +178,13 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
                     clock.instant());
         }
         var encoded = artifactEncoder.encode(series);
-        var artifactIdentity = sha256(workflowRunId.value() + ':' + encoded.sha256Hex());
+        var artifactIdentity = sha256(workflowRunId.value() + ':' + dataPlane + ':' + encoded.sha256Hex());
         var artifactId = new ResearchArtifactId("artifact_" + artifactIdentity.substring(0, 40));
         repository.saveArtifact(new MarketDataArtifactRecord(
                 artifactId,
                 workflowRunId,
-                1,
+                dataPlane,
+                2,
                 encoded,
                 clock.instant()));
         var artifact = new ResearchArtifact(
@@ -154,19 +196,31 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
         return new MarketDataPreparationResult(
                 artifactId,
                 artifact,
-                series.stream().map(MarketInstrumentSeries::instrument).toList(),
+                dataPlane,
+                series.stream()
+                        .map(value -> new MarketInstrumentBinding(
+                                value.instrument(),
+                                value.candles().getFirst().environment()))
+                        .toList(),
                 outcomes.stream().map(FetchOutcome::source).toList());
     }
 
-    private FetchOutcome fetch(ResearchInstrument instrument, int intervalSeconds) {
+    private FetchOutcome fetch(
+            ResearchInstrument instrument,
+            ExchangeEnvironment environment,
+            int intervalSeconds) {
         try {
+            capabilities.requireMarketData(
+                    instrument.exchange(), instrument.marketType(), environment);
             var candles = gateway.fetchCandles(
                     instrument,
+                    environment,
                     intervalSeconds,
                     RESEARCH_CANDLE_LIMIT);
             if (candles.size() < 50) {
                 return failure(
                         instrument,
+                        environment,
                         "MARKET_DATA_INSUFFICIENT",
                         "Exchange returned fewer than 50 candles");
             }
@@ -175,18 +229,26 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
                     new MarketDataSourceResult(
                             instrument.instrumentId(),
                             instrument.exchange().name(),
+                            environment,
                             instrument.symbol(),
                             true,
                             candles.size(),
                             null,
                             null));
+        } catch (IllegalArgumentException exception) {
+            return failure(
+                    instrument,
+                    environment,
+                    "MARKET_CAPABILITY_UNSUPPORTED",
+                    exception.getMessage());
         } catch (MarketDataFetchException exception) {
-            return failure(instrument, exception.errorCode(), exception.getMessage());
+            return failure(instrument, environment, exception.errorCode(), exception.getMessage());
         }
     }
 
     private static FetchOutcome failure(
             ResearchInstrument instrument,
+            ExchangeEnvironment environment,
             String errorCode,
             String safeMessage) {
         return new FetchOutcome(
@@ -194,6 +256,7 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
                 new MarketDataSourceResult(
                         instrument.instrumentId(),
                         instrument.exchange().name(),
+                        environment,
                         instrument.symbol(),
                         false,
                         0,
@@ -210,6 +273,18 @@ public final class MarketDataApplicationService implements MarketDataUseCase, Ma
             }
             throw exception;
         }
+    }
+
+    private static ExchangeEnvironment environment(
+            io.omnnu.finbot.domain.catalog.ExchangeVenue exchange,
+            ResearchDataPlane dataPlane) {
+        if (dataPlane == ResearchDataPlane.LIVE) {
+            return ExchangeEnvironment.LIVE;
+        }
+        return switch (exchange) {
+            case GATE -> ExchangeEnvironment.TESTNET;
+            case BYBIT -> ExchangeEnvironment.DEMO;
+        };
     }
 
     private static String sha256(String value) {

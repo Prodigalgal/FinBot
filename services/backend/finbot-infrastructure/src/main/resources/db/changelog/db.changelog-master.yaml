@@ -57,3 +57,5 @@ databaseChangeLog:
       file: db/changelog/releases/028-single-character-assets.sql
   - include:
       file: db/changelog/releases/029-workflow-fallback-attempts.sql
+  - include:
+      file: db/changelog/releases/030-segmented-environment-research.sql

@@ -71,23 +71,28 @@ public final class QuantResearchApplicationService implements QuantResearchUseCa
         var researchIdentity = hash(workflowRunId.value() + ':' + marketData.artifact().sha256Hex());
         var researchRunId = new ResearchRunId("research_" + researchIdentity.substring(0, 40));
         var now = clock.instant();
+        var strategyId = Objects.requireNonNullElse(quantNode.operation(), "multi_strategy_ensemble");
+        var researchKind = "statistical_analysis".equals(strategyId)
+                ? ResearchKind.STATISTICAL_ANALYSIS
+                : ResearchKind.SIGNAL_EVALUATION;
         var request = new QuantResearchRequest(
                 researchRunId,
                 workflowRunId,
                 "quant:" + workflowRunId.value() + ':' + marketData.artifact().sha256Hex().substring(0, 24),
                 new QuantResearchSpecification(
-                        ResearchKind.STATISTICAL_ANALYSIS,
+                        researchKind,
                         marketData.instruments().stream()
-                                .map(instrument -> new QuantInstrument(
-                                        QuantExchange.valueOf(instrument.exchange().name()),
-                                        new InstrumentSymbol(instrument.symbol()),
-                                        quantMarketType(instrument.marketType()),
-                                        instrument.quoteCurrency()))
+                                .map(binding -> new QuantInstrument(
+                                        QuantExchange.valueOf(binding.instrument().exchange().name()),
+                                        binding.environment(),
+                                        new InstrumentSymbol(binding.instrument().symbol()),
+                                        quantMarketType(binding.instrument().marketType()),
+                                        binding.instrument().quoteCurrency()))
                                 .toList(),
                         new ResearchTimeRange(now.minus(Duration.ofDays(30)), now.plusSeconds(1)),
                         marketData.artifact(),
-                        "market-regime-statistics",
-                        "1.0.0",
+                        strategyId,
+                        "2.0.0",
                         List.of(),
                         Math.floorMod(workflowRunId.value().hashCode(), Integer.MAX_VALUE)),
                 now);

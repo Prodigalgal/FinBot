@@ -234,6 +234,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     candidate.accountId(),
                     candidate.instrumentId(),
                     candidate.exchange(),
+                    candidate.environment(),
                     policy.version(),
                     plan,
                     clock.instant());
@@ -255,6 +256,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     candidate.accountId(),
                     candidate.instrumentId(),
                     candidate.exchange(),
+                    candidate.environment(),
                     assessmentId,
                     Quantity.positive(plan.quantity()),
                     plan.leverage());

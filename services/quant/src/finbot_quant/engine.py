@@ -6,8 +6,10 @@ import json
 import math
 from collections.abc import AsyncIterator
 from dataclasses import asdict
+from itertools import pairwise
 from statistics import mean, pstdev
 
+from finbot_quant.indicators import indicator_values
 from finbot_quant.market_data import (
     ArtifactLoader,
     InstrumentSeries,
@@ -28,11 +30,13 @@ from finbot_quant.models import (
     ResearchStage,
     ResearchUpdate,
 )
+from finbot_quant.strategies import StrategyRegistry, strategy_returns
 
 
 class DefaultResearchEngine:
     def __init__(self, artifact_loader: ArtifactLoader) -> None:
         self._artifact_loader = artifact_loader
+        self._strategies = StrategyRegistry()
 
     async def stream(
         self,
@@ -49,7 +53,12 @@ class DefaultResearchEngine:
             selected = _select_series(job, market_data.series)
             _check_cancelled(cancellation)
             yield ProgressUpdate(ResearchStage.COMPUTING, 4_000, "Computing deterministic metrics")
-            metrics, observation_count = _compute(job, selected, cancellation)
+            metrics, observation_count = _compute(
+                job,
+                selected,
+                cancellation,
+                self._strategies,
+            )
             _check_cancelled(cancellation)
             yield ProgressUpdate(ResearchStage.EVALUATING, 7_500, "Evaluating costs and drawdown")
             _require_finite_metrics(metrics)
@@ -99,11 +108,12 @@ def _compute(
     job: ResearchJob,
     series: tuple[InstrumentSeries, ...],
     cancellation: asyncio.Event,
+    strategies: StrategyRegistry,
 ) -> tuple[list[QuantMetric], int]:
     if job.kind is ResearchKind.STATISTICAL_ANALYSIS:
         metrics = _statistical_metrics(series)
     elif job.kind in {ResearchKind.BACKTEST, ResearchKind.SIGNAL_EVALUATION}:
-        metrics = _signal_metrics(job, series[0])
+        metrics = _signal_metrics(job, series[0], strategies)
     elif job.kind is ResearchKind.PARAMETER_SEARCH:
         metrics = _parameter_search(job, series[0], cancellation)
     elif job.kind is ResearchKind.PORTFOLIO_OPTIMIZATION:
@@ -129,14 +139,28 @@ def _statistical_metrics(series: tuple[InstrumentSeries, ...]) -> list[QuantMetr
     ]
 
 
-def _signal_metrics(job: ResearchJob, series: InstrumentSeries) -> list[QuantMetric]:
+def _signal_metrics(
+    job: ResearchJob,
+    series: InstrumentSeries,
+    strategies: StrategyRegistry,
+) -> list[QuantMetric]:
     parameters = _parameters(job)
-    fast_window = int(parameters.get("fast_window", 12))
-    slow_window = int(parameters.get("slow_window", 48))
     fee_rate = float(parameters.get("fee_rate", 0.0006))
     slippage_rate = float(parameters.get("slippage_rate", 0.0005))
-    returns = _strategy_returns(series, fast_window, slow_window, fee_rate, slippage_rate)
-    return _performance_metrics(returns)
+    positions = strategies.positions(job.strategy_id, series, parameters)
+    returns = strategy_returns(
+        series,
+        positions,
+        fee_rate=fee_rate,
+        slippage_rate=slippage_rate,
+    )
+    active_periods = sum(value != 0 for value in positions[:-1])
+    return [
+        *_performance_metrics(returns),
+        *_indicator_metrics(series),
+        QuantMetric("active_exposure_rate", active_periods / len(returns), MetricUnit.RATIO),
+        QuantMetric("position_changes", float(_position_changes(positions)), MetricUnit.COUNT),
+    ]
 
 
 def _parameter_search(
@@ -153,12 +177,12 @@ def _parameter_search(
         _check_cancelled(cancellation)
         if slow_window >= len(series.candles):
             continue
-        returns = _strategy_returns(
+        positions = _moving_average_positions(series, fast_window, slow_window)
+        returns = strategy_returns(
             series,
-            fast_window,
-            slow_window,
-            fee_rate,
-            slippage_rate,
+            positions,
+            fee_rate=fee_rate,
+            slippage_rate=slippage_rate,
         )
         sharpe = _sharpe(returns)
         scored.append(
@@ -200,32 +224,22 @@ def _portfolio_metrics(series: tuple[InstrumentSeries, ...]) -> list[QuantMetric
     ]
 
 
-def _strategy_returns(
+def _moving_average_positions(
     series: InstrumentSeries,
     fast_window: int,
     slow_window: int,
-    fee_rate: float,
-    slippage_rate: float,
-) -> list[float]:
+) -> list[int]:
     if fast_window < 2 or slow_window <= fast_window:
         raise ValueError("moving-average windows are invalid")
-    if not 0 <= fee_rate < 0.1 or not 0 <= slippage_rate < 0.1:
-        raise ValueError("fee or slippage rate is invalid")
     closes = [value.close for value in series.candles]
     if len(closes) <= slow_window + 1:
         raise InsufficientDataError("Not enough candles for the configured signal windows")
-    raw_returns = [closes[index] / closes[index - 1] - 1 for index in range(1, len(closes))]
-    strategy: list[float] = []
-    previous_position = 0
-    for index in range(slow_window, len(closes) - 1):
+    positions = [0] * len(closes)
+    for index in range(slow_window, len(closes)):
         fast = mean(closes[index - fast_window + 1 : index + 1])
         slow = mean(closes[index - slow_window + 1 : index + 1])
-        position = 1 if fast > slow else -1
-        turnover = abs(position - previous_position)
-        cost = turnover * (fee_rate + slippage_rate)
-        strategy.append(position * raw_returns[index] - cost)
-        previous_position = position
-    return strategy
+        positions[index] = 1 if fast > slow else -1
+    return positions
 
 
 def _performance_metrics(returns: list[float]) -> list[QuantMetric]:
@@ -237,13 +251,55 @@ def _performance_metrics(returns: list[float]) -> list[QuantMetric]:
         equity *= 1 + value
         wins += value > 0
     sharpe = _sharpe(returns)
+    losses = [-value for value in returns if value < 0]
+    gains = [value for value in returns if value > 0]
+    downside = math.sqrt(mean([min(value, 0.0) ** 2 for value in returns]))
+    sortino = mean(returns) / downside * math.sqrt(len(returns)) if downside > 0 else 0.0
+    maximum_drawdown = _maximum_drawdown(returns)
+    profit_factor = sum(gains) / sum(losses) if losses else float(len(gains) > 0)
     return [
         QuantMetric("net_return", equity - 1, MetricUnit.RATIO),
-        QuantMetric("maximum_drawdown", _maximum_drawdown(returns), MetricUnit.RATIO),
+        QuantMetric("maximum_drawdown", maximum_drawdown, MetricUnit.RATIO),
         QuantMetric("win_rate", wins / len(returns), MetricUnit.RATIO),
         QuantMetric("sharpe_ratio", sharpe or 0.0, MetricUnit.RATIO),
+        QuantMetric("sortino_ratio", sortino, MetricUnit.RATIO),
+        QuantMetric("profit_factor", profit_factor, MetricUnit.RATIO),
+        QuantMetric(
+            "calmar_ratio",
+            (equity - 1) / maximum_drawdown if maximum_drawdown > 0 else 0.0,
+            MetricUnit.RATIO,
+        ),
         QuantMetric("evaluated_periods", float(len(returns)), MetricUnit.COUNT),
     ]
+
+
+def _indicator_metrics(series: InstrumentSeries) -> list[QuantMetric]:
+    currency_metrics = {
+        "last_close",
+        "sma_20",
+        "sma_50",
+        "macd_line_12_26",
+        "macd_signal_9",
+        "macd_histogram",
+        "bollinger_middle_20",
+        "bollinger_upper_20",
+        "bollinger_lower_20",
+        "atr_14",
+        "support_level_20",
+        "resistance_level_20",
+    }
+    return [
+        QuantMetric(
+            name,
+            value,
+            MetricUnit.CURRENCY if name in currency_metrics else MetricUnit.RATIO,
+        )
+        for name, value in indicator_values(series).items()
+    ]
+
+
+def _position_changes(positions: list[int]) -> int:
+    return sum(current != previous for previous, current in pairwise(positions))
 
 
 def _returns(series: InstrumentSeries) -> list[float]:
@@ -274,7 +330,7 @@ def _select_series(
     available: tuple[InstrumentSeries, ...],
 ) -> tuple[InstrumentSeries, ...]:
     requested = {
-        (instrument.exchange, instrument.symbol, instrument.market_type)
+        (instrument.exchange, instrument.environment, instrument.symbol, instrument.market_type)
         for instrument in job.instruments
     }
     selected = tuple(
@@ -282,6 +338,7 @@ def _select_series(
         for value in available
         if (
             value.instrument.exchange,
+            value.instrument.environment,
             value.instrument.symbol,
             value.instrument.market_type,
         )

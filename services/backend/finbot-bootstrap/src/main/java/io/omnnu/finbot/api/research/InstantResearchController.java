@@ -42,13 +42,22 @@ public final class InstantResearchController {
         var versionId = request.workflowVersionId() == null || request.workflowVersionId().isBlank()
                 ? null
                 : new WorkflowVersionId(request.workflowVersionId());
+        var demoVersionId = request.demoWorkflowVersionId() == null
+                        || request.demoWorkflowVersionId().isBlank()
+                ? null
+                : new WorkflowVersionId(request.demoWorkflowVersionId());
         var command = new StartWorkflowCommand(
                         WorkflowType.INSTANT_RESEARCH,
                         WorkflowTrigger.API,
                         versionId,
                         request.question(),
                         operationKey);
-        return researchLaunch.launch(command, operationKey, ResearchTaskMode.STANDARD)
+        return researchLaunch.launch(
+                        command,
+                        operationKey,
+                        ResearchTaskMode.STANDARD,
+                        null,
+                        demoVersionId)
                 .thenApply(this::acceptedResponse);
     }
 

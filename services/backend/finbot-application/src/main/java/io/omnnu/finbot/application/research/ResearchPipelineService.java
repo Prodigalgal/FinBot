@@ -5,12 +5,16 @@ import io.omnnu.finbot.application.market.MarketDataUseCase;
 import io.omnnu.finbot.application.operations.ResearchTaskMode;
 import io.omnnu.finbot.application.quant.QuantResearchUseCase;
 import io.omnnu.finbot.application.trading.TradeAutomationUseCase;
+import io.omnnu.finbot.application.shared.IdempotencyKeys;
 import io.omnnu.finbot.application.workflow.StartWorkflowResult;
 import io.omnnu.finbot.application.workflow.StartWorkflowUseCase;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionUseCase;
 import io.omnnu.finbot.application.workflow.WorkflowRunFailureUseCase;
 import io.omnnu.finbot.application.workflow.WorkflowRunQuery;
 import io.omnnu.finbot.domain.workflow.WorkflowRunStatus;
+import io.omnnu.finbot.domain.research.ResearchDataPlane;
+import io.omnnu.finbot.domain.research.ResearchSegmentStatus;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -29,6 +33,7 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
     private final WorkflowRunFailureUseCase workflowFailure;
     private final WorkflowRunQuery workflowRuns;
     private final TradeAutomationUseCase tradeAutomation;
+    private final ResearchSegmentationService segmentation;
     private final Clock clock;
 
     public ResearchPipelineService(
@@ -42,6 +47,7 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
             WorkflowRunFailureUseCase workflowFailure,
             WorkflowRunQuery workflowRuns,
             TradeAutomationUseCase tradeAutomation,
+            ResearchSegmentationService segmentation,
             Clock clock) {
         this.startWorkflow = Objects.requireNonNull(startWorkflow, "startWorkflow");
         this.workflowPlans = Objects.requireNonNull(workflowPlans, "workflowPlans");
@@ -53,6 +59,7 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
         this.workflowFailure = Objects.requireNonNull(workflowFailure, "workflowFailure");
         this.workflowRuns = Objects.requireNonNull(workflowRuns, "workflowRuns");
         this.tradeAutomation = Objects.requireNonNull(tradeAutomation, "tradeAutomation");
+        this.segmentation = Objects.requireNonNull(segmentation, "segmentation");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -60,45 +67,106 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
     public CompletionStage<StartWorkflowResult> execute(ResearchPipelineRequest request) {
         Objects.requireNonNull(request, "request");
         return startWorkflow.start(request.workflowCommand())
-                .thenCompose(started -> continueExecution(started, request));
+                .thenCompose(started -> executeSegmented(started, request));
     }
 
-    private CompletionStage<StartWorkflowResult> continueExecution(
-            StartWorkflowResult started,
+    private CompletionStage<StartWorkflowResult> executeSegmented(
+            StartWorkflowResult liveStarted,
             ResearchPipelineRequest request) {
+        segmentation.ensureLiveCase(
+                liveStarted.runId(),
+                request.workflowCommand().trigger(),
+                request.workflowCommand().requestSummary(),
+                liveStarted.acceptedAt());
+        return prepareSharedEvidence(liveStarted, request)
+                .thenCompose(ignored -> executeIndependentBranches(liveStarted, request));
+    }
+
+    private CompletionStage<Void> prepareSharedEvidence(
+            StartWorkflowResult liveStarted,
+            ResearchPipelineRequest request) {
+        var status = workflowRuns.find(liveStarted.runId())
+                .orElseThrow(() -> new IllegalStateException("Accepted workflow run is missing"))
+                .status();
+        CompletionStage<Void> preparation = switch (status) {
+            case ACCEPTED -> prepareEvidence(
+                    liveStarted,
+                    request.workflowCommand().requestSummary());
+            case RUNNING, WAITING_HUMAN, PARTIAL, COMPLETED ->
+                    CompletableFuture.completedFuture(null);
+            case FAILED -> request.taskMode() == ResearchTaskMode.RESUME_FAILED
+                    ? prepareEvidence(liveStarted, request.workflowCommand().requestSummary())
+                    : terminalRunFailure(liveStarted, status).thenApply(ignored -> null);
+            case CANCELLED -> terminalRunFailure(liveStarted, status).thenApply(ignored -> null);
+        };
+        return preparation.whenComplete((ignored, failure) -> {
+            recordPreparationFailure(liveStarted, request, failure);
+            if (failure != null) {
+                failEvidenceSegment(liveStarted, failure);
+                transitionBranch(liveStarted, request, failure);
+            }
+        });
+    }
+
+    private CompletionStage<StartWorkflowResult> executeIndependentBranches(
+            StartWorkflowResult liveStarted,
+            ResearchPipelineRequest request) {
+        var live = continueAfterEvidence(liveStarted, request, ResearchBranch.LIVE_RESEARCH)
+                .handle(BranchOutcome::from);
+        var demo = launchDemoBranch(liveStarted, request)
+                .handle(BranchOutcome::from);
+        return live.thenCombine(demo, BranchPair::new)
+                .thenCompose(outcomes -> combinedResult(
+                        liveStarted,
+                        outcomes.live(),
+                        outcomes.demo()));
+    }
+
+    private CompletionStage<StartWorkflowResult> continueAfterEvidence(
+            StartWorkflowResult started,
+            ResearchPipelineRequest request,
+            ResearchBranch branch) {
         var status = workflowRuns.find(started.runId())
                 .orElseThrow(() -> new IllegalStateException("Accepted workflow run is missing"))
                 .status();
-        return switch (status) {
-            case ACCEPTED -> prepareAndExecute(started, request);
-            case RUNNING -> executeWorkflowAndOptionalValidation(started);
+        CompletionStage<StartWorkflowResult> execution = switch (status) {
+            case ACCEPTED -> prepareAnalysisAndExecute(started, request, branch);
+            case RUNNING -> executeWorkflowAndOptionalValidation(started, branch);
             case WAITING_HUMAN -> CompletableFuture.completedFuture(started);
-            case PARTIAL, COMPLETED -> executeOptionalValidation(started);
+            case PARTIAL, COMPLETED -> executeOptionalValidation(started, branch);
             case FAILED -> request.taskMode() == ResearchTaskMode.RESUME_FAILED
-                    ? prepareAndExecute(started, request)
+                    ? prepareAnalysisAndExecute(started, request, branch)
                     : terminalRunFailure(started, status);
             case CANCELLED -> terminalRunFailure(started, status);
         };
+        return execution.whenComplete((ignored, failure) ->
+                transitionBranch(started, request, failure));
     }
 
-    private CompletionStage<StartWorkflowResult> prepareAndExecute(
+    private CompletionStage<StartWorkflowResult> prepareAnalysisAndExecute(
             StartWorkflowResult started,
-            ResearchPipelineRequest request) {
-        return prepare(
-                        started,
-                        request.workflowCommand().requestSummary(),
-                        request.marketAnalysisScope())
+            ResearchPipelineRequest request,
+            ResearchBranch branch) {
+        var preparation = branch == ResearchBranch.LIVE_RESEARCH
+                ? prepareLiveAnalysis(started, request.marketAnalysisScope())
+                : prepareDemo(started, request.marketAnalysisScope());
+        return preparation
                 .whenComplete((ignored, failure) -> recordPreparationFailure(started, request, failure))
-                .thenCompose(ignored -> executeWorkflowAndOptionalValidation(started));
+                .thenCompose(ignored -> executeWorkflowAndOptionalValidation(started, branch));
     }
 
-    private CompletionStage<StartWorkflowResult> executeWorkflowAndOptionalValidation(StartWorkflowResult started) {
+    private CompletionStage<StartWorkflowResult> executeWorkflowAndOptionalValidation(
+            StartWorkflowResult started,
+            ResearchBranch branch) {
         return workflowExecution.execute(started.runId())
-                .thenCompose(ignored -> executeOptionalValidation(started));
+                .thenCompose(ignored -> executeOptionalValidation(started, branch));
     }
 
-    private CompletionStage<StartWorkflowResult> executeOptionalValidation(StartWorkflowResult started) {
-        if (!workflowPlans.find(started.runId()).validateWithPaperTrading()) {
+    private CompletionStage<StartWorkflowResult> executeOptionalValidation(
+            StartWorkflowResult started,
+            ResearchBranch branch) {
+        if (branch != ResearchBranch.DEMO_AUTOTRADE
+                || !workflowPlans.find(started.runId()).validateWithPaperTrading()) {
             return CompletableFuture.completedFuture(started);
         }
         return tradeAutomation.execute(started.runId()).thenApply(ignored -> started);
@@ -111,10 +179,9 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
                 "Workflow run " + started.runId().value() + " is already " + status));
     }
 
-    private CompletionStage<Void> prepare(
+    private CompletionStage<Void> prepareEvidence(
             StartWorkflowResult started,
-            String requestSummary,
-            io.omnnu.finbot.application.market.MarketAnalysisScope marketAnalysisScope) {
+            String requestSummary) {
         var plan = workflowPlans.find(started.runId());
         CompletionStage<Void> preparation = CompletableFuture.completedFuture(null);
         if (plan.collectEvidence()) {
@@ -127,21 +194,147 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
             preparation = preparation.thenCompose(ignored -> executeStage(
                             PreparationStage.COMPRESSION,
                             () -> compression.compress(started.runId()))
-                    .thenApply(result -> null));
+                    .thenApply(result -> {
+                        segmentation.recordEvidenceSnapshot(
+                                started.runId(), result.artifactId(), clock.instant());
+                        return null;
+                    }));
+        } else {
+            preparation = preparation.thenRun(() ->
+                    segmentation.skipEvidence(started.runId(), clock.instant()));
         }
+        return preparation;
+    }
+
+    private CompletionStage<Void> prepareLiveAnalysis(
+            StartWorkflowResult started,
+            io.omnnu.finbot.application.market.MarketAnalysisScope marketAnalysisScope) {
+        var plan = workflowPlans.find(started.runId());
         if (!plan.runQuantResearch()) {
-            return preparation;
+            return CompletableFuture.completedFuture(null);
         }
-        return preparation
-                .thenCompose(ignored -> executeStage(
+        return executeStage(
                         PreparationStage.MARKET_DATA,
                         () -> marketAnalysisScope == null
                                 ? marketData.prepare(started.runId())
-                                : marketData.prepare(started.runId(), marketAnalysisScope)))
+                                : marketData.prepare(started.runId(), marketAnalysisScope))
                 .thenCompose(prepared -> executeStage(
                         PreparationStage.QUANT_RESEARCH,
                         () -> quantResearch.execute(started.runId(), prepared)))
                 .thenApply(ignored -> null);
+    }
+
+    private CompletionStage<Void> prepareDemo(
+            StartWorkflowResult started,
+            io.omnnu.finbot.application.market.MarketAnalysisScope liveScope) {
+        var plan = workflowPlans.find(started.runId());
+        if (!plan.runQuantResearch()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        var paperScope = paperScope(liveScope);
+        return executeStage(
+                        PreparationStage.MARKET_DATA,
+                        () -> paperScope == null
+                                ? marketData.prepare(started.runId(), ResearchDataPlane.PAPER)
+                                : marketData.prepare(started.runId(), paperScope))
+                .thenCompose(prepared -> executeStage(
+                        PreparationStage.QUANT_RESEARCH,
+                        () -> quantResearch.execute(started.runId(), prepared)))
+                .thenApply(ignored -> null);
+    }
+
+    private CompletionStage<StartWorkflowResult> launchDemoBranch(
+            StartWorkflowResult liveStarted,
+            ResearchPipelineRequest request) {
+        var researchCase = segmentation.findByRunId(liveStarted.runId());
+        if (researchCase.isEmpty() || researchCase.orElseThrow().evidenceArtifactId() == null) {
+            return CompletableFuture.completedFuture(liveStarted);
+        }
+        var command = request.workflowCommand();
+        var demoCommand = new io.omnnu.finbot.application.workflow.StartWorkflowCommand(
+                command.workflowType(),
+                command.trigger(),
+                request.demoWorkflowVersionId() == null
+                        ? command.workflowVersionId()
+                        : request.demoWorkflowVersionId(),
+                command.requestSummary(),
+                IdempotencyKeys.scoped("demo-branch", command.idempotencyKey()));
+        return startWorkflow.start(demoCommand).thenCompose(demoStarted -> {
+            segmentation.registerDemoBranch(
+                    liveStarted.runId(), demoStarted.runId(), demoStarted.acceptedAt());
+            var demoRequest = new ResearchPipelineRequest(
+                    demoCommand,
+                    request.taskMode(),
+                    request.attemptNumber(),
+                    request.maximumAttempts(),
+                    request.marketAnalysisScope(),
+                    request.demoWorkflowVersionId());
+            return continueAfterEvidence(demoStarted, demoRequest, ResearchBranch.DEMO_AUTOTRADE);
+        });
+    }
+
+    private CompletionStage<StartWorkflowResult> combinedResult(
+            StartWorkflowResult liveStarted,
+            BranchOutcome liveOutcome,
+            BranchOutcome demoOutcome) {
+        if (liveOutcome.failure() != null) {
+            return CompletableFuture.failedStage(liveOutcome.failure());
+        }
+        if (demoOutcome.failure() != null) {
+            return CompletableFuture.failedStage(demoOutcome.failure());
+        }
+        return CompletableFuture.completedFuture(liveStarted);
+    }
+
+    private void transitionBranch(
+            StartWorkflowResult started,
+            ResearchPipelineRequest request,
+            Throwable failure) {
+        if (failure == null) {
+            var status = workflowRuns.find(started.runId())
+                    .map(snapshot -> snapshot.status())
+                    .orElse(null);
+            if (status == WorkflowRunStatus.COMPLETED || status == WorkflowRunStatus.PARTIAL) {
+                segmentation.transition(
+                        started.runId(), ResearchSegmentStatus.COMPLETED, null, null, clock.instant());
+            }
+            return;
+        }
+        var terminal = request.finalAttempt() || workflowRuns.find(started.runId())
+                .map(snapshot -> snapshot.status() == WorkflowRunStatus.FAILED
+                        || snapshot.status() == WorkflowRunStatus.CANCELLED)
+                .orElse(false);
+        if (!terminal) {
+            return;
+        }
+        try {
+            segmentation.transition(
+                    started.runId(),
+                    ResearchSegmentStatus.FAILED,
+                    "RESEARCH_BRANCH_FAILED",
+                    "Research workflow branch failed",
+                    clock.instant());
+        } catch (RuntimeException transitionFailure) {
+            failure.addSuppressed(transitionFailure);
+        }
+    }
+
+    private static io.omnnu.finbot.application.market.MarketAnalysisScope paperScope(
+            io.omnnu.finbot.application.market.MarketAnalysisScope liveScope) {
+        if (liveScope == null) {
+            return null;
+        }
+        var environment = switch (liveScope.exchange()) {
+            case GATE -> ExchangeEnvironment.TESTNET;
+            case BYBIT -> ExchangeEnvironment.DEMO;
+        };
+        return new io.omnnu.finbot.application.market.MarketAnalysisScope(
+                liveScope.instrumentId(),
+                liveScope.symbol(),
+                liveScope.exchange(),
+                environment,
+                liveScope.intervalSeconds(),
+                liveScope.forecastHorizonSeconds());
     }
 
     private void recordPreparationFailure(
@@ -169,6 +362,21 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
                     clock.instant());
         } catch (RuntimeException recordingFailure) {
             failure.addSuppressed(recordingFailure);
+        }
+    }
+
+    private void failEvidenceSegment(StartWorkflowResult started, Throwable failure) {
+        var preparationFailure = findPreparationFailure(failure);
+        var errorCode = preparationFailure == null
+                ? "RESEARCH_EVIDENCE_FAILED"
+                : preparationFailure.stage().errorCode();
+        var safeMessage = preparationFailure == null
+                ? "Shared evidence preparation failed"
+                : preparationFailure.stage().safeMessage();
+        try {
+            segmentation.failEvidence(started.runId(), errorCode, safeMessage, clock.instant());
+        } catch (RuntimeException transitionFailure) {
+            failure.addSuppressed(transitionFailure);
         }
     }
 
@@ -240,6 +448,20 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
         private String safeMessage() {
             return safeMessage;
         }
+    }
+
+    private enum ResearchBranch {
+        LIVE_RESEARCH,
+        DEMO_AUTOTRADE
+    }
+
+    private record BranchOutcome(StartWorkflowResult result, Throwable failure) {
+        private static BranchOutcome from(StartWorkflowResult result, Throwable failure) {
+            return new BranchOutcome(result, unwrap(failure));
+        }
+    }
+
+    private record BranchPair(BranchOutcome live, BranchOutcome demo) {
     }
 
     private static final class ResearchPreparationException extends RuntimeException {

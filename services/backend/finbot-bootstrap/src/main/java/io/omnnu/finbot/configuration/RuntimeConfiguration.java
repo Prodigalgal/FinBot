@@ -38,6 +38,7 @@ import io.omnnu.finbot.application.exchange.ExchangeAccountSyncService;
 import io.omnnu.finbot.application.exchange.ExchangeAccountSyncUseCase;
 import io.omnnu.finbot.application.exchange.ExchangeSyncCursorStore;
 import io.omnnu.finbot.application.exchange.PaperExchangeGateway;
+import io.omnnu.finbot.application.exchange.ExchangeCapabilityQuery;
 import io.omnnu.finbot.application.exchange.PaperOrderExecutionService;
 import io.omnnu.finbot.application.exchange.PaperOrderExecutionUseCase;
 import io.omnnu.finbot.application.exchange.OrderReconciliationService;
@@ -91,6 +92,8 @@ import io.omnnu.finbot.application.research.CompressionUseCase;
 import io.omnnu.finbot.application.research.ResearchPipelineService;
 import io.omnnu.finbot.application.research.StoredResearchWorkflowPlanQuery;
 import io.omnnu.finbot.application.research.ResearchPipelineUseCase;
+import io.omnnu.finbot.application.research.ResearchSegmentationService;
+import io.omnnu.finbot.application.research.ResearchSegmentationStore;
 import io.omnnu.finbot.application.research.ResearchLaunchService;
 import io.omnnu.finbot.application.research.ResearchLaunchUseCase;
 import io.omnnu.finbot.application.research.ResearchHistoryRepository;
@@ -348,6 +351,11 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    ResearchSegmentationService researchSegmentationService(ResearchSegmentationStore store) {
+        return new ResearchSegmentationService(store);
+    }
+
+    @Bean
     ResearchPipelineUseCase researchPipelineUseCase(
             StartWorkflowUseCase startWorkflow,
             WorkflowExecutionStore workflowStore,
@@ -359,6 +367,7 @@ public class RuntimeConfiguration {
             WorkflowRunFailureUseCase workflowFailure,
             WorkflowRunQuery workflowRuns,
             TradeAutomationUseCase tradeAutomation,
+            ResearchSegmentationService segmentation,
             Clock clock) {
         return new ResearchPipelineService(
                 startWorkflow,
@@ -371,6 +380,7 @@ public class RuntimeConfiguration {
                 workflowFailure,
                 workflowRuns,
                 tradeAutomation,
+                segmentation,
                 clock);
     }
 
@@ -512,6 +522,7 @@ public class RuntimeConfiguration {
     MarketDataApplicationService marketDataUseCase(
             MarketDataRepository repository,
             MarketDataGateway gateway,
+            ExchangeCapabilityQuery capabilities,
             MarketDataArtifactEncoder artifactEncoder,
             MarketDataArtifactUriFactory artifactUriFactory,
             Clock clock,
@@ -519,6 +530,7 @@ public class RuntimeConfiguration {
         return new MarketDataApplicationService(
                 repository,
                 gateway,
+                capabilities,
                 artifactEncoder,
                 artifactUriFactory,
                 clock,

@@ -9,6 +9,7 @@ import io.omnnu.finbot.application.market.ResearchInstrument;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.catalog.MarketType;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
@@ -38,6 +39,7 @@ final class JdkExchangeMarketDataGatewayTest {
         var candles = JdkExchangeMarketDataGateway.parseGateCandles(
                 root,
                 INSTRUMENT,
+                ExchangeEnvironment.LIVE,
                 3_600,
                 ENDPOINT,
                 OBSERVED_AT);
@@ -62,10 +64,39 @@ final class JdkExchangeMarketDataGatewayTest {
                 () -> JdkExchangeMarketDataGateway.parseGateCandles(
                         root,
                         INSTRUMENT,
+                        ExchangeEnvironment.LIVE,
                         3_600,
                         ENDPOINT,
                         OBSERVED_AT));
 
         assertEquals("GATE_CANDLE_ROW_INVALID", failure.errorCode());
+    }
+
+    @Test
+    void parsesGateSpotArraySchemaWithoutConfusingBaseAndQuoteVolume() throws Exception {
+        var root = OBJECT_MAPPER.readTree("""
+                [
+                  ["1782216000", "140949113.96436", "62233.9", "62530.4", "62130", "62476.6", "2261.3913"]
+                ]
+                """);
+        var spot = new ResearchInstrument(
+                new InstrumentId("instrument_gate_btc_usdt_spot"),
+                ExchangeVenue.GATE,
+                MarketType.SPOT,
+                "BTC_USDT",
+                "USDT");
+
+        var candles = JdkExchangeMarketDataGateway.parseGateSpotCandles(
+                root,
+                spot,
+                ExchangeEnvironment.LIVE,
+                3_600,
+                URI.create("https://api.gateio.ws/api/v4/spot/candlesticks"),
+                OBSERVED_AT);
+
+        assertEquals(new BigDecimal("62476.6"), candles.getFirst().open());
+        assertEquals(new BigDecimal("62233.9"), candles.getFirst().close());
+        assertEquals(new BigDecimal("2261.3913"), candles.getFirst().volume());
+        assertEquals(new BigDecimal("140949113.96436"), candles.getFirst().turnover());
     }
 }

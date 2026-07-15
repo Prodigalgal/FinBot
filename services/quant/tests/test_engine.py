@@ -13,6 +13,7 @@ from finbot_quant.models import (
     ArtifactReference,
     CompletedUpdate,
     Exchange,
+    ExchangeEnvironment,
     FailedUpdate,
     Instrument,
     MarketType,
@@ -48,6 +49,47 @@ async def test_default_engine_runs_cost_aware_signal_backtest() -> None:
     assert len(completed.result_fingerprint) == 64
 
 
+@pytest.mark.parametrize(
+    "strategy_id",
+    [
+        "moving_average_crossover",
+        "breakout",
+        "mean_reversion",
+        "rsi_momentum",
+        "volume_confirmed_trend",
+        "multi_strategy_ensemble",
+    ],
+)
+@pytest.mark.asyncio
+async def test_default_engine_executes_every_registered_strategy(strategy_id: str) -> None:
+    payload = _market_data_payload()
+    engine = DefaultResearchEngine(InMemoryArtifactLoader(payload))
+    events = [
+        event
+        async for event in engine.stream(
+            _job(payload, strategy_id=strategy_id),
+            asyncio.Event(),
+        )
+    ]
+
+    completed = events[-1]
+    assert isinstance(completed, CompletedUpdate)
+    metric_names = {metric.name for metric in completed.metrics}
+    assert {
+        "net_return",
+        "maximum_drawdown",
+        "sortino_ratio",
+        "profit_factor",
+        "calmar_ratio",
+        "active_exposure_rate",
+        "position_changes",
+        "macd_histogram",
+        "rsi_14",
+        "support_level_20",
+        "resistance_level_20",
+    } <= metric_names
+
+
 @pytest.mark.asyncio
 async def test_default_engine_honors_pre_cancelled_run() -> None:
     payload = _market_data_payload()
@@ -61,7 +103,7 @@ async def test_default_engine_honors_pre_cancelled_run() -> None:
     assert events[-1].code.value == "CANCELLED"
 
 
-def _job(payload: bytes) -> ResearchJob:
+def _job(payload: bytes, *, strategy_id: str = "moving_average_crossover") -> ResearchJob:
     artifact = ArtifactReference(
         kind=ArtifactKind.INPUT_MARKET_DATA,
         uri="https://finbot-backend/internal/v1/quant-artifacts/artifact_test",
@@ -74,11 +116,17 @@ def _job(payload: bytes) -> ResearchJob:
         workflow_run_id="run_engine_test",
         idempotency_key="engine-test-idempotency",
         kind=ResearchKind.BACKTEST,
-        instruments=(Instrument(Exchange.GATE, "BTC_USDT", MarketType.PERPETUAL, "USDT"),),
+        instruments=(Instrument(
+            Exchange.GATE,
+            ExchangeEnvironment.LIVE,
+            "BTC_USDT",
+            MarketType.PERPETUAL,
+            "USDT",
+        ),),
         start_inclusive=datetime(2026, 1, 1, tzinfo=UTC),
         end_exclusive=datetime(2026, 2, 1, tzinfo=UTC),
         market_data=artifact,
-        strategy_id="moving_average_crossover",
+        strategy_id=strategy_id,
         strategy_version="1.0.0",
         parameters=(),
         deterministic_seed=42,
@@ -108,10 +156,12 @@ def _market_data_payload() -> bytes:
         price = close
     return json.dumps(
         {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
+            "dataPlane": "LIVE",
             "instruments": [
                 {
                     "exchange": "GATE",
+                    "environment": "LIVE",
                     "symbol": "BTC_USDT",
                     "marketType": "PERPETUAL",
                     "quoteCurrency": "USDT",

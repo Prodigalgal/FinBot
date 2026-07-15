@@ -5,6 +5,7 @@ import static io.omnnu.finbot.infrastructure.jdbc.PostgresJdbcParameters.timesta
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.quant.QuantResearchStore;
+import io.omnnu.finbot.application.quant.QuantAnalysisCapabilities;
 import io.omnnu.finbot.domain.quant.QuantResearchEvent;
 import io.omnnu.finbot.domain.quant.QuantResearchRequest;
 import io.omnnu.finbot.domain.quant.ResearchAcceptedEvent;
@@ -100,7 +101,7 @@ public final class JdbcQuantResearchStore implements QuantResearchStore {
         Objects.requireNonNull(completed, "completed");
         Objects.requireNonNull(resultArtifactId, "resultArtifactId");
         Objects.requireNonNull(completedAt, "completedAt");
-        var workflowRunId = workflowRunId(completed.researchRunId());
+        var identity = researchIdentity(completed.researchRunId());
         completed.metrics().forEach(metric -> jdbcClient.sql("""
                 insert into quant_metric_fact (research_run_id, metric_name, metric_value, metric_unit)
                 values (:researchRunId, :metricName, :metricValue, :metricUnit)
@@ -115,8 +116,11 @@ public final class JdbcQuantResearchStore implements QuantResearchStore {
 
         var content = objectMapper.createObjectNode();
         content.put("researchRunId", completed.researchRunId().value());
+        content.put("selectedStrategyId", identity.strategyId());
         content.put("observationCount", completed.observationCount());
         content.put("resultFingerprint", completed.resultFingerprint());
+        content.set("availableStrategies", objectMapper.valueToTree(QuantAnalysisCapabilities.strategies()));
+        content.set("availableIndicators", objectMapper.valueToTree(QuantAnalysisCapabilities.indicators()));
         content.set("metrics", objectMapper.valueToTree(completed.metrics()));
         content.set("artifacts", objectMapper.valueToTree(completed.artifacts()));
         var contentJson = json(content);
@@ -129,12 +133,12 @@ public final class JdbcQuantResearchStore implements QuantResearchStore {
                   artifact_id, workflow_run_id, artifact_type, schema_version,
                   content, provenance, content_hash, created_at
                 ) values (
-                  :artifactId, :workflowRunId, 'QUANT_RESULT', 1,
+                  :artifactId, :workflowRunId, 'QUANT_RESULT', 2,
                   cast(:content as jsonb), cast(:provenance as jsonb), :contentHash, :createdAt
                 ) on conflict (artifact_id) do nothing
                 """)
                 .param("artifactId", resultArtifactId.value())
-                .param("workflowRunId", workflowRunId)
+                .param("workflowRunId", identity.workflowRunId())
                 .param("content", contentJson)
                 .param("provenance", json(provenance))
                 .param("contentHash", sha256(contentJson))
@@ -211,13 +215,19 @@ public final class JdbcQuantResearchStore implements QuantResearchStore {
                 .single() == 1L;
     }
 
-    private String workflowRunId(ResearchRunId researchRunId) {
+    private ResearchIdentity researchIdentity(ResearchRunId researchRunId) {
         return jdbcClient.sql("""
-                select workflow_run_id from quant_research_run where research_run_id = :researchRunId
+                select workflow_run_id, strategy_id
+                from quant_research_run where research_run_id = :researchRunId
                 """)
                 .param("researchRunId", researchRunId.value())
-                .query(String.class)
+                .query((resultSet, rowNumber) -> new ResearchIdentity(
+                        resultSet.getString("workflow_run_id"),
+                        resultSet.getString("strategy_id")))
                 .single();
+    }
+
+    private record ResearchIdentity(String workflowRunId, String strategyId) {
     }
 
     private String json(Object value) {

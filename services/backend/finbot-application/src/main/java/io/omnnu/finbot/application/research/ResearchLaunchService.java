@@ -9,6 +9,7 @@ import io.omnnu.finbot.application.workflow.StartWorkflowCommand;
 import io.omnnu.finbot.application.workflow.StartWorkflowUseCase;
 import io.omnnu.finbot.application.workflow.WorkflowRunResumeUseCase;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
+import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 
@@ -34,7 +35,7 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
             StartWorkflowCommand workflowCommand,
             String taskIdempotencyKey,
             ResearchTaskMode taskMode) {
-        return launch(workflowCommand, taskIdempotencyKey, taskMode, null);
+        return launch(workflowCommand, taskIdempotencyKey, taskMode, null, null);
     }
 
     @Override
@@ -43,6 +44,16 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
             String taskIdempotencyKey,
             ResearchTaskMode taskMode,
             MarketAnalysisScope marketAnalysisScope) {
+        return launch(workflowCommand, taskIdempotencyKey, taskMode, marketAnalysisScope, null);
+    }
+
+    @Override
+    public CompletionStage<ResearchLaunchResult> launch(
+            StartWorkflowCommand workflowCommand,
+            String taskIdempotencyKey,
+            ResearchTaskMode taskMode,
+            MarketAnalysisScope marketAnalysisScope,
+            WorkflowVersionId demoWorkflowVersionId) {
         Objects.requireNonNull(workflowCommand, "workflowCommand");
         Objects.requireNonNull(taskMode, "taskMode");
         return startWorkflow.start(workflowCommand).thenApply(started -> {
@@ -58,6 +69,7 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
                             workflowCommand.workflowType(),
                             workflowCommand.trigger(),
                             workflowCommand.workflowVersionId(),
+                            demoWorkflowVersionId,
                             workflowCommand.idempotencyKey(),
                             taskMode,
                             marketAnalysisScope),

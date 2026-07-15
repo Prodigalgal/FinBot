@@ -12,7 +12,13 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from finbot_quant.api_models import ArtifactReferenceModel, HealthResponse, StartResearchRequest
+from finbot_quant.api_models import (
+    ArtifactReferenceModel,
+    CapabilityDescriptor,
+    HealthResponse,
+    QuantCapabilitiesResponse,
+    StartResearchRequest,
+)
 from finbot_quant.cancellation import DuplicateResearchRunError, ResearchCancellationRegistry
 from finbot_quant.event_models import (
     QuantMetricModel,
@@ -23,6 +29,7 @@ from finbot_quant.event_models import (
     ResearchFailedEvent,
     ResearchProgressEvent,
 )
+from finbot_quant.indicators import INDICATOR_DESCRIPTIONS
 from finbot_quant.models import (
     AcceptedUpdate,
     ArtifactReference,
@@ -35,6 +42,7 @@ from finbot_quant.models import (
     ResearchJob,
     ResearchUpdate,
 )
+from finbot_quant.strategies import STRATEGY_DESCRIPTIONS
 
 LOGGER = logging.getLogger(__name__)
 HEARTBEAT_SECONDS = 15
@@ -87,6 +95,23 @@ def create_app(
     @app.get("/internal/v1/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         return HealthResponse()
+
+    @app.get(
+        "/internal/v1/capabilities",
+        response_model=QuantCapabilitiesResponse,
+        dependencies=[Depends(require_service_token)],
+    )
+    async def capabilities() -> QuantCapabilitiesResponse:
+        return QuantCapabilitiesResponse(
+            strategies=tuple(
+                CapabilityDescriptor(capability_id=name, description=description)
+                for name, description in STRATEGY_DESCRIPTIONS.items()
+            ),
+            indicators=tuple(
+                CapabilityDescriptor(capability_id=name, description=description)
+                for name, description in INDICATOR_DESCRIPTIONS.items()
+            ),
+        )
 
     @app.post(
         "/internal/v1/research-runs:stream",

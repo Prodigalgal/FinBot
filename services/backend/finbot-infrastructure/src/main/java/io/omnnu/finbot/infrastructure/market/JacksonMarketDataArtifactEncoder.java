@@ -23,7 +23,22 @@ public final class JacksonMarketDataArtifactEncoder implements MarketDataArtifac
 
     @Override
     public EncodedMarketDataArtifact encode(List<MarketInstrumentSeries> series) {
-        var root = objectMapper.createObjectNode().put("schemaVersion", 1);
+        if (series.isEmpty() || series.stream().anyMatch(value -> value.candles().isEmpty())) {
+            throw new IllegalArgumentException("Market data artifact requires non-empty instrument series");
+        }
+        var environments = series.stream()
+                .flatMap(value -> value.candles().stream())
+                .map(io.omnnu.finbot.application.market.MarketCandle::environment)
+                .distinct()
+                .toList();
+        var containsLive = environments.contains(io.omnnu.finbot.domain.ledger.ExchangeEnvironment.LIVE);
+        if (containsLive && environments.size() != 1) {
+            throw new IllegalArgumentException("Market data artifact cannot mix live and paper environments");
+        }
+        var dataPlane = containsLive ? "LIVE" : "PAPER";
+        var root = objectMapper.createObjectNode()
+                .put("schemaVersion", 2)
+                .put("dataPlane", dataPlane);
         var instruments = root.putArray("instruments");
         series.stream()
                 .sorted(Comparator.comparing(value -> value.instrument().instrumentId().value()))
@@ -31,6 +46,7 @@ public final class JacksonMarketDataArtifactEncoder implements MarketDataArtifac
                     var instrument = value.instrument();
                     var node = instruments.addObject()
                             .put("exchange", instrument.exchange().name())
+                            .put("environment", value.candles().getFirst().environment().name())
                             .put("symbol", instrument.symbol())
                             .put("marketType", quantMarketType(instrument.marketType()))
                             .put("quoteCurrency", instrument.quoteCurrency());

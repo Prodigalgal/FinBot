@@ -32,7 +32,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public final class JdkPaperExchangeGateway implements PaperExchangeGateway {
-    private static final URI GATE_BASE = URI.create("https://api-testnet.gateapi.io/api/v4");
+    private static final URI GATE_BASE = URI.create("https://fx-api-testnet.gateio.ws/api/v4");
     private static final URI BYBIT_BASE = URI.create("https://api-demo.bybit.com");
     private static final int BYBIT_RECEIVE_WINDOW_MILLISECONDS = 5_000;
     private static final int MAXIMUM_RESPONSE_BYTES = 2 * 1024 * 1024;

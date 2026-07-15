@@ -2,6 +2,7 @@ package io.omnnu.finbot.application.market;
 
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
@@ -9,6 +10,7 @@ import java.util.Objects;
 public record MarketCandle(
         InstrumentId instrumentId,
         ExchangeVenue exchange,
+        ExchangeEnvironment environment,
         String symbol,
         int intervalSeconds,
         Instant openTime,
@@ -24,6 +26,11 @@ public record MarketCandle(
     public MarketCandle {
         Objects.requireNonNull(instrumentId, "instrumentId");
         Objects.requireNonNull(exchange, "exchange");
+        Objects.requireNonNull(environment, "environment");
+        if ((exchange == ExchangeVenue.GATE && environment == ExchangeEnvironment.DEMO)
+                || (exchange == ExchangeVenue.BYBIT && environment == ExchangeEnvironment.TESTNET)) {
+            throw new IllegalArgumentException("Candle environment is not supported by the selected exchange");
+        }
         Objects.requireNonNull(openTime, "openTime");
         Objects.requireNonNull(open, "open");
         Objects.requireNonNull(high, "high");

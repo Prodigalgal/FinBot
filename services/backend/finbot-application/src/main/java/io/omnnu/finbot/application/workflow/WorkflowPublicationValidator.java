@@ -1,5 +1,6 @@
 package io.omnnu.finbot.application.workflow;
 
+import io.omnnu.finbot.application.quant.QuantAnalysisCapabilities;
 import io.omnnu.finbot.application.research.ResearchWorkflowPlan;
 import io.omnnu.finbot.domain.workflow.WorkflowDefinitionVersion;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition;
@@ -10,6 +11,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 final class WorkflowPublicationValidator {
     private static final Set<WorkflowNodeType> EXECUTABLE_NODE_TYPES = EnumSet.of(
@@ -23,6 +26,11 @@ final class WorkflowPublicationValidator {
             WorkflowNodeType.CHAIR,
             WorkflowNodeType.EXECUTION_REVIEW,
             WorkflowNodeType.OUTPUT);
+    private static final Set<String> QUANT_OPERATIONS = Stream.concat(
+                    Stream.of("statistical_analysis"),
+                    QuantAnalysisCapabilities.strategies().stream()
+                            .map(QuantAnalysisCapabilities.Capability::id))
+            .collect(Collectors.toUnmodifiableSet());
 
     private WorkflowPublicationValidator() {
     }
@@ -58,7 +66,7 @@ final class WorkflowPublicationValidator {
             case INPUT -> requireOperation(node, "research_input");
             case COLLECTOR -> requireOperation(node, "collect_enabled_sources");
             case CLEANER -> requireOperation(node, "normalize_and_deduplicate");
-            case QUANT -> requireOperation(node, "statistical_analysis");
+            case QUANT -> requireOperation(node, QUANT_OPERATIONS);
             case OUTPUT -> requireOperation(node, "research_output");
             case COMPRESSOR -> requireContract(node, WorkflowOutputContract.RESEARCH_FINDINGS);
             case CHAIR -> requireContract(node, WorkflowOutputContract.CHAIR_VERDICT);
@@ -112,6 +120,13 @@ final class WorkflowPublicationValidator {
         if (!expected.equals(node.operation())) {
             throw new IllegalArgumentException(
                     "Node " + node.nodeId().value() + " requires operation " + expected);
+        }
+    }
+
+    private static void requireOperation(WorkflowNodeDefinition node, Set<String> supported) {
+        if (!supported.contains(node.operation())) {
+            throw new IllegalArgumentException(
+                    "Node " + node.nodeId().value() + " requires one of operations " + supported);
         }
     }
 

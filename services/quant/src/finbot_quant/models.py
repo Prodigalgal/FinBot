@@ -22,6 +22,17 @@ class Exchange(StrEnum):
     BYBIT = "BYBIT"
 
 
+class ExchangeEnvironment(StrEnum):
+    LIVE = "LIVE"
+    TESTNET = "TESTNET"
+    DEMO = "DEMO"
+
+
+class ResearchDataPlane(StrEnum):
+    LIVE = "LIVE"
+    PAPER = "PAPER"
+
+
 class MarketType(StrEnum):
     SPOT = "SPOT"
     PERPETUAL = "PERPETUAL"
@@ -70,6 +81,7 @@ type ParameterScalar = bool | int | float | Decimal | str
 @dataclass(frozen=True, slots=True)
 class Instrument:
     exchange: Exchange
+    environment: ExchangeEnvironment
     symbol: str
     market_type: MarketType
     quote_currency: str

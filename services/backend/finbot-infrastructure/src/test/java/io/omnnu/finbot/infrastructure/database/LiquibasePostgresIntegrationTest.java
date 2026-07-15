@@ -155,11 +155,12 @@ class LiquibasePostgresIntegrationTest {
                             , 'research_market_scope', 'research_forecast'
                             , 'legacy_import_manifest'
                             , 'legacy_import_table', 'legacy_archive_row'
+                            , 'research_case', 'research_segment', 'workflow_evidence_binding'
                           )
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
-                assertEquals(73, result.getInt(1));
+                assertEquals(76, result.getInt(1));
             }
         }
 
@@ -353,7 +354,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(31, result.getInt("changeset_count"));
+                    assertEquals(32, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

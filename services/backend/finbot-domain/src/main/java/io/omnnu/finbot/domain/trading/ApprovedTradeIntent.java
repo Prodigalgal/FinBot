@@ -6,6 +6,7 @@ import io.omnnu.finbot.domain.market.InstrumentSymbol;
 import io.omnnu.finbot.domain.market.Price;
 import io.omnnu.finbot.domain.market.Quantity;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.risk.RiskAssessmentId;
 import io.omnnu.finbot.domain.shared.DomainText;
 import io.omnnu.finbot.domain.shared.DecimalValue;
@@ -19,6 +20,7 @@ public record ApprovedTradeIntent(
         ExchangeAccountId accountId,
         InstrumentId instrumentId,
         ExchangeVenue exchange,
+        ExchangeEnvironment environment,
         RiskAssessmentId riskAssessmentId,
         InstrumentSymbol symbol,
         DirectionalAction action,
@@ -36,6 +38,10 @@ public record ApprovedTradeIntent(
         Objects.requireNonNull(accountId, "accountId");
         Objects.requireNonNull(instrumentId, "instrumentId");
         Objects.requireNonNull(exchange, "exchange");
+        Objects.requireNonNull(environment, "environment");
+        if (environment == ExchangeEnvironment.LIVE) {
+            throw new IllegalArgumentException("Live exchange accounts cannot create an approved trade intent");
+        }
         Objects.requireNonNull(riskAssessmentId, "riskAssessmentId");
         Objects.requireNonNull(symbol, "symbol");
         Objects.requireNonNull(action, "action");
@@ -61,6 +67,7 @@ public record ApprovedTradeIntent(
             ExchangeAccountId accountId,
             InstrumentId instrumentId,
             ExchangeVenue exchange,
+            ExchangeEnvironment environment,
             RiskAssessmentId riskAssessmentId,
             Quantity quantity,
             BigDecimal leverage) {
@@ -76,6 +83,7 @@ public record ApprovedTradeIntent(
                 accountId,
                 instrumentId,
                 exchange,
+                environment,
                 riskAssessmentId,
                 proposal.symbol(),
                 proposal.action(),

@@ -1,5 +1,15 @@
 # 当前任务
 
+## S3：压缩后分裂的双环境研究工作流
+
+- 状态：进行中（2026-07-15）。
+- 目标：共享一次证据采集/清洗/压缩，在不可变快照后分裂为实盘研究与模拟自动交易两个独立工作流。
+- 隔离：所有交易所的 `LIVE/TESTNET/DEMO` 在行情、artifact、预测、账户和交易数据上硬隔离；产品模型保持共享简单。
+- 已完成：压缩后并行双分支、分支独立工作流选择、环境化行情/预测/风控/OMS 外键、交易所能力矩阵、六策略量化注册表、实时双流事件面板、实盘 shadow PnL。
+- 待完成：生产 030 迁移、真实双分支 smoke、CI/GitOps 发布验收。
+- 规格：[`../docs/requirements/32-segmented-dual-environment-research.md`](../docs/requirements/32-segmented-dual-environment-research.md)。
+- 决策：[`../docs/decisions/016-segmented-research-and-exchange-environments.md`](../docs/decisions/016-segmented-research-and-exchange-environments.md)。
+
 ## S3：Java Breaking Migration 生产收口
 
 - 状态：进行中。

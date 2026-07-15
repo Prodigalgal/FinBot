@@ -12,6 +12,7 @@ public record InstantResearchTaskPayload(
         WorkflowType workflowType,
         WorkflowTrigger trigger,
         WorkflowVersionId workflowVersionId,
+        WorkflowVersionId demoWorkflowVersionId,
         String workflowIdempotencyKey,
         ResearchTaskMode taskMode,
         MarketAnalysisScope marketAnalysisScope) implements BackgroundTaskPayload {

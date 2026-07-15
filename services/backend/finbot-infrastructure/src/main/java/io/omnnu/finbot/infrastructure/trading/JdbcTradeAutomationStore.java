@@ -203,6 +203,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                   select candle.close_price
                   from market_candle_fact candle
                   where candle.instrument_id = instrument.instrument_id
+                    and candle.environment = account.environment
                   order by candle.open_time desc, candle.id desc
                   limit 1
                 ) latest on true
@@ -250,6 +251,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                   select candle.close_price
                   from market_candle_fact candle
                   where candle.instrument_id = instrument.instrument_id
+                    and candle.environment = 'LIVE'
                   order by candle.open_time desc, candle.id desc
                   limit 1
                 ) latest on true
@@ -393,12 +395,12 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
         jdbcClient.sql("""
                 insert into risk_assessment (
                   assessment_id, automation_run_id, workflow_run_id, proposal_id,
-                  account_id, instrument_id, exchange, policy_version, status, reasons, quantity, notional_usdt,
+                  account_id, instrument_id, exchange, environment, policy_version, status, reasons, quantity, notional_usdt,
                   leverage, initial_margin_usdt, estimated_max_loss_usdt,
                   approximate_liquidation_price, assessed_at
                 ) values (
                   :assessmentId, :automationRunId, :workflowRunId, :proposalId,
-                  :accountId, :instrumentId, :exchange, :policyVersion, :status, cast(:reasons as jsonb),
+                  :accountId, :instrumentId, :exchange, :environment, :policyVersion, :status, cast(:reasons as jsonb),
                   :quantity, :notionalUsdt, :leverage, :initialMarginUsdt,
                   :estimatedMaxLossUsdt, :approximateLiquidationPrice, :assessedAt
                 ) on conflict (proposal_id, account_id) do nothing
@@ -410,6 +412,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 .param("accountId", assessment.accountId().value())
                 .param("instrumentId", assessment.instrumentId().value())
                 .param("exchange", assessment.exchange().name())
+                .param("environment", assessment.environment().name())
                 .param("policyVersion", assessment.policyVersion())
                 .param("status", plan.status().name())
                 .param("reasons", json(plan.reasons()))
@@ -482,11 +485,11 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
         jdbcClient.sql("""
                 insert into approved_trade_intent (
                   intent_id, proposal_id, account_id, risk_assessment_id, symbol, action,
-                  instrument_id, exchange, quantity, leverage, entry_reference, target_price, invalidation_price,
+                  instrument_id, exchange, environment, quantity, leverage, entry_reference, target_price, invalidation_price,
                   policy_version, approved_at
                 ) values (
                   :intentId, :proposalId, :accountId, :riskAssessmentId, :symbol, :action,
-                  :instrumentId, :exchange, :quantity, :leverage, :entryReference, :targetPrice, :invalidationPrice,
+                  :instrumentId, :exchange, :environment, :quantity, :leverage, :entryReference, :targetPrice, :invalidationPrice,
                   :policyVersion, :approvedAt
                 ) on conflict (proposal_id, account_id) do nothing
                 """)
@@ -498,6 +501,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 .param("action", intent.action().name())
                 .param("instrumentId", intent.instrumentId().value())
                 .param("exchange", intent.exchange().name())
+                .param("environment", intent.environment().name())
                 .param("quantity", intent.quantity().value())
                 .param("leverage", intent.leverage())
                 .param("entryReference", intent.entryReference().value())

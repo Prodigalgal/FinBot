@@ -74,6 +74,20 @@ paths:
           $ref: '#/components/responses/JsonObject'
         '409':
           $ref: '#/components/responses/Problem'
+  /research/cases/by-run/{runId}:
+    get:
+      operationId: getResearchCaseByRunId
+      parameters:
+        - $ref: '#/components/parameters/RunIdPath'
+      responses:
+        '200':
+          description: Shared evidence and live/paper branch state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchCase'
+        '404':
+          $ref: '#/components/responses/Problem'
   /analysis/market-runs:
     post:
       operationId: startMarketAnalysis
@@ -115,6 +129,19 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/JsonArray'
+  /exchanges/capabilities:
+    get:
+      operationId: listExchangeCapabilities
+      description: Exact market-data and paper-order environments supported by each venue market type.
+      responses:
+        '200':
+          description: Exchange capability matrix. LIVE never appears in orderExecutionEnvironments.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExchangeCapability'
   /products/catalog-sync/{exchange}/{marketType}:
     post:
       operationId: synchronizeProductCatalog
@@ -397,6 +424,54 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/ProblemDetail' }
   schemas:
+    ExchangeCapability:
+      type: object
+      additionalProperties: false
+      required: [exchange, marketType, marketDataEnvironments, orderExecutionEnvironments]
+      properties:
+        exchange: { type: string, enum: [GATE, BYBIT] }
+        marketType: { type: string, enum: [SPOT, LINEAR_PERPETUAL, INVERSE_PERPETUAL, FUTURE] }
+        marketDataEnvironments:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [LIVE, TESTNET, DEMO] }
+        orderExecutionEnvironments:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [TESTNET, DEMO] }
+    ResearchCase:
+      type: object
+      additionalProperties: false
+      required: [caseId, status, requestSummary, evidenceArtifactId, segments, createdAt, completedAt, updatedAt]
+      properties:
+        caseId: { type: string, pattern: '^case_[a-z0-9_-]{4,70}$' }
+        status: { type: string, enum: [PENDING, RUNNING, PARTIAL, COMPLETED, FAILED] }
+        requestSummary: { type: string }
+        evidenceArtifactId: { type: [string, 'null'] }
+        segments:
+          type: array
+          minItems: 2
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/ResearchSegment'
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ResearchSegment:
+      type: object
+      additionalProperties: false
+      required: [segmentId, segmentType, dataPlane, workflowRunId, evidenceArtifactId, status, errorCode, errorMessage, startedAt, completedAt]
+      properties:
+        segmentId: { type: string, pattern: '^segment_[a-z0-9_-]{4,67}$' }
+        segmentType: { type: string, enum: [EVIDENCE, LIVE_RESEARCH, DEMO_AUTOTRADE] }
+        dataPlane: { type: [string, 'null'], enum: [LIVE, PAPER, null] }
+        workflowRunId: { type: [string, 'null'] }
+        evidenceArtifactId: { type: [string, 'null'] }
+        status: { type: string, enum: [PENDING, RUNNING, COMPLETED, FAILED, SKIPPED] }
+        errorCode: { type: [string, 'null'] }
+        errorMessage: { type: [string, 'null'] }
+        startedAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
     RunId:
       type: string
       pattern: '^run_[a-z0-9_-]{4,75}$'
@@ -428,6 +503,7 @@ components:
         forecastHorizonSeconds: { type: integer, minimum: 60, maximum: 31536000 }
         question: { type: string, minLength: 1, maxLength: 1500 }
         workflowVersionId: { type: [string, 'null'], maxLength: 80 }
+        demoWorkflowVersionId: { type: [string, 'null'], maxLength: 80 }
     TradeRiskPreviewCommand:
       type: object
       additionalProperties: false

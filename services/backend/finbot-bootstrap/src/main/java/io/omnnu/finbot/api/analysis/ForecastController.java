@@ -44,6 +44,7 @@ public final class ForecastController {
             String workflowRunId,
             String instrumentId,
             String exchange,
+            String environment,
             String symbol,
             int intervalSeconds,
             int horizonSeconds,
@@ -60,6 +61,8 @@ public final class ForecastController {
             Instant targetAt,
             BigDecimal actualPrice,
             BigDecimal actualReturn,
+            BigDecimal shadowNotionalUsdt,
+            BigDecimal shadowPnlUsdt,
             Boolean directionCorrect,
             Boolean rangeHit,
             Instant evaluatedAt) {
@@ -69,6 +72,7 @@ public final class ForecastController {
                     value.workflowRunId().value(),
                     value.instrumentId().value(),
                     value.exchange().name(),
+                    value.environment().name(),
                     value.symbol(),
                     value.intervalSeconds(),
                     value.horizonSeconds(),
@@ -85,6 +89,8 @@ public final class ForecastController {
                     value.targetAt(),
                     value.actualPrice(),
                     value.actualReturn(),
+                    value.shadowNotionalUsdt(),
+                    value.shadowPnlUsdt(),
                     value.directionCorrect(),
                     value.rangeHit(),
                     value.evaluatedAt());

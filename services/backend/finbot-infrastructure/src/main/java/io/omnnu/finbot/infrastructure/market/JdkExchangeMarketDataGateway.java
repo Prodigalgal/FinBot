@@ -9,6 +9,8 @@ import io.omnnu.finbot.application.market.MarketDataGateway;
 import io.omnnu.finbot.application.market.ResearchInstrument;
 import io.omnnu.finbot.application.network.ProxyRouteUnavailableException;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.catalog.MarketType;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import io.omnnu.finbot.infrastructure.network.RoutedHttpClientFactory;
 import java.io.IOException;
@@ -30,10 +32,12 @@ import org.springframework.stereotype.Component;
 @Component
 public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
     private static final int MAXIMUM_RESPONSE_BYTES = 8 * 1024 * 1024;
-    private static final String GATE_API_BASE = "https://api.gateio.ws/api/v4";
-    private static final List<String> BYBIT_API_BASES = List.of(
+    private static final String GATE_LIVE_API_BASE = "https://api.gateio.ws/api/v4";
+    private static final String GATE_TESTNET_API_BASE = "https://fx-api-testnet.gateio.ws/api/v4";
+    private static final List<String> BYBIT_LIVE_API_BASES = List.of(
             "https://api.bybit.com",
             "https://api.bytick.com");
+    private static final List<String> BYBIT_DEMO_API_BASES = List.of("https://api-demo.bybit.com");
 
     private final RoutedHttpClientFactory httpClients;
     private final ObjectMapper objectMapper;
@@ -51,13 +55,14 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
     @Override
     public List<MarketCandle> fetchCandles(
             ResearchInstrument instrument,
+            ExchangeEnvironment environment,
             int intervalSeconds,
             int limit) {
         var safeLimit = Math.max(2, Math.min(limit, 500));
         try {
             return switch (instrument.exchange()) {
-                case GATE -> gate(instrument, intervalSeconds, safeLimit);
-                case BYBIT -> bybit(instrument, intervalSeconds, safeLimit);
+                case GATE -> gate(instrument, environment, intervalSeconds, safeLimit);
+                case BYBIT -> bybit(instrument, environment, intervalSeconds, safeLimit);
             };
         } catch (ProxyRouteUnavailableException exception) {
             throw new MarketDataFetchException(
@@ -68,9 +73,37 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
 
     private List<MarketCandle> gate(
             ResearchInstrument instrument,
+            ExchangeEnvironment environment,
             int intervalSeconds,
             int limit) {
-        var endpoint = URI.create(GATE_API_BASE
+        var base = switch (environment) {
+            case LIVE -> GATE_LIVE_API_BASE;
+            case TESTNET -> GATE_TESTNET_API_BASE;
+            case DEMO -> throw new MarketDataFetchException(
+                    "GATE_MARKET_ENVIRONMENT_UNSUPPORTED",
+                    "Gate does not expose a DEMO market environment");
+        };
+        if (instrument.marketType() == MarketType.SPOT) {
+            if (environment != ExchangeEnvironment.LIVE) {
+                throw unsupported(instrument, environment);
+            }
+            var endpoint = URI.create(base
+                    + "/spot/candlesticks?currency_pair=" + encode(instrument.symbol())
+                    + "&interval=" + encode(interval(intervalSeconds, ExchangeVenue.GATE))
+                    + "&limit=" + limit);
+            return parseGateSpotCandles(
+                    get(endpoint, OutboundRoute.EXCHANGE_GATE),
+                    instrument,
+                    environment,
+                    intervalSeconds,
+                    endpoint,
+                    clock.instant());
+        }
+        if (instrument.marketType() != MarketType.LINEAR_PERPETUAL
+                && instrument.marketType() != MarketType.FUTURE) {
+            throw unsupported(instrument, environment);
+        }
+        var endpoint = URI.create(base
                 + "/futures/usdt/candlesticks?contract=" + encode(instrument.symbol())
                 + "&interval=" + encode(interval(intervalSeconds, ExchangeVenue.GATE))
                 + "&limit=" + limit);
@@ -78,14 +111,55 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
         return parseGateCandles(
                 root,
                 instrument,
+                environment,
                 intervalSeconds,
                 endpoint,
                 clock.instant());
     }
 
+    static List<MarketCandle> parseGateSpotCandles(
+            JsonNode root,
+            ResearchInstrument instrument,
+            ExchangeEnvironment environment,
+            int intervalSeconds,
+            URI endpoint,
+            Instant observedAt) {
+        if (!root.isArray()) {
+            throw new MarketDataFetchException(
+                    "GATE_SPOT_CANDLE_RESPONSE_INVALID",
+                    "Gate spot candle response was not an array");
+        }
+        var candles = new ArrayList<MarketCandle>();
+        root.forEach(row -> {
+            if (!row.isArray() || row.size() < 7) {
+                throw new MarketDataFetchException(
+                        "GATE_SPOT_CANDLE_ROW_INVALID",
+                        "Gate spot candle response contained an invalid row");
+            }
+            candles.add(new MarketCandle(
+                    instrument.instrumentId(),
+                    ExchangeVenue.GATE,
+                    environment,
+                    instrument.symbol(),
+                    intervalSeconds,
+                    gateOpenTime(row.get(0)),
+                    decimal(row.get(5)),
+                    decimal(row.get(3)),
+                    decimal(row.get(4)),
+                    decimal(row.get(2)),
+                    decimal(row.get(6)),
+                    decimal(row.get(1)),
+                    BigDecimal.ZERO,
+                    endpoint.toString(),
+                    observedAt));
+        });
+        return ordered(candles);
+    }
+
     static List<MarketCandle> parseGateCandles(
             JsonNode root,
             ResearchInstrument instrument,
+            ExchangeEnvironment environment,
             int intervalSeconds,
             URI endpoint,
             Instant observedAt) {
@@ -108,6 +182,7 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
             candles.add(new MarketCandle(
                     instrument.instrumentId(),
                     ExchangeVenue.GATE,
+                    environment,
                     instrument.symbol(),
                     intervalSeconds,
                     gateOpenTime(row.get("t")),
@@ -126,12 +201,25 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
 
     private List<MarketCandle> bybit(
             ResearchInstrument instrument,
+            ExchangeEnvironment environment,
             int intervalSeconds,
             int limit) {
         MarketDataFetchException lastFailure = null;
-        for (var base : BYBIT_API_BASES) {
+        var bases = switch (environment) {
+            case LIVE -> BYBIT_LIVE_API_BASES;
+            case DEMO -> BYBIT_DEMO_API_BASES;
+            case TESTNET -> throw new MarketDataFetchException(
+                    "BYBIT_MARKET_ENVIRONMENT_UNSUPPORTED",
+                    "Bybit Demo accounts do not use the TESTNET environment");
+        };
+        var category = switch (instrument.marketType()) {
+            case SPOT -> "spot";
+            case LINEAR_PERPETUAL, FUTURE -> "linear";
+            case INVERSE_PERPETUAL -> "inverse";
+        };
+        for (var base : bases) {
             var endpoint = URI.create(base
-                    + "/v5/market/kline?category=linear&symbol=" + encode(instrument.symbol())
+                    + "/v5/market/kline?category=" + category + "&symbol=" + encode(instrument.symbol())
                     + "&interval=" + encode(interval(intervalSeconds, ExchangeVenue.BYBIT))
                     + "&limit=" + limit);
             try {
@@ -156,6 +244,7 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
                     candles.add(new MarketCandle(
                             instrument.instrumentId(),
                             ExchangeVenue.BYBIT,
+                            environment,
                             instrument.symbol(),
                             intervalSeconds,
                             Instant.ofEpochMilli(row.get(0).asLong()),
@@ -177,6 +266,15 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
         throw Objects.requireNonNullElseGet(lastFailure, () -> new MarketDataFetchException(
                 "BYBIT_CANDLE_FETCH_FAILED",
                 "Bybit public candle request failed on every configured host"));
+    }
+
+    private static MarketDataFetchException unsupported(
+            ResearchInstrument instrument,
+            ExchangeEnvironment environment) {
+        return new MarketDataFetchException(
+                "MARKET_CAPABILITY_UNSUPPORTED",
+                instrument.exchange() + " " + instrument.marketType()
+                        + " does not support market data in " + environment);
     }
 
     private JsonNode get(URI endpoint, OutboundRoute route) {

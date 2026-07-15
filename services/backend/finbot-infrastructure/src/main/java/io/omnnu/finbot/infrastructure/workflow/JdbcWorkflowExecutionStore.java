@@ -26,6 +26,7 @@ import io.omnnu.finbot.domain.workflow.WorkflowRunStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.research.ForecastSignal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -61,7 +62,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
         var run = jdbcClient.sql("""
                 select workflow_run.status, workflow_run.request_summary,
                        workflow_run.workflow_version_id,
-                       scope.instrument_id, scope.exchange, scope.symbol,
+                       scope.instrument_id, scope.exchange, scope.environment, scope.symbol,
                        scope.interval_seconds, scope.forecast_horizon_seconds,
                        scope.market_reference_price,
                        coalesce((
@@ -70,7 +71,13 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                            'content', artifact.content
                          ) order by artifact.created_at, artifact.id)::text
                          from research_artifact artifact
-                         where artifact.workflow_run_id = workflow_run.run_id
+                         where (artifact.workflow_run_id = workflow_run.run_id
+                           or exists (
+                             select 1 from workflow_evidence_binding binding
+                             where binding.workflow_run_id = workflow_run.run_id
+                               and binding.artifact_id = artifact.artifact_id
+                               and binding.content_hash = artifact.content_hash
+                           ))
                            and artifact.artifact_type in (
                              'EVIDENCE_PACKAGE', 'COMPRESSION_PACKAGE', 'QUANT_RESULT',
                              'RISK_ASSESSMENT'
@@ -465,12 +472,12 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
     private void saveForecast(AgentMessage message, ForecastSignal forecast) {
         jdbcClient.sql("""
                 insert into research_forecast (
-                  forecast_id, workflow_run_id, message_id, instrument_id, exchange,
+                  forecast_id, workflow_run_id, message_id, instrument_id, exchange, environment,
                   symbol, interval_seconds, horizon_seconds, market_reference_price, direction,
                   reference_price, expected_low, expected_high, invalidation_price,
                   confidence, thesis, evidence_refs, status, issued_at, target_at
                 )
-                select :forecastId, :runId, :messageId, scope.instrument_id, scope.exchange,
+                select :forecastId, :runId, :messageId, scope.instrument_id, scope.exchange, scope.environment,
                        scope.symbol, scope.interval_seconds, scope.forecast_horizon_seconds,
                        scope.market_reference_price, :direction, :referencePrice, :expectedLow, :expectedHigh,
                        :invalidationPrice, :confidence, :thesis, cast(:evidenceRefs as jsonb),
@@ -517,6 +524,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 : new ResearchMarketScope(
                         new InstrumentId(instrumentId),
                         ExchangeVenue.valueOf(resultSet.getString("exchange")),
+                        ExchangeEnvironment.valueOf(resultSet.getString("environment")),
                         resultSet.getString("symbol"),
                         resultSet.getInt("interval_seconds"),
                         resultSet.getInt("forecast_horizon_seconds"),

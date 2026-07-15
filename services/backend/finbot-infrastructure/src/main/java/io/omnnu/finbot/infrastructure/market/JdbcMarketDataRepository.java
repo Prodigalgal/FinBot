@@ -10,6 +10,8 @@ import io.omnnu.finbot.application.market.ResearchInstrument;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.catalog.MarketType;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
+import io.omnnu.finbot.domain.research.ResearchDataPlane;
 import io.omnnu.finbot.domain.research.ResearchArtifactId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import java.sql.PreparedStatement;
@@ -28,11 +30,11 @@ import org.springframework.transaction.annotation.Transactional;
 public final class JdbcMarketDataRepository implements MarketDataRepository {
     private static final String UPSERT_CANDLE = """
             insert into market_candle_fact (
-              instrument_id, exchange, symbol, interval_seconds, open_time,
+              instrument_id, exchange, environment, symbol, interval_seconds, open_time,
               open_price, high_price, low_price, close_price, volume, turnover,
               funding_rate, source_endpoint, observed_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            on conflict (instrument_id, interval_seconds, open_time) do update
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict (instrument_id, environment, interval_seconds, open_time) do update
             set open_price = excluded.open_price,
                 high_price = excluded.high_price,
                 low_price = excluded.low_price,
@@ -146,18 +148,19 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                 var candle = candles.get(index);
                 statement.setString(1, candle.instrumentId().value());
                 statement.setString(2, candle.exchange().name());
-                statement.setString(3, candle.symbol());
-                statement.setInt(4, candle.intervalSeconds());
-                statement.setObject(5, OffsetDateTime.ofInstant(candle.openTime(), java.time.ZoneOffset.UTC));
-                statement.setBigDecimal(6, candle.open());
-                statement.setBigDecimal(7, candle.high());
-                statement.setBigDecimal(8, candle.low());
-                statement.setBigDecimal(9, candle.close());
-                statement.setBigDecimal(10, candle.volume());
-                statement.setBigDecimal(11, candle.turnover());
-                statement.setBigDecimal(12, candle.fundingRate());
-                statement.setString(13, candle.sourceEndpoint());
-                statement.setObject(14, OffsetDateTime.ofInstant(candle.observedAt(), java.time.ZoneOffset.UTC));
+                statement.setString(3, candle.environment().name());
+                statement.setString(4, candle.symbol());
+                statement.setInt(5, candle.intervalSeconds());
+                statement.setObject(6, OffsetDateTime.ofInstant(candle.openTime(), java.time.ZoneOffset.UTC));
+                statement.setBigDecimal(7, candle.open());
+                statement.setBigDecimal(8, candle.high());
+                statement.setBigDecimal(9, candle.low());
+                statement.setBigDecimal(10, candle.close());
+                statement.setBigDecimal(11, candle.volume());
+                statement.setBigDecimal(12, candle.turnover());
+                statement.setBigDecimal(13, candle.fundingRate());
+                statement.setString(14, candle.sourceEndpoint());
+                statement.setObject(15, OffsetDateTime.ofInstant(candle.observedAt(), java.time.ZoneOffset.UTC));
             }
 
             @Override
@@ -176,14 +179,15 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
             java.time.Instant capturedAt) {
         jdbcClient.sql("""
                 insert into research_market_scope (
-                  workflow_run_id, instrument_id, exchange, symbol,
+                  workflow_run_id, instrument_id, exchange, environment, symbol,
                   interval_seconds, forecast_horizon_seconds, market_reference_price, captured_at
                 ) values (
-                  :workflowRunId, :instrumentId, :exchange, :symbol,
+                  :workflowRunId, :instrumentId, :exchange, :environment, :symbol,
                   :intervalSeconds, :forecastHorizonSeconds, :marketReferencePrice, :capturedAt
                 ) on conflict (workflow_run_id) do update
                 set instrument_id = excluded.instrument_id,
                     exchange = excluded.exchange,
+                    environment = excluded.environment,
                     symbol = excluded.symbol,
                     interval_seconds = excluded.interval_seconds,
                     forecast_horizon_seconds = excluded.forecast_horizon_seconds,
@@ -193,6 +197,7 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                 .param("workflowRunId", workflowRunId.value())
                 .param("instrumentId", instrument.instrumentId().value())
                 .param("exchange", instrument.exchange().name())
+                .param("environment", scope.environment().name())
                 .param("symbol", instrument.symbol())
                 .param("intervalSeconds", scope.intervalSeconds())
                 .param("forecastHorizonSeconds", scope.forecastHorizonSeconds())
@@ -206,16 +211,17 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
         var payload = artifact.encoded().payload();
         jdbcClient.sql("""
                 insert into market_data_artifact (
-                  artifact_id, workflow_run_id, schema_version, content, payload,
+                  artifact_id, workflow_run_id, data_plane, schema_version, content, payload,
                   sha256_hex, byte_size, media_type, candle_count, created_at
                 ) values (
-                  :artifactId, :workflowRunId, :schemaVersion, cast(:content as jsonb), :payload,
+                  :artifactId, :workflowRunId, :dataPlane, :schemaVersion, cast(:content as jsonb), :payload,
                   :sha256Hex, :byteSize, :mediaType, :candleCount, :createdAt
                 )
                 on conflict (artifact_id) do nothing
                 """)
                 .param("artifactId", artifact.artifactId().value())
                 .param("workflowRunId", artifact.workflowRunId().value())
+                .param("dataPlane", artifact.dataPlane().name())
                 .param("schemaVersion", artifact.schemaVersion())
                 .param("content", new String(payload, java.nio.charset.StandardCharsets.UTF_8))
                 .param("payload", payload)
@@ -231,7 +237,7 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
     @Transactional(readOnly = true)
     public Optional<MarketDataArtifactRecord> findArtifact(ResearchArtifactId artifactId) {
         return jdbcClient.sql("""
-                select workflow_run_id, schema_version, payload, sha256_hex,
+                select workflow_run_id, data_plane, schema_version, payload, sha256_hex,
                        media_type, candle_count, created_at
                 from market_data_artifact where artifact_id = :artifactId
                 """)
@@ -239,6 +245,7 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                 .query((resultSet, rowNumber) -> new MarketDataArtifactRecord(
                         artifactId,
                         new WorkflowRunId(resultSet.getString("workflow_run_id")),
+                        ResearchDataPlane.valueOf(resultSet.getString("data_plane")),
                         resultSet.getInt("schema_version"),
                         new EncodedMarketDataArtifact(
                                 resultSet.getBytes("payload"),

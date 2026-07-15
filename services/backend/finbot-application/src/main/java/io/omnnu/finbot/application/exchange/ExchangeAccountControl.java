@@ -18,6 +18,9 @@ public record ExchangeAccountControl(
         Objects.requireNonNull(accountId, "accountId");
         Objects.requireNonNull(exchange, "exchange");
         Objects.requireNonNull(environment, "environment");
+        if (environment == ExchangeEnvironment.LIVE) {
+            throw new IllegalArgumentException("Live exchange accounts are outside the current execution boundary");
+        }
         displayName = Objects.requireNonNull(displayName, "displayName").strip();
         Objects.requireNonNull(updatedAt, "updatedAt");
         if (displayName.isEmpty() || version < 0) {

@@ -14,6 +14,7 @@ import io.omnnu.finbot.domain.workflow.WorkflowTrigger;
 import io.omnnu.finbot.domain.workflow.WorkflowType;
 import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -51,6 +52,10 @@ public final class AnalysisController {
         var versionId = request.workflowVersionId() == null || request.workflowVersionId().isBlank()
                 ? null
                 : new WorkflowVersionId(request.workflowVersionId());
+        var demoVersionId = request.demoWorkflowVersionId() == null
+                        || request.demoWorkflowVersionId().isBlank()
+                ? null
+                : new WorkflowVersionId(request.demoWorkflowVersionId());
         var summary = "市场分析：" + request.exchange().toUpperCase(java.util.Locale.ROOT)
                 + ' ' + request.symbol().toUpperCase(java.util.Locale.ROOT)
                 + "，K 线周期 " + request.intervalSeconds() + " 秒，预测期限 "
@@ -66,9 +71,15 @@ public final class AnalysisController {
                 new io.omnnu.finbot.domain.catalog.InstrumentId(request.instrumentId()),
                 request.symbol(),
                 ExchangeVenue.valueOf(request.exchange().toUpperCase(java.util.Locale.ROOT)),
+                ExchangeEnvironment.LIVE,
                 request.intervalSeconds(),
                 request.forecastHorizonSeconds());
-        return researchLaunch.launch(command, operationKey, ResearchTaskMode.STANDARD, scope)
+        return researchLaunch.launch(
+                        command,
+                        operationKey,
+                        ResearchTaskMode.STANDARD,
+                        scope,
+                        demoVersionId)
                 .thenApply(AnalysisController::accepted);
     }
 
@@ -89,6 +100,7 @@ public final class AnalysisController {
             @Min(60) @Max(604800) int intervalSeconds,
             @Min(60) @Max(31536000) int forecastHorizonSeconds,
             @NotBlank @Size(max = 1500) String question,
-            @Size(max = 80) String workflowVersionId) {
+            @Size(max = 80) String workflowVersionId,
+            @Size(max = 80) String demoWorkflowVersionId) {
     }
 }
