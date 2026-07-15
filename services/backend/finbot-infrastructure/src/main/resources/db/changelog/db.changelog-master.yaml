@@ -55,3 +55,5 @@ databaseChangeLog:
       file: db/changelog/releases/027-research-forecast.sql
   - include:
       file: db/changelog/releases/028-single-character-assets.sql
+  - include:
+      file: db/changelog/releases/029-workflow-fallback-attempts.sql
