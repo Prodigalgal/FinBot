@@ -139,7 +139,7 @@ class LiquibasePostgresIntegrationTest {
                           (select proxy_route_type from information_source
                            where source_id = 'source_x_market_search') as x_route,
                           (select count(*) from trade_execution_ai_stage
-                           where version = 1
+                           where version = 2
                              and user_prompt_template like '%UNSPECIFIED%')
                             as execution_contract_stage_count,
                           (select count(*) from information_schema.columns
