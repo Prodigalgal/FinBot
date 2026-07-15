@@ -293,7 +293,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(29, result.getInt("changeset_count"));
+                    assertEquals(30, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
@@ -390,6 +390,24 @@ class LiquibasePostgresIntegrationTest {
                         current.version(),
                         Instant.parse("2026-07-15T01:01:00Z"))
                 .isEmpty());
+    }
+
+    @Test
+    void acceptsSingleCharacterAssetsPublishedByRealExchangeCatalogs() throws Exception {
+        updateSchema();
+        try (var connection = DriverManager.getConnection(
+                        POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.prepareStatement("""
+                        insert into canonical_product (
+                          product_id, base_asset, quote_asset, display_name,
+                          category, status, created_at, updated_at
+                        ) values (
+                          'product_t_usdt_test', 'T', 'USDT', 'T / Tether',
+                          'CRYPTO', 'ACTIVE', current_timestamp, current_timestamp
+                        )
+                        """)) {
+            assertEquals(1, statement.executeUpdate());
+        }
     }
 
     @Test

@@ -336,7 +336,7 @@ public final class JdkProductCatalogGateway implements ProductCatalogGateway {
 
     private static String optionalToken(String value, int maximumLength) {
         var normalized = value.strip().toUpperCase(Locale.ROOT);
-        return normalized.length() >= 2
+        return !normalized.isEmpty()
                         && normalized.length() <= maximumLength
                         && normalized.matches("[A-Z0-9_-]+")
                 ? normalized
