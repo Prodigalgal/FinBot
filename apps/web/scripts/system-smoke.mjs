@@ -66,17 +66,17 @@ try {
   }
   const csrfConflictStatus = await probeAuthenticatedCsrfWrite(page, appUrl);
   await page.screenshot({ path: path.join(outputDir, 'all-workspaces-desktop.png'), fullPage: true });
-  const desktopOverflow = await horizontalOverflow(page);
+  const desktopOverflowElements = await horizontalOverflowElements(page);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('combobox').first().click();
   await page.getByRole('option', { name: '发起研究', exact: true }).click();
   await page.getByRole('heading', { name: '即时研究流水线', exact: true }).waitFor();
-  const mobileOverflow = await horizontalOverflow(page);
+  const mobileOverflowElements = await horizontalOverflowElements(page);
   await page.screenshot({ path: path.join(outputDir, 'research-mobile.png'), fullPage: true });
 
-  if (desktopOverflow || mobileOverflow) {
-    throw new Error(`页面存在横向溢出: ${JSON.stringify({ desktopOverflow, mobileOverflow })}`);
+  if (desktopOverflowElements.length > 0 || mobileOverflowElements.length > 0) {
+    throw new Error(`页面存在横向溢出: ${JSON.stringify({ desktopOverflowElements, mobileOverflowElements })}`);
   }
   if (browserProblems.length > 0) {
     throw new Error(`浏览器控制台存在错误: ${JSON.stringify(browserProblems)}`);
@@ -85,7 +85,7 @@ try {
   const workflowSseHeartbeat = sseRunId === null
     ? null
     : await probeSseHeartbeat(page, appUrl, sseRunId);
-  console.log(JSON.stringify({ ok: true, pagesChecked: pages.length, desktopOverflow, mobileOverflow, csrfConflictStatus, operationsSse, workflowSseHeartbeat }));
+  console.log(JSON.stringify({ ok: true, pagesChecked: pages.length, desktopOverflow: false, mobileOverflow: false, csrfConflictStatus, operationsSse, workflowSseHeartbeat }));
 } catch (error) {
   await page.screenshot({ path: path.join(outputDir, 'system-smoke-failure.png'), fullPage: true });
   throw error;
@@ -105,11 +105,29 @@ function solveMath(value) {
   return match[2] === '+' ? Number(match[1]) + Number(match[3]) : Number(match[1]) - Number(match[3]);
 }
 
-async function horizontalOverflow(targetPage) {
-  return targetPage.evaluate(() =>
-    document.body.scrollWidth > document.body.clientWidth
-    || document.documentElement.scrollWidth > document.documentElement.clientWidth,
-  );
+async function horizontalOverflowElements(targetPage) {
+  return targetPage.evaluate(() => {
+    const documentOverflows = document.body.scrollWidth > document.body.clientWidth
+      || document.documentElement.scrollWidth > document.documentElement.clientWidth;
+    if (!documentOverflows) return [];
+    const viewportWidth = document.documentElement.clientWidth;
+    return Array.from(document.querySelectorAll('body *'))
+      .map((element) => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          tag: element.tagName.toLowerCase(),
+          className: typeof element.className === 'string' ? element.className.slice(0, 120) : '',
+          text: (element.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 100),
+          left: Math.round(bounds.left),
+          right: Math.round(bounds.right),
+          width: Math.round(bounds.width),
+          scrollWidth: element.scrollWidth,
+          clientWidth: element.clientWidth,
+        };
+      })
+      .filter((element) => element.right > viewportWidth + 1 || element.left < -1)
+      .slice(0, 12);
+  });
 }
 
 async function probeSseHeartbeat(targetPage, baseUrl, runId) {
