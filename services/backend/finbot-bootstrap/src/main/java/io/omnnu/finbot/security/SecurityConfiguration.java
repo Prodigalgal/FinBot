@@ -37,6 +37,7 @@ public class SecurityConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepository)
+                        .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                         .ignoringRequestMatchers(
                                 "/api/v2/auth/challenge",
                                 "/api/v2/auth/login",

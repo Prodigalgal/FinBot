@@ -4,6 +4,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,10 +27,12 @@ import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.security.web.csrf.CsrfToken;
 
 @SpringJUnitWebConfig(classes = {SecurityConfiguration.class, SecurityConfigurationTest.TestConfiguration.class})
 class SecurityConfigurationTest {
@@ -65,6 +68,24 @@ class SecurityConfigurationTest {
         mockMvc.perform(get("/api/v2/test/async"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(request().asyncNotStarted());
+    }
+
+    @Test
+    void acceptsRawCookieCsrfTokenFromSpaHeader() throws Exception {
+        var sessionCookie = new Cookie(
+                SessionAuthenticationFilter.SESSION_COOKIE_NAME,
+                "valid-session-token");
+        var tokenResponse = mockMvc.perform(get("/api/v2/test/csrf").cookie(sessionCookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse();
+        var csrfCookie = tokenResponse.getCookie("XSRF-TOKEN");
+
+        mockMvc.perform(put("/api/v2/test/csrf")
+                        .cookie(sessionCookie, csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
+                .andExpect(status().isOk())
+                .andExpect(content().string("updated"));
     }
 
     @Configuration(proxyBeanMethods = false)
@@ -107,6 +128,16 @@ class SecurityConfigurationTest {
         @GetMapping("/api/v2/test/async")
         Callable<String> async() {
             return () -> "completed";
+        }
+
+        @GetMapping("/api/v2/test/csrf")
+        String csrf(CsrfToken csrfToken) {
+            return csrfToken.getToken();
+        }
+
+        @PutMapping("/api/v2/test/csrf")
+        String update() {
+            return "updated";
         }
     }
 }

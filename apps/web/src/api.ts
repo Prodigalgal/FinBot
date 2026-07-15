@@ -35,12 +35,13 @@ function cookie(name: string): string {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method || 'GET').toUpperCase();
   const changing = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+  const cookieCsrfToken = decodeURIComponent(cookie('XSRF-TOKEN'));
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: 'include',
     headers: {
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(changing && path !== '/api/v2/auth/login' ? { 'X-XSRF-TOKEN': csrfToken || decodeURIComponent(cookie('XSRF-TOKEN')) } : {}),
+      ...(changing && path !== '/api/v2/auth/login' ? { 'X-XSRF-TOKEN': cookieCsrfToken || csrfToken } : {}),
       ...init.headers,
     },
   });
