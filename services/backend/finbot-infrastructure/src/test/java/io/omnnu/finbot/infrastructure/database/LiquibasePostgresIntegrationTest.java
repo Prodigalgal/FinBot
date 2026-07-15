@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.domain.operations.WorkerId;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.infrastructure.exchange.JdbcExchangeAccountControlRepository;
+import io.omnnu.finbot.infrastructure.catalog.JdbcProductCatalogSyncStore;
 import io.omnnu.finbot.infrastructure.ingestion.JdbcIngestionRepository;
 import io.omnnu.finbot.infrastructure.network.JdbcNetworkDiagnosticStore;
 import io.omnnu.finbot.infrastructure.setup.JdbcSetupProfileRepository;
@@ -16,7 +17,12 @@ import io.omnnu.finbot.infrastructure.operations.TaskPayloadCodec;
 import io.omnnu.finbot.infrastructure.workflow.JdbcWorkflowStore;
 import io.omnnu.finbot.infrastructure.workflow.WorkflowEventCodec;
 import io.omnnu.finbot.application.workflow.StartWorkflowCommand;
+import io.omnnu.finbot.application.catalog.CatalogInstrumentSnapshot;
+import io.omnnu.finbot.application.catalog.CatalogSyncScope;
 import io.omnnu.finbot.application.setup.SetupProfileId;
+import io.omnnu.finbot.domain.catalog.CatalogStatus;
+import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.catalog.MarketType;
 import io.omnnu.finbot.domain.ingestion.SourceId;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import io.omnnu.finbot.domain.workflow.WorkflowAccepted;
@@ -26,8 +32,10 @@ import io.omnnu.finbot.domain.workflow.WorkflowTrigger;
 import io.omnnu.finbot.domain.workflow.WorkflowType;
 import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
 import java.sql.DriverManager;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 import java.util.Map;
 import liquibase.Contexts;
@@ -37,7 +45,10 @@ import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -51,6 +62,55 @@ class LiquibasePostgresIntegrationTest {
             .withDatabaseName("finbot")
             .withUsername("finbot")
             .withPassword("finbot-test");
+
+    @Test
+    void catalogSyncReusesPersistedInstrumentIdentityForQuoteFacts() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcTemplate = new JdbcTemplate(dataSource);
+        var jdbcClient = JdbcClient.create(dataSource);
+        var scope = new CatalogSyncScope(ExchangeVenue.GATE, MarketType.SPOT);
+        var now = Instant.parse("2026-07-15T09:45:00Z");
+        var productId = "product_catalog_identity_test";
+        var persistedInstrumentId = "instrument_legacy_catalog_identity_test";
+        var syncRunId = "catalogsync_identity_regression";
+
+        var store = new JdbcProductCatalogSyncStore(jdbcClient, jdbcTemplate);
+        new TransactionTemplate(new DataSourceTransactionManager(dataSource)).executeWithoutResult(transaction -> {
+            jdbcTemplate.update("""
+                    insert into canonical_product (
+                      product_id, base_asset, quote_asset, display_name,
+                      category, status, created_at, updated_at
+                    ) values (?, 'ZID', 'USDT', 'ZID/USDT', 'CRYPTO', 'ACTIVE', ?, ?)
+                    """, productId, java.sql.Timestamp.from(now), java.sql.Timestamp.from(now));
+            jdbcTemplate.update("""
+                    insert into venue_instrument (
+                      instrument_id, product_id, exchange, market_type, symbol,
+                      settlement_asset, contract_size, price_tick, quantity_step,
+                      minimum_quantity, maximum_leverage, execution_enabled, status,
+                      metadata_updated_at, created_at, updated_at
+                    ) values (?, ?, 'GATE', 'SPOT', 'ZID_USDT', 'USDT',
+                      1, 0.01, 0.1, 0.1, 500, false, 'ACTIVE', ?, ?, ?)
+                    """, persistedInstrumentId, productId,
+                    java.sql.Timestamp.from(now), java.sql.Timestamp.from(now), java.sql.Timestamp.from(now));
+            store.start(syncRunId, scope, now);
+            store.complete(syncRunId, scope, List.of(new CatalogInstrumentSnapshot(
+                        "ZID", "USDT", "ZID_USDT", "USDT",
+                        BigDecimal.ONE, new BigDecimal("0.01"), new BigDecimal("0.1"),
+                        new BigDecimal("0.1"), new BigDecimal("500"), CatalogStatus.ACTIVE,
+                        new BigDecimal("123.45"), now)), now);
+
+            assertEquals(persistedInstrumentId, jdbcTemplate.queryForObject(
+                    "select instrument_id from instrument_quote_snapshot where instrument_id = ?",
+                    String.class,
+                    persistedInstrumentId));
+            assertEquals(1, jdbcTemplate.queryForObject(
+                    "select count(*) from venue_instrument where exchange = 'GATE' and market_type = 'SPOT' and symbol = 'ZID_USDT'",
+                    Integer.class));
+            transaction.setRollbackOnly();
+        });
+    }
 
     @Test
     void createsEmptySchemaAndIsIdempotent() throws Exception {

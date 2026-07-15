@@ -63,6 +63,7 @@ public final class JdbcProductCatalogSyncStore implements ProductCatalogSyncStor
             CatalogSyncScope scope,
             List<CatalogInstrumentSnapshot> instruments,
             Instant completedAt) {
+        serializeCatalogPersistence();
         var productMappings = productMappings(instruments);
         insertNewProducts(productMappings.values().stream()
                 .filter(ProductMapping::created)
@@ -80,9 +81,13 @@ public final class JdbcProductCatalogSyncStore implements ProductCatalogSyncStor
                 .param("completedAt", timestamp(completedAt))
                 .update();
 
+        var persistedInstrumentIds = persistedInstrumentIds(scope);
         var rows = instruments.stream()
+                .sorted(Comparator.comparing(CatalogInstrumentSnapshot::symbol))
                 .map(snapshot -> new InstrumentRow(
-                        instrumentId(scope, snapshot.symbol()),
+                        persistedInstrumentIds.getOrDefault(
+                                snapshot.symbol(),
+                                instrumentId(scope, snapshot.symbol())),
                         productMappings.get(new AssetPair(snapshot.baseAsset(), snapshot.quoteAsset())).productId(),
                         snapshot))
                 .toList();
@@ -191,7 +196,29 @@ public final class JdbcProductCatalogSyncStore implements ProductCatalogSyncStor
                                         assets,
                                         ProductCategory.CRYPTO,
                                         true))));
-        return Map.copyOf(resolved);
+        return resolved;
+    }
+
+    private void serializeCatalogPersistence() {
+        jdbcTemplate.execute("select pg_advisory_xact_lock(hashtext('finbot'), hashtext('catalog-sync'))");
+    }
+
+    private Map<String, String> persistedInstrumentIds(CatalogSyncScope scope) {
+        var identifiers = new HashMap<String, String>();
+        jdbcClient.sql("""
+                select symbol, instrument_id
+                from venue_instrument
+                where exchange = :exchange and market_type = :marketType
+                order by symbol
+                """)
+                .param("exchange", scope.exchange().name())
+                .param("marketType", scope.marketType().name())
+                .query((resultSet, rowNumber) -> Map.entry(
+                        resultSet.getString("symbol"),
+                        resultSet.getString("instrument_id")))
+                .list()
+                .forEach(entry -> identifiers.put(entry.getKey(), entry.getValue()));
+        return identifiers;
     }
 
     private void insertNewProducts(List<ProductMapping> products, Instant now) {
