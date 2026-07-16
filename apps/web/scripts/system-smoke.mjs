@@ -20,6 +20,10 @@ page.on('console', (message) => {
   }
 });
 page.on('pageerror', (error) => browserProblems.push({ type: 'pageerror', text: error.message }));
+page.on('requestfailed', (request) => browserProblems.push({
+  type: 'requestfailed',
+  text: `${request.failure()?.errorText || 'request failed'} ${request.url()}`,
+}));
 
 try {
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
