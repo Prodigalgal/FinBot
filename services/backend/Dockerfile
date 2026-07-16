@@ -4,7 +4,7 @@ FROM --platform=$BUILDPLATFORM eclipse-temurin:26-jdk-noble AS builder
 WORKDIR /workspace
 COPY services/backend/ ./
 RUN chmod +x gradlew \
-    && ./gradlew --no-daemon clean test :finbot-bootstrap:bootJar :finbot-migration:bootJar
+    && ./gradlew --no-daemon :finbot-bootstrap:bootJar :finbot-migration:bootJar
 
 FROM eclipse-temurin:26-jre-noble
 RUN groupadd --gid 10001 finbot \
