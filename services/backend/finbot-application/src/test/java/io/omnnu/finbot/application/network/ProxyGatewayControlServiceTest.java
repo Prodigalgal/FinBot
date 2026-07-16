@@ -2,6 +2,7 @@ package io.omnnu.finbot.application.network;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -125,6 +126,38 @@ class ProxyGatewayControlServiceTest {
         service.reconcileAll().getFirst().toCompletableFuture().join();
 
         assertEquals(ProxyGatewayApplyMode.RECONCILE, gateway.mode);
+    }
+
+    @Test
+    void mapsForcedReloadFailureToDependencyUnavailable() {
+        var failedGateway = new CapturingGateway() {
+            @Override
+            public java.util.concurrent.CompletionStage<Void> apply(
+                    ProxyGatewayProfile profile,
+                    ProxyGatewayRuntimeConfiguration configuration,
+                    ProxyGatewayApplyMode mode) {
+                return CompletableFuture.failedFuture(new IllegalStateException("upstream rejected"));
+            }
+        };
+        RuntimeSecretStore secrets = new EmptyMutatingStore() {
+            @Override
+            public Optional<String> resolve(
+                    RuntimeSecretScope scope,
+                    String targetId,
+                    String secretName,
+                    String fallbackEnvironmentVariable) {
+                return "INLINE_NODES".equals(secretName)
+                        ? Optional.of("hysteria2://fallback-node.example:443")
+                        : Optional.empty();
+            }
+        };
+        var service = service(new FakeRepository(profile(true, 3), true), secrets, failedGateway);
+
+        var exception = assertThrows(
+                java.util.concurrent.CompletionException.class,
+                () -> service.reload("proxygateway_exchange").toCompletableFuture().join());
+
+        assertInstanceOf(ProxyGatewayUnavailableException.class, exception.getCause());
     }
 
     @Test

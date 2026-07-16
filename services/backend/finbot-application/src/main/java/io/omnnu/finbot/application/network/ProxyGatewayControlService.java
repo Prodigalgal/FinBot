@@ -33,7 +33,10 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
         var requestedAt = clock.instant();
         return gateway.apply(profile, configuration(profile), ProxyGatewayApplyMode.FORCE_RELOAD)
                 .thenApply(ignored -> new ProxyGatewayReloadResult(
-                        profile.gatewayId(), "RELOAD_ACCEPTED", requestedAt));
+                        profile.gatewayId(), "RELOAD_ACCEPTED", requestedAt))
+                .exceptionally(exception -> {
+                    throw new ProxyGatewayUnavailableException(exception);
+                });
     }
 
     @Override

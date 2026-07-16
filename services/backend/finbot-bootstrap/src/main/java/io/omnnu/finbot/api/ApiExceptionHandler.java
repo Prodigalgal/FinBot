@@ -7,6 +7,7 @@ import io.omnnu.finbot.application.catalog.CatalogNotFoundException;
 import io.omnnu.finbot.application.exchange.ExchangeAccountNotFoundException;
 import io.omnnu.finbot.application.ingestion.IngestionConflictException;
 import io.omnnu.finbot.application.network.NetworkDiagnosticConflictException;
+import io.omnnu.finbot.application.network.ProxyGatewayUnavailableException;
 import org.springframework.dao.DataIntegrityViolationException;
 import io.omnnu.finbot.application.operations.TaskNotFoundException;
 import io.omnnu.finbot.application.workflow.WorkflowManagementConflictException;
@@ -67,6 +68,16 @@ public final class ApiExceptionHandler {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage());
         problem.setTitle("Authentication rejected");
         problem.setProperty("code", "AUTHENTICATION_REJECTED");
+        return problem;
+    }
+
+    @ExceptionHandler(ProxyGatewayUnavailableException.class)
+    ProblemDetail handleProxyGatewayUnavailable(ProxyGatewayUnavailableException exception) {
+        var problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_GATEWAY,
+                "代理网关当前无可用出口，请查看网络诊断中的节点健康状态");
+        problem.setTitle("Proxy gateway unavailable");
+        problem.setProperty("code", "PROXY_GATEWAY_UNAVAILABLE");
         return problem;
     }
 
