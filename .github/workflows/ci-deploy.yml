@@ -82,12 +82,18 @@ jobs:
             if [ "$attempt" = 3 ]; then exit 1; fi
             sleep $((attempt * 5))
           done
-      - name: Frontend contracts, tests and build
+      - name: Frontend contract and type checks
         working-directory: apps/web
         run: |
           npx tsc -b --clean
           npm run contract:check
+      - name: Frontend component tests
+        working-directory: apps/web
+        run: |
           npm test
+      - name: Frontend production build
+        working-directory: apps/web
+        run: |
           npm run build
       - name: Frontend dependency audit
         working-directory: apps/web

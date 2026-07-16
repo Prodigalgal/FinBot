@@ -27,25 +27,28 @@ const source: SourceRecord = {
   version: 0,
 };
 
-const workspace: IngestionWorkspace = {
-  rawEvidenceCount: 0,
-  normalizedDocumentCount: 0,
-  compressionCount: 0,
-  aiReviewCount: 0,
-  sources: [{
-    sourceId: source.sourceId,
-    displayName: source.displayName,
-    mode: source.mode,
-    tier: source.tier,
-    category: source.category,
-    outboundRoute: source.outboundRoute,
-    credentialSupported: false,
+const createdSource: SourceRecord = {
+  ...source,
+  sourceId: 'source_created_rss01',
+  displayName: '用户 RSS',
+  feedUrls: ['https://news.example.com/feed.xml'],
+};
+
+function workspaceSource(record: SourceRecord): IngestionWorkspace['sources'][number] {
+  return {
+    sourceId: record.sourceId,
+    displayName: record.displayName,
+    mode: record.mode,
+    tier: record.tier,
+    category: record.category,
+    outboundRoute: record.outboundRoute,
+    credentialSupported: record.credentialSupported,
     credentialConfigured: true,
     credentialSource: 'NOT_REQUIRED',
     credentialFingerprint: null,
     credentialVersion: 0,
-    enabled: true,
-    version: 0,
+    enabled: record.enabled,
+    version: record.version,
     latestStatus: null,
     fetchedCount: 0,
     insertedCount: 0,
@@ -53,10 +56,23 @@ const workspace: IngestionWorkspace = {
     errorCode: null,
     errorMessage: null,
     lastCollectedAt: null,
-  }],
+  };
+}
+
+const workspace: IngestionWorkspace = {
+  rawEvidenceCount: 0,
+  normalizedDocumentCount: 0,
+  compressionCount: 0,
+  aiReviewCount: 0,
+  sources: [workspaceSource(source)],
   recentRuns: [],
   recentAiReviews: [],
   generatedAt: '2026-07-16T14:00:00Z',
+};
+
+const workspaceAfterCreate: IngestionWorkspace = {
+  ...workspace,
+  sources: [...workspace.sources, workspaceSource(createdSource)],
 };
 
 const apiMock = vi.hoisted(() => ({
@@ -83,7 +99,7 @@ beforeEach(() => {
   apiMock.tasks.mockResolvedValue([]);
   apiMock.sources.mockResolvedValue([source]);
   apiMock.documents.mockResolvedValue([]);
-  apiMock.createSource.mockResolvedValue({ ...source, sourceId: 'source_created_rss01' });
+  apiMock.createSource.mockResolvedValue(createdSource);
   apiMock.testSource.mockResolvedValue({
     collectionId: 'collection_test01', sourceId: source.sourceId, status: 'COMPLETED',
     fetchedCount: 1, insertedCount: 1, duplicateCount: 0, errorCode: null, errorMessage: null,
@@ -96,6 +112,12 @@ afterEach(() => {
 });
 
 it('creates a user-managed RSS source from the management dialog', async () => {
+  apiMock.ingestionWorkspace
+    .mockResolvedValueOnce(workspace)
+    .mockResolvedValue(workspaceAfterCreate);
+  apiMock.sources
+    .mockResolvedValueOnce([source])
+    .mockResolvedValue([source, createdSource]);
   const user = userEvent.setup();
   render(<IngestionPage />);
   await user.click(await screen.findByRole('button', { name: '新增信源' }));
@@ -109,7 +131,8 @@ it('creates a user-managed RSS source from the management dialog', async () => {
     feedUrls: ['https://news.example.com/feed.xml'],
     outboundRoute: 'PUBLIC_DATA',
   })));
-});
+  await waitFor(() => expect(screen.getByLabelText('信息源')).toHaveTextContent('用户 RSS'));
+}, 10_000);
 
 it('runs an immediate source test through the selected source configuration', async () => {
   const user = userEvent.setup();

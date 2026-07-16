@@ -25,13 +25,18 @@ export function IngestionPage() {
   const [error, setError] = useState<unknown>(null);
   const [message, setMessage] = useState('');
   const [editorSource, setEditorSource] = useState<SourceRecord | 'new' | null>(null);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (preferredSourceId?: string) => {
     try {
       const [nextWorkspace, nextTasks, nextSources] = await Promise.all([api.ingestionWorkspace(150), api.tasks(undefined, 200), api.sources()]);
       setWorkspace(nextWorkspace);
       setSourceCatalog(nextSources);
       setTasks(nextTasks.filter((task) => task.taskType === 'INGESTION'));
-      setSourceId((current) => nextWorkspace.sources.some((source) => source.sourceId === current) ? current : nextWorkspace.sources[0]?.sourceId || '');
+      setSourceId((current) => {
+        const candidate = preferredSourceId || current;
+        return nextWorkspace.sources.some((source) => source.sourceId === candidate)
+          ? candidate
+          : nextWorkspace.sources[0]?.sourceId || '';
+      });
     } catch (cause) { setError(cause); }
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
@@ -58,9 +63,8 @@ export function IngestionPage() {
         ? await api.createSource(definition)
         : await api.updateSource(editorSource!.sourceId, editorSource!.version, definition);
       setEditorSource(null);
-      setSourceId(saved.sourceId);
       setMessage(editorSource === 'new' ? '信息源已创建' : '信息源配置已更新');
-      await refresh();
+      await refresh(saved.sourceId);
     } catch (cause) { setError(cause); } finally { setBusy(false); }
   };
   const deleteSource = async (source: SourceRecord) => {
