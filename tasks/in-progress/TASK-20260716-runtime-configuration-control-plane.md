@@ -15,6 +15,7 @@
 - 配置中心 UI、连通性测试和生效来源状态。
 - Liquibase 032、K8S 主密钥、契约和线上验证。
 - Liquibase 033 信息源归档契约、代理出口轮换和 Firecrawl 线上成功率验证。
+- 定时任务重叠抑制：同一 schedule 存在 `PENDING`/`CLAIMED` 实例时只推进调度游标，不重复入队。
 
 ## 非目标
 
@@ -23,4 +24,4 @@
 
 ## 状态
 
-In progress.
+In progress. 代码、契约、数据库迁移、单副本部署和 UI/API smoke 已完成；当前继续收口任务积压治理，并等待可稳定通过 Firecrawl keyless 风控和 Bybit TLS 握手的代理节点池。

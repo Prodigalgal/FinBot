@@ -262,23 +262,31 @@ public class JdbcBackgroundTaskStore implements BackgroundTaskStore {
                 .param("limit", Math.max(1, Math.min(limit, 100)))
                 .query((resultSet, rowNumber) -> schedule(resultSet))
                 .list();
+        var materializedCount = 0;
         for (var schedule : schedules) {
             var taskId = taskIdSupplier.get();
             var idempotencyKey = "schedule:" + schedule.scheduleId() + ":" + schedule.nextRunAt().toEpochMilli();
             payloadCodec.decode(schedule.taskType(), schedule.payload());
-            jdbcClient.sql("""
+            materializedCount += jdbcClient.sql("""
                     insert into background_task (
                       task_id, task_type, status, priority, idempotency_key, payload,
                       attempt_count, maximum_attempts, available_at, created_at, updated_at
-                    ) values (
+                    ) select
                       :taskId, :taskType, 'PENDING', :priority, :idempotencyKey, cast(:payload as jsonb),
                       0, :maximumAttempts, :now, :now, :now
-                    ) on conflict (idempotency_key) do nothing
+                    where not exists (
+                      select 1
+                      from background_task active_task
+                      where active_task.status in ('PENDING', 'CLAIMED')
+                        and left(active_task.idempotency_key, length(:scheduleKeyPrefix)) = :scheduleKeyPrefix
+                    )
+                    on conflict (idempotency_key) do nothing
                     """)
                     .param("taskId", taskId.value())
                     .param("taskType", schedule.taskType().name())
                     .param("priority", schedule.priority())
                     .param("idempotencyKey", idempotencyKey)
+                    .param("scheduleKeyPrefix", "schedule:" + schedule.scheduleId() + ":")
                     .param("payload", schedule.payload())
                     .param("maximumAttempts", schedule.maximumAttempts())
                     .param("now", timestamp(now))
@@ -299,7 +307,7 @@ public class JdbcBackgroundTaskStore implements BackgroundTaskStore {
                     .param("now", timestamp(now))
                     .update();
         }
-        return schedules.size();
+        return materializedCount;
     }
 
     @Override

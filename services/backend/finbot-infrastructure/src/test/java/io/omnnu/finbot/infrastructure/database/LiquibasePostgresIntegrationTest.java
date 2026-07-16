@@ -19,6 +19,7 @@ import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
 import io.omnnu.finbot.application.configuration.RuntimeSecretSource;
 import io.omnnu.finbot.application.configuration.RuntimeSecretStatus;
 import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
+import io.omnnu.finbot.domain.operations.BackgroundTaskId;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
@@ -71,6 +72,7 @@ import java.util.Base64;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import liquibase.Contexts;
 import liquibase.LabelExpression;
 import liquibase.Liquibase;
@@ -755,6 +757,70 @@ class LiquibasePostgresIntegrationTest {
         var recovered = store.find(claimed.taskId()).orElseThrow();
         assertEquals(BackgroundTaskStatus.PENDING, recovered.status());
         assertEquals("LEASE_EXPIRED", recovered.errorCode());
+    }
+
+    @Test
+    void doesNotMaterializeAnotherScheduledTaskWhileThePreviousRunIsActive() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var store = new JdbcBackgroundTaskStore(jdbcClient, new TaskPayloadCodec(new ObjectMapper()));
+        var now = Instant.parse("2020-01-01T00:00:00Z");
+        var scheduleId = "schedule_task_coalesce_test";
+        var taskSequence = new AtomicInteger();
+        try {
+            jdbcClient.sql("""
+                    insert into schedule_definition (
+                      schedule_id, display_name, task_type, payload, enabled, interval_seconds,
+                      priority, maximum_attempts, next_run_at
+                    ) values (
+                      :scheduleId, '任务重叠抑制集成测试', 'ACCOUNT_SYNC',
+                      '{"accountId":"account_bybit_demo_default"}'::jsonb,
+                      true, 60, 80, 5, :now
+                    )
+                    """)
+                    .param("scheduleId", scheduleId)
+                    .param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
+                    .update();
+
+            assertEquals(1, store.materializeDueSchedules(
+                    now,
+                    10,
+                    () -> new BackgroundTaskId("task_schedule_coalesce_" + taskSequence.incrementAndGet())));
+            jdbcClient.sql("""
+                    update schedule_definition
+                    set next_run_at = :now, updated_at = :now
+                    where schedule_id = :scheduleId
+                    """)
+                    .param("scheduleId", scheduleId)
+                    .param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
+                    .update();
+
+            assertEquals(0, store.materializeDueSchedules(
+                    now,
+                    10,
+                    () -> new BackgroundTaskId("task_schedule_coalesce_" + taskSequence.incrementAndGet())));
+            assertEquals(1, jdbcClient.sql("""
+                            select count(*)
+                            from background_task
+                            where status in ('PENDING', 'CLAIMED')
+                              and left(idempotency_key, length(:scheduleKeyPrefix)) = :scheduleKeyPrefix
+                            """)
+                    .param("scheduleKeyPrefix", "schedule:" + scheduleId + ":")
+                    .query(Integer.class)
+                    .single());
+        } finally {
+            jdbcClient.sql("""
+                    delete from background_task
+                    where left(idempotency_key, length(:scheduleKeyPrefix)) = :scheduleKeyPrefix
+                    """)
+                    .param("scheduleKeyPrefix", "schedule:" + scheduleId + ":")
+                    .update();
+            jdbcClient.sql("delete from schedule_definition where schedule_id = :scheduleId")
+                    .param("scheduleId", scheduleId)
+                    .update();
+        }
     }
 
     @Test
