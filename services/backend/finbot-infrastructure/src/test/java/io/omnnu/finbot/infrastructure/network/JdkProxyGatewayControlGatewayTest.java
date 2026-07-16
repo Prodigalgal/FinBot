@@ -2,6 +2,7 @@ package io.omnnu.finbot.infrastructure.network;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -95,6 +96,7 @@ class JdkProxyGatewayControlGatewayTest {
 
             assertEquals("Bearer control-token", authorization.get());
             assertEquals(List.of("force=true", "<none>"), reloadQueries);
+            assertThrows(NullPointerException.class, () -> gateway.apply(profile, configuration, null));
             assertTrue(status.serviceReady());
             assertFalse(status.egressReady());
             assertEquals(4, status.nodeCount());

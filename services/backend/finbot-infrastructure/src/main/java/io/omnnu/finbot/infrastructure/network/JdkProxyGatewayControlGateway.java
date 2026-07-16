@@ -44,6 +44,7 @@ public final class JdkProxyGatewayControlGateway implements ProxyGatewayControlG
             ProxyGatewayProfile profile,
             ProxyGatewayRuntimeConfiguration configuration,
             ProxyGatewayApplyMode mode) {
+        Objects.requireNonNull(mode, "mode");
         var token = environment.resolve(TOKEN_ENV)
                 .orElseThrow(() -> new IllegalStateException("Proxy control token is not configured"));
         var request = HttpRequest.newBuilder(controlUri(profile.controlUrl(), mode))
