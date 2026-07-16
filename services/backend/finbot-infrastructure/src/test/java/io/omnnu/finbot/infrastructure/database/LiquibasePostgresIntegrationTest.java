@@ -437,7 +437,8 @@ class LiquibasePostgresIntegrationTest {
                           (select operation from workflow_node_definition
                            where version_id = 'workflowversion_standard_v6'
                              and node_type = 'QUANT') as published_quant_operation,
-                          (select count(*) from information_source) as source_count,
+                          (select count(*) from information_source where deleted_at is null)
+                            as source_count,
                           (select count(*) from network_proxy_route) as proxy_route_count,
                           (select count(*) from watchlist_item) as watchlist_item_count,
                           (select require_proxy from network_proxy_route
@@ -672,7 +673,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(34, result.getInt("changeset_count"));
+                    assertEquals(35, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
