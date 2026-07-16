@@ -25,4 +25,4 @@
 
 ## 状态
 
-In progress. 代码、契约、数据库迁移、单副本部署和 UI/API smoke 已完成；当前继续收口任务积压治理，并等待可稳定通过 Firecrawl keyless 风控和 Bybit TLS 握手的代理节点池。
+In progress. 代码、契约、数据库迁移、单副本部署、UI/API smoke、定时任务重叠抑制和运行期租约恢复均已完成并在线验证；生产运行 `4ac7113`，ArgoCD revision `14639545094bac93aa589968ba3871b350f422b3` 为 `Synced/Healthy`。剩余边界是外部代理节点质量：当前 Firecrawl keyless 出口仍会触发 IP 风控 403，Bybit 代理仍存在 TLS EOF；需更换稳定节点池或为 Firecrawl 配置 API Key 后再关闭本 Goal。
