@@ -104,7 +104,7 @@ export function NetworkPage() {
       const runtime = gatewayStatuses[gateway.gatewayId];
       return <Paper key={gateway.gatewayId} variant="outlined" sx={{ p: 2 }}><Stack spacing={2}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap"><Typography fontWeight={700}>{gateway.displayName}</Typography><Chip size="small" variant="outlined" color={statusColor(gateway.status)} label={`配置 ${statusLabel(gateway.status)}`} /><Chip size="small" color={gatewayRuntimeColor(gateway, runtime, runtimeLoaded)} label={gatewayRuntimeLabel(gateway, runtime, runtimeLoaded)} /></Stack>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap"><Typography fontWeight={700}>{gateway.displayName}</Typography><Chip size="small" variant="outlined" color={statusColor(gateway.status)} label={`配置 ${statusLabel(gateway.status)}`} /><Chip data-testid={`proxy-runtime-${gateway.gatewayId}`} size="small" color={gatewayRuntimeColor(gateway, runtime, runtimeLoaded)} label={gatewayRuntimeLabel(gateway, runtime, runtimeLoaded)} /></Stack>
           <Typography variant="caption" color="text.secondary">更新于 {formatTime(gateway.updatedAt)}</Typography>
         </Stack>
         {gateway.enabled && runtime && <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 0.5, md: 2 }}>

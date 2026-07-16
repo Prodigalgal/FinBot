@@ -49,7 +49,7 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
         var profile = profiles.find(Objects.requireNonNull(gatewayId, "gatewayId").strip())
                 .filter(ProxyGatewayProfile::enabled)
                 .orElseThrow(() -> new IllegalArgumentException("Proxy gateway does not exist or is disabled"));
-        return gateway.status(profile);
+        return gateway.status(profile).exceptionally(exception -> unavailableStatus(profile, exception));
     }
 
     @Override
@@ -111,5 +111,29 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
                         secretName,
                         environmentVariable)
                 .orElse(null);
+    }
+
+    private static ProxyGatewayRuntimeStatus unavailableStatus(
+            ProxyGatewayProfile profile,
+            Throwable exception) {
+        var cause = exception;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        return new ProxyGatewayRuntimeStatus(
+                profile.gatewayId(),
+                false,
+                false,
+                0,
+                0,
+                0,
+                List.of(),
+                java.util.Map.of(),
+                false,
+                null,
+                0,
+                0,
+                null,
+                "Proxy gateway status unavailable: " + cause.getClass().getSimpleName());
     }
 }

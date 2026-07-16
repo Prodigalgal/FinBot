@@ -11,6 +11,7 @@ import io.omnnu.finbot.application.configuration.RuntimeSecretSource;
 import io.omnnu.finbot.application.configuration.RuntimeSecretStatus;
 import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import java.net.URI;
+import java.net.ConnectException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -116,6 +117,27 @@ class ProxyGatewayControlServiceTest {
         assertEquals(Map.of("CONNECTION_ERROR", 4), status.probeFailureCounts());
     }
 
+    @Test
+    void convertsGatewayTransportFailureIntoSanitizedRuntimeStatus() {
+        var profile = profile(true, 3);
+        var failedGateway = new CapturingGateway() {
+            @Override
+            public java.util.concurrent.CompletionStage<ProxyGatewayRuntimeStatus> status(
+                    ProxyGatewayProfile ignored) {
+                return CompletableFuture.failedFuture(
+                        new ConnectException("sensitive internal endpoint must not escape"));
+            }
+        };
+        var service = service(
+                new FakeRepository(profile, true), new EmptyMutatingStore(), failedGateway);
+
+        var status = service.status(profile.gatewayId()).toCompletableFuture().join();
+
+        assertFalse(status.serviceReady());
+        assertFalse(status.egressReady());
+        assertEquals("Proxy gateway status unavailable: ConnectException", status.error());
+    }
+
     private static ProxyGatewayControlService service(
             ProxyGatewayProfileRepository repository,
             RuntimeSecretStore secrets,
@@ -175,7 +197,7 @@ class ProxyGatewayControlServiceTest {
         }
     }
 
-    private static final class CapturingGateway implements ProxyGatewayControlGateway {
+    private static class CapturingGateway implements ProxyGatewayControlGateway {
         private ProxyGatewayRuntimeConfiguration configuration;
 
         @Override

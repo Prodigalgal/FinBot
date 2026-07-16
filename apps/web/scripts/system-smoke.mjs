@@ -67,6 +67,13 @@ try {
     await mainNavigation.getByRole('button', { name: navigation, exact: true }).click();
     await page.getByRole('heading', { name: heading, exact: true }).waitFor();
     await page.getByText(readyText, { exact: false }).first().waitFor();
+    if (navigation === '网络诊断') {
+      const runtimeStatuses = page.locator('[data-testid^="proxy-runtime-"]');
+      await runtimeStatuses.first().waitFor();
+      await page.waitForFunction(() => Array.from(
+        document.querySelectorAll('[data-testid^="proxy-runtime-"]'),
+      ).every((element) => element.textContent?.trim() !== '检测中'));
+    }
   }
   await page.screenshot({ path: path.join(outputDir, 'all-workspaces-desktop.png'), fullPage: true });
   const desktopOverflowElements = await horizontalOverflowElements(page);
