@@ -26,4 +26,20 @@
 
 ## 状态
 
-In progress. 代码、契约、数据库迁移、单副本部署、UI/API smoke、定时任务重叠抑制和运行期租约恢复均已完成并在线验证；生产运行 `4ac7113`，ArgoCD revision `14639545094bac93aa589968ba3871b350f422b3` 为 `Synced/Healthy`。剩余边界是外部代理节点质量：当前 Firecrawl keyless 出口仍会触发 IP 风控 403，Bybit 代理仍存在 TLS EOF；需更换稳定节点池或为 Firecrawl 配置 API Key 后再关闭本 Goal。
+Blocked by external egress quality. 软件实现、契约、数据库迁移、单副本部署和生产验证已经完成；当前不再存在应用代码或 GitOps 待发布项。
+
+### 生产证据（2026-07-17）
+
+- Core 镜像 `f118056e747bc93962d46a68b01e50a66f15365a`，Proxy 镜像 `167cbf4e212f63b2e15468ba7597422f5b6cfa57`。
+- ArgoCD revision `4b104225b256b58488dd151e0ec51d9332b176e8` 为 `Synced/Healthy`；Backend、Quant、Web、两个 Proxy 和 PostgreSQL 均单副本 Ready。
+- Core CI run `29528418652` 与 Proxy CI run `29525020106` 全部成功，覆盖 PostgreSQL 集成测试、Web 组件/E2E、镜像扫描、签名和 GitOps 更新。
+- 生产 system smoke 覆盖 13 个工作区、桌面/移动端溢出、登录、CSRF 业务冲突和 Operations SSE，结果全部通过。
+- 周期配置对账已与强制探测分离；跨多个 30 秒对账周期，Proxy generation 不增长，Backend 最近 15 分钟对账告警为 0。管理员显式重新探测仍会推进 generation。
+- 状态查询对降级网关返回 HTTP 200 结构化状态；显式重载无可用出口时返回 HTTP 502 ProblemDetail，错误码 `PROXY_GATEWAY_UNAVAILABLE`。
+- EIA Firecrawl 在线测试使用实际保存配置执行并返回 HTTP 200 结构化 `FAILED`，错误码 `FIRECRAWL_NETWORK_FAILURE`，未绕过强制代理或伪装成功。
+
+### 外部阻断
+
+- Firecrawl IPv4 代理池：健康节点 `0/32`，最近探测为 29 个 `HTTP_403`、3 个 `HTTP_429`。
+- Bybit 代理池：健康节点 `0/4`，全部为 `CONNECTION_ERROR`。
+- 解阻条件：提供至少一个能通过对应目标探测的稳定 IPv4 节点池；保存到后台后点击“重新探测”，确认健康节点大于 0，再重跑 Firecrawl 信源和 Bybit Demo 在线测试。

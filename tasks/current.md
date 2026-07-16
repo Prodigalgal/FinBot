@@ -1,5 +1,13 @@
 # 当前任务
 
+## S3：统一运行时配置控制面
+
+- 状态：软件交付完成，外部出口阻断（2026-07-17）。
+- 已完成：Provider、交易所账户、信息源、代理路由与代理池的加密热配置；目标感知节点健康；请求级轮换；配置对账节流；中文运行态；生产 API/UI/CSRF/SSE 验证。
+- 生产：Core `f118056`、Proxy `167cbf4`，ArgoCD revision `4b104225b256b58488dd151e0ec51d9332b176e8`，`Synced/Healthy`，全部工作负载单副本 Ready。
+- 阻断：Firecrawl IPv4 池 `0/32`（29 个 403、3 个 429），Bybit 池 `0/4`（连接失败）；系统已 fail closed，需要更换可用节点后重新探测。
+- 详情：[`in-progress/TASK-20260716-runtime-configuration-control-plane.md`](./in-progress/TASK-20260716-runtime-configuration-control-plane.md)。
+
 ## S3：压缩后分裂的双环境研究工作流
 
 - 状态：进行中（2026-07-15）。
