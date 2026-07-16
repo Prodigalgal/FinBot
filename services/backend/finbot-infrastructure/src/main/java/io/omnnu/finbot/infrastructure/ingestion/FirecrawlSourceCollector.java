@@ -31,6 +31,7 @@ import org.springframework.stereotype.Component;
 @Component
 final class FirecrawlSourceCollector implements SourceCollectorAdapter {
     private static final int MAXIMUM_RESPONSE_BYTES = 10 * 1024 * 1024;
+    private static final int MAXIMUM_ATTEMPTS = 3;
     private static final String USER_AGENT = "FinBot/2.0 (+https://github.com/omnnu/FinBot)";
 
     private final RoutedHttpClientFactory httpClients;
@@ -203,38 +204,46 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
             requestBuilder.header("Authorization", "Bearer " + credential);
         }
         try {
-            var route = httpClients.route(OutboundRoute.FIRECRAWL);
-            var response = httpClients.client(OutboundRoute.FIRECRAWL).send(
-                    requestBuilder.build(),
-                    HttpResponse.BodyHandlers.ofInputStream());
-            try (var stream = response.body()) {
-                var bytes = stream.readNBytes(MAXIMUM_RESPONSE_BYTES + 1);
-                if (bytes.length > MAXIMUM_RESPONSE_BYTES) {
-                    throw new SourceCollectionException(
-                            "FIRECRAWL_RESPONSE_TOO_LARGE",
-                            "Firecrawl response exceeded the configured safety limit",
-                            false);
+            for (var attempt = 1; attempt <= MAXIMUM_ATTEMPTS; attempt++) {
+                var route = httpClients.route(OutboundRoute.FIRECRAWL);
+                var response = httpClients.clientForRequest(route).send(
+                        requestBuilder.build(),
+                        HttpResponse.BodyHandlers.ofInputStream());
+                try (var stream = response.body()) {
+                    var bytes = stream.readNBytes(MAXIMUM_RESPONSE_BYTES + 1);
+                    if (bytes.length > MAXIMUM_RESPONSE_BYTES) {
+                        throw new SourceCollectionException(
+                                "FIRECRAWL_RESPONSE_TOO_LARGE",
+                                "Firecrawl response exceeded the configured safety limit",
+                                false);
+                    }
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                        if (retryable(response.statusCode()) && attempt < MAXIMUM_ATTEMPTS) {
+                            Thread.sleep(retryDelay(response, attempt));
+                            continue;
+                        }
+                        throw new SourceCollectionException(
+                                "FIRECRAWL_HTTP_" + response.statusCode(),
+                                failureMessage(response.statusCode(), bytes, attempt),
+                                false);
+                    }
+                    var payload = objectMapper.readTree(bytes);
+                    if (!payload.isObject()) {
+                        throw new SourceCollectionException(
+                                "FIRECRAWL_RESPONSE_INVALID",
+                                "Firecrawl response root was not a JSON object",
+                                false);
+                    }
+                    return new FirecrawlResponse(
+                            payload,
+                            response.statusCode(),
+                            response.headers().firstValue("content-type")
+                                    .orElse("application/json"),
+                            route.redactedEndpoint(),
+                            clock.instant());
                 }
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw new SourceCollectionException(
-                            "FIRECRAWL_HTTP_" + response.statusCode(),
-                            "Firecrawl returned HTTP " + response.statusCode(),
-                            false);
-                }
-                var payload = objectMapper.readTree(bytes);
-                if (!payload.isObject()) {
-                    throw new SourceCollectionException(
-                            "FIRECRAWL_RESPONSE_INVALID",
-                            "Firecrawl response root was not a JSON object",
-                            false);
-                }
-                return new FirecrawlResponse(
-                        payload,
-                        response.statusCode(),
-                        response.headers().firstValue("content-type").orElse("application/json"),
-                        route.redactedEndpoint(),
-                        clock.instant());
             }
+            throw new IllegalStateException("Firecrawl retry loop completed without a result");
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new SourceCollectionException(
@@ -251,6 +260,40 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
                     "FIRECRAWL_NETWORK_FAILURE",
                     "Firecrawl request failed: " + exception.getClass().getSimpleName(),
                     false);
+        }
+    }
+
+    private String failureMessage(int statusCode, byte[] responseBody, int attempts) {
+        var providerCode = safeProviderCode(responseBody);
+        return "Firecrawl returned HTTP " + statusCode
+                + (providerCode == null ? "" : " (" + providerCode + ")")
+                + " after " + attempts + " attempt" + (attempts == 1 ? "" : "s");
+    }
+
+    private String safeProviderCode(byte[] responseBody) {
+        try {
+            var code = objectMapper.readTree(responseBody).path("code");
+            if (!code.isTextual()) {
+                return null;
+            }
+            var value = code.textValue().strip();
+            return value.matches("[A-Z0-9_]{2,80}") ? value : null;
+        } catch (IOException exception) {
+            return null;
+        }
+    }
+
+    private static boolean retryable(int statusCode) {
+        return statusCode == 403 || statusCode == 429 || statusCode >= 500;
+    }
+
+    private static Duration retryDelay(HttpResponse<?> response, int attempt) {
+        var fallbackSeconds = Math.min(4, attempt);
+        var retryAfter = response.headers().firstValue("retry-after").orElse("");
+        try {
+            return Duration.ofSeconds(Math.max(1, Math.min(10, Long.parseLong(retryAfter))));
+        } catch (NumberFormatException exception) {
+            return Duration.ofSeconds(fallbackSeconds);
         }
     }
 

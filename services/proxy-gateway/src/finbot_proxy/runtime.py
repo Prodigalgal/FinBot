@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from finbot_proxy.models import Subscription
+from finbot_proxy.round_robin import RoundRobinTcpProxy
 from finbot_proxy.singbox import build_configuration
 from finbot_proxy.subscription import load_subscription, parse_subscription, select_nodes
 
@@ -28,6 +29,7 @@ class RuntimeConfiguration:
     refresh_seconds: int
     fetch_timeout_seconds: float
     proxy_port: int
+    node_port_start: int
     health_port: int
     sing_box_path: Path
     runtime_directory: Path
@@ -45,8 +47,12 @@ class RuntimeConfiguration:
         )
         proxy_port = _integer("PROXY_PORT", 8080, minimum=1024, maximum=65535)
         health_port = _integer("PROXY_HEALTH_PORT", 8081, minimum=1024, maximum=65535)
+        node_port_start = _integer(
+            "PROXY_NODE_PORT_START", 10000, minimum=1024, maximum=65407
+        )
         if proxy_port == health_port:
             raise ValueError("PROXY_PORT and PROXY_HEALTH_PORT must differ")
+        _validate_port_ranges(proxy_port, health_port, node_port_start, maximum_nodes)
         return cls(
             subscription_url=subscription_url,
             inline_nodes=inline_nodes,
@@ -59,6 +65,7 @@ class RuntimeConfiguration:
             refresh_seconds=refresh_seconds,
             fetch_timeout_seconds=float(os.getenv("PROXY_FETCH_TIMEOUT_SECONDS", "20")),
             proxy_port=proxy_port,
+            node_port_start=node_port_start,
             health_port=health_port,
             sing_box_path=Path(os.getenv("SING_BOX_PATH", "/usr/local/bin/sing-box")),
             runtime_directory=Path(os.getenv("PROXY_RUNTIME_DIRECTORY", "/tmp/finbot-proxy")),
@@ -86,6 +93,7 @@ class RuntimeConfiguration:
             refresh_seconds=refresh_seconds,
             fetch_timeout_seconds=self.fetch_timeout_seconds,
             proxy_port=self.proxy_port,
+            node_port_start=self.node_port_start,
             health_port=self.health_port,
             sing_box_path=self.sing_box_path,
             runtime_directory=self.runtime_directory,
@@ -108,6 +116,8 @@ class GatewayState:
         self._refresh_attempt = 0
         self._last_refresh_epoch_seconds: float | None = None
         self._last_error: str | None = None
+        self._assigned_connection_count = 0
+        self._last_assigned_node_index: int | None = None
 
     def successful_refresh(
         self,
@@ -145,6 +155,11 @@ class GatewayState:
         with self._lock:
             self._ready = False
 
+    def assigned_node(self, node_index: int) -> None:
+        with self._lock:
+            self._assigned_connection_count += 1
+            self._last_assigned_node_index = node_index
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             return self._snapshot()
@@ -177,6 +192,9 @@ class GatewayState:
             "refreshAttempt": self._refresh_attempt,
             "lastRefreshEpochSeconds": self._last_refresh_epoch_seconds,
             "lastError": self._last_error,
+            "rotationMode": "round-robin-per-connection",
+            "assignedConnectionCount": self._assigned_connection_count,
+            "lastAssignedNodeIndex": self._last_assigned_node_index,
         }
 
 
@@ -190,19 +208,27 @@ class ProxyGateway:
         self._refresh_lock = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
         self._configuration_hash: str | None = None
+        self._round_robin = RoundRobinTcpProxy(
+            configuration.proxy_port,
+            state.assigned_node,
+        )
 
     def run(self) -> None:
         self._validate_runtime(self._configuration)
-        while not self._stop.is_set():
-            with self._refresh_lock:
-                configuration = self._current_configuration()
-                try:
-                    self._refresh(configuration)
-                except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
-                    self._state.failed_refresh(error, process_alive=self._process_alive())
-            self._reload_requested.wait(configuration.refresh_seconds)
-            self._reload_requested.clear()
-        self._stop_process()
+        self._round_robin.start()
+        try:
+            while not self._stop.is_set():
+                with self._refresh_lock:
+                    configuration = self._current_configuration()
+                    try:
+                        self._refresh(configuration)
+                    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+                        self._state.failed_refresh(error, process_alive=self._process_alive())
+                self._reload_requested.wait(configuration.refresh_seconds)
+                self._reload_requested.clear()
+        finally:
+            self._round_robin.stop()
+            self._stop_process()
 
     def stop(self) -> None:
         self._stop.set()
@@ -250,11 +276,11 @@ class ProxyGateway:
             raise RuntimeError("Proxy subscription contains no secure supported nodes")
         generated = build_configuration(
             selection.nodes,
-            listen_port=configuration.proxy_port,
+            listen_port_start=configuration.node_port_start,
         )
         generated_hash = hashlib.sha256(generated.encode("utf-8")).hexdigest()
         if generated_hash != self._configuration_hash or not self._process_alive():
-            self._replace_process(generated, configuration)
+            self._replace_process(generated, configuration, len(selection.nodes))
             self._configuration_hash = generated_hash
         self._state.successful_refresh(
             node_count=len(selection.nodes),
@@ -285,7 +311,12 @@ class ProxyGateway:
             invalid_node_count=sum(item.invalid_node_count for item in subscriptions),
         )
 
-    def _replace_process(self, generated: str, configuration: RuntimeConfiguration) -> None:
+    def _replace_process(
+        self,
+        generated: str,
+        configuration: RuntimeConfiguration,
+        node_count: int,
+    ) -> None:
         runtime = configuration.runtime_directory
         runtime.mkdir(parents=True, exist_ok=True)
         candidate = runtime / "sing-box.candidate.json"
@@ -308,10 +339,14 @@ class ProxyGateway:
             stderr=subprocess.DEVNULL,
         )
         deadline = time.monotonic() + 10
+        node_ports = tuple(
+            configuration.node_port_start + index for index in range(node_count)
+        )
         while time.monotonic() < deadline:
             if self._process.poll() is not None:
                 raise RuntimeError("sing-box exited during startup")
-            if _tcp_connectable("127.0.0.1", configuration.proxy_port):
+            if all(_tcp_connectable("127.0.0.1", port) for port in node_ports):
+                self._round_robin.update_targets(node_ports)
                 return
             time.sleep(0.2)
         self._stop_process()
@@ -339,6 +374,12 @@ class ProxyGateway:
             raise FileNotFoundError("sing-box executable is unavailable")
         if configuration.fetch_timeout_seconds <= 0:
             raise ValueError("PROXY_FETCH_TIMEOUT_SECONDS must be positive")
+        _validate_port_ranges(
+            configuration.proxy_port,
+            configuration.health_port,
+            configuration.node_port_start,
+            configuration.maximum_nodes,
+        )
 
 
 def serve_health(
@@ -474,6 +515,19 @@ def _boolean(name: str, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     raise ValueError(f"{name} must be a boolean")
+
+
+def _validate_port_ranges(
+    proxy_port: int,
+    health_port: int,
+    node_port_start: int,
+    maximum_nodes: int,
+) -> None:
+    node_ports = range(node_port_start, node_port_start + maximum_nodes)
+    if node_port_start + maximum_nodes - 1 > 65535:
+        raise ValueError("Proxy node port range exceeds 65535")
+    if proxy_port in node_ports or health_port in node_ports:
+        raise ValueError("Proxy node port range overlaps a public listener")
 
 
 def _optional_payload_string(payload: dict[str, Any], name: str) -> str | None:

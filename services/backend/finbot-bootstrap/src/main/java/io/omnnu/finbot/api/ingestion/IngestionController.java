@@ -2,6 +2,9 @@ package io.omnnu.finbot.api.ingestion;
 
 import io.omnnu.finbot.api.operations.TaskResponse;
 import io.omnnu.finbot.application.ingestion.IngestionUseCase;
+import io.omnnu.finbot.application.ingestion.CreateSourceCommand;
+import io.omnnu.finbot.application.ingestion.DeleteSourceCommand;
+import io.omnnu.finbot.application.ingestion.UpdateSourceCommand;
 import io.omnnu.finbot.application.operations.BackgroundTaskCoordinator;
 import io.omnnu.finbot.application.operations.EnqueueTaskCommand;
 import io.omnnu.finbot.application.operations.IngestionTaskPayload;
@@ -14,7 +17,10 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletionStage;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 @RestController
 @RequestMapping("/api/v2")
@@ -42,6 +49,33 @@ public final class IngestionController {
     public List<SourceResponse> sources(
             @RequestParam(defaultValue = "false") boolean enabledOnly) {
         return ingestionUseCase.listSources(enabledOnly).stream().map(SourceResponse::from).toList();
+    }
+
+    @PostMapping("/sources")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SourceResponse createSource(@Valid @RequestBody SourceMutationRequest request) {
+        return SourceResponse.from(ingestionUseCase.createSource(
+                new CreateSourceCommand(request.toDefinition())));
+    }
+
+    @PutMapping("/sources/{sourceId}")
+    public SourceResponse updateSource(
+            @PathVariable String sourceId,
+            @RequestParam long expectedVersion,
+            @Valid @RequestBody SourceMutationRequest request) {
+        return SourceResponse.from(ingestionUseCase.updateSource(new UpdateSourceCommand(
+                new SourceId(sourceId),
+                request.toDefinition(),
+                expectedVersion)));
+    }
+
+    @DeleteMapping("/sources/{sourceId}")
+    public ResponseEntity<Void> deleteSource(
+            @PathVariable String sourceId,
+            @RequestParam long expectedVersion) {
+        ingestionUseCase.deleteSource(new DeleteSourceCommand(
+                new SourceId(sourceId), expectedVersion));
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/sources/{sourceId}/status")
@@ -84,5 +118,15 @@ public final class IngestionController {
                 3,
                 null));
         return ResponseEntity.accepted().body(TaskResponse.from(task));
+    }
+
+    @PostMapping("/sources/{sourceId}/test")
+    public CompletionStage<SourceTestResponse> testSource(
+            @PathVariable String sourceId,
+            @Valid @RequestBody TestSourceRequest request) {
+        return ingestionUseCase.testSource(
+                        new SourceId(sourceId),
+                        request.query().strip())
+                .thenApply(SourceTestResponse::from);
     }
 }

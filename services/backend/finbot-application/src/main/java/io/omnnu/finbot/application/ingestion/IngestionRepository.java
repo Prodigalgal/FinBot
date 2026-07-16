@@ -13,6 +13,15 @@ public interface IngestionRepository {
 
     Optional<InformationSource> findSource(SourceId sourceId);
 
+    Optional<InformationSource> createSource(InformationSource source, Instant createdAt);
+
+    Optional<InformationSource> updateSource(
+            InformationSource source,
+            long expectedVersion,
+            Instant updatedAt);
+
+    boolean archiveSource(SourceId sourceId, long expectedVersion, Instant archivedAt);
+
     Optional<InformationSource> setSourceEnabled(
             SourceId sourceId,
             boolean enabled,

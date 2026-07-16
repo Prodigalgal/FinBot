@@ -8,8 +8,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.omnnu.finbot.application.ingestion.IngestionBatchResult;
 import io.omnnu.finbot.application.ingestion.IngestionUseCase;
+import io.omnnu.finbot.application.ingestion.CreateSourceCommand;
+import io.omnnu.finbot.application.ingestion.DeleteSourceCommand;
 import io.omnnu.finbot.application.ingestion.NormalizedDocument;
 import io.omnnu.finbot.application.ingestion.SourceCollectionSummary;
+import io.omnnu.finbot.application.ingestion.UpdateSourceCommand;
 import io.omnnu.finbot.application.market.MarketDataUseCase;
 import io.omnnu.finbot.application.operations.ResearchTaskMode;
 import io.omnnu.finbot.application.quant.QuantResearchUseCase;
@@ -353,6 +356,21 @@ final class ResearchPipelineServiceTest {
             }
 
             @Override
+            public InformationSource createSource(CreateSourceCommand command) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
+            }
+
+            @Override
+            public InformationSource updateSource(UpdateSourceCommand command) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
+            }
+
+            @Override
+            public void deleteSource(DeleteSourceCommand command) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
+            }
+
+            @Override
             public InformationSource setSourceEnabled(SourceId sourceId, boolean enabled, long expectedVersion) {
                 throw new UnsupportedOperationException("Not used by the research pipeline test");
             }
@@ -376,6 +394,13 @@ final class ResearchPipelineServiceTest {
                     String query) {
                 throw new UnsupportedOperationException("Not used by the research pipeline test");
             }
+
+            @Override
+            public java.util.concurrent.CompletionStage<SourceCollectionSummary> testSource(
+                    SourceId sourceId,
+                    String query) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
+            }
         };
     }
 
@@ -389,6 +414,21 @@ final class ResearchPipelineServiceTest {
             @Override
             public List<NormalizedDocument> listRecentDocuments(SourceId sourceId, int limit) {
                 return List.of();
+            }
+
+            @Override
+            public InformationSource createSource(CreateSourceCommand command) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
+            }
+
+            @Override
+            public InformationSource updateSource(UpdateSourceCommand command) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
+            }
+
+            @Override
+            public void deleteSource(DeleteSourceCommand command) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
             }
 
             @Override
@@ -406,6 +446,13 @@ final class ResearchPipelineServiceTest {
             @Override
             public java.util.concurrent.CompletionStage<SourceCollectionSummary> collectSource(
                     WorkflowRunId workflowRunId,
+                    SourceId sourceId,
+                    String query) {
+                throw new UnsupportedOperationException("Not used by the research pipeline test");
+            }
+
+            @Override
+            public java.util.concurrent.CompletionStage<SourceCollectionSummary> testSource(
                     SourceId sourceId,
                     String query) {
                 throw new UnsupportedOperationException("Not used by the research pipeline test");

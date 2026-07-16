@@ -24,6 +24,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 
 public final class IngestionApplicationService implements IngestionUseCase {
+    private static final String INFORMATION_SOURCE_KEYS_JSON =
+            "FINBOT_INFORMATION_SOURCE_KEYS_JSON";
     private final IngestionRepository repository;
     private final SourceCollectionGateway collectionGateway;
     private final EvidenceNormalizer evidenceNormalizer;
@@ -54,6 +56,48 @@ public final class IngestionApplicationService implements IngestionUseCase {
     @Override
     public List<NormalizedDocument> listRecentDocuments(SourceId sourceId, int limit) {
         return repository.listRecentDocuments(sourceId, Math.max(1, Math.min(limit, 200)));
+    }
+
+    @Override
+    public InformationSource createSource(CreateSourceCommand command) {
+        Objects.requireNonNull(command, "command");
+        var source = source(
+                new SourceId(idGenerator.next("source_")),
+                command.definition(),
+                0);
+        return repository.createSource(source, clock.instant())
+                .orElseThrow(() -> new IngestionConflictException(
+                        "信息源标识冲突，请重试"));
+    }
+
+    @Override
+    public InformationSource updateSource(UpdateSourceCommand command) {
+        Objects.requireNonNull(command, "command");
+        if (repository.findSource(command.sourceId()).isEmpty()) {
+            throw new IllegalArgumentException("Information source does not exist");
+        }
+        var source = source(
+                command.sourceId(),
+                command.definition(),
+                command.expectedVersion());
+        return repository.updateSource(
+                        source,
+                        command.expectedVersion(),
+                        clock.instant())
+                .orElseThrow(() -> new IngestionConflictException(
+                        "信息源配置已被修改，请刷新后重试"));
+    }
+
+    @Override
+    public void deleteSource(DeleteSourceCommand command) {
+        Objects.requireNonNull(command, "command");
+        if (!repository.archiveSource(
+                command.sourceId(),
+                command.expectedVersion(),
+                clock.instant())) {
+            throw new IngestionConflictException(
+                    "信息源不存在或版本冲突，请刷新后重试");
+        }
     }
 
     @Override
@@ -96,6 +140,72 @@ public final class IngestionApplicationService implements IngestionUseCase {
                     .orElseThrow(() -> new IllegalArgumentException("Information source does not exist"));
             return collectOne(workflowRunId, source, normalizedQuery).summary();
         }, executor);
+    }
+
+    @Override
+    public CompletionStage<SourceCollectionSummary> testSource(SourceId sourceId, String query) {
+        Objects.requireNonNull(sourceId, "sourceId");
+        var normalizedQuery = requireText(query, "query", 1_000);
+        return CompletableFuture.supplyAsync(() -> {
+            var source = repository.findSource(sourceId)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Information source does not exist"));
+            return collectOne(null, source, normalizedQuery).summary();
+        }, executor);
+    }
+
+    private static InformationSource source(
+            SourceId sourceId,
+            SourceDefinition definition,
+            long version) {
+        var source = new InformationSource(
+                sourceId,
+                definition.displayName(),
+                definition.mode(),
+                definition.tier(),
+                definition.category(),
+                definition.provider(),
+                definition.trustWeight(),
+                definition.pollIntervalSeconds(),
+                definition.priority(),
+                definition.assetScope(),
+                definition.feedUrls(),
+                definition.seedUrls(),
+                definition.searchQueries(),
+                definition.endpointBaseUrl(),
+                definition.credentialSupported() ? INFORMATION_SOURCE_KEYS_JSON : null,
+                definition.outboundRoute(),
+                definition.maximumResults(),
+                definition.maximumScrapeTargets(),
+                definition.enabled(),
+                version);
+        validateModeConfiguration(source);
+        return source;
+    }
+
+    private static void validateModeConfiguration(InformationSource source) {
+        switch (source.mode()) {
+            case RSS -> {
+                if (source.feedUrls().isEmpty()) {
+                    throw new IllegalArgumentException("RSS source requires at least one feed URL");
+                }
+            }
+            case FIRECRAWL_SCRAPE -> {
+                requireEndpoint(source);
+                if (source.seedUrls().isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "Firecrawl scrape source requires at least one seed URL");
+                }
+            }
+            case FIRECRAWL_SEARCH, FIRECRAWL_SEARCH_THEN_SCRAPE -> requireEndpoint(source);
+            case STRUCTURED_API, EXCHANGE_PUBLIC_API -> requireEndpoint(source);
+        }
+    }
+
+    private static void requireEndpoint(InformationSource source) {
+        if (source.endpointBaseUrl() == null) {
+            throw new IllegalArgumentException(source.mode() + " source requires an endpoint URL");
+        }
     }
 
     private IngestionBatchResult collectEnabledSynchronously(
@@ -233,6 +343,21 @@ public final class IngestionApplicationService implements IngestionUseCase {
                             exception.errorCode(),
                             exception.getMessage()),
                     List.of());
+        } catch (RuntimeException exception) {
+            try {
+                repository.finishCollection(
+                        collectionId,
+                        CollectionStatus.FAILED,
+                        0,
+                        0,
+                        0,
+                        "SOURCE_COLLECTION_UNEXPECTED",
+                        "Source collection failed unexpectedly",
+                        clock.instant());
+            } catch (RuntimeException persistenceException) {
+                exception.addSuppressed(persistenceException);
+            }
+            throw exception;
         }
     }
 

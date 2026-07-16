@@ -34,7 +34,8 @@ public final class JdbcRuntimeSecretTargetRepository implements RuntimeSecretTar
                 case "INLINE_NODES" -> "select inline_nodes_env from proxy_gateway_profile where gateway_id = :targetId";
                 default -> throw new IllegalArgumentException("Unsupported proxy gateway secret");
             };
-            case INFORMATION_SOURCE -> "select credential_env from information_source where source_id = :targetId";
+            case INFORMATION_SOURCE -> "select credential_env from information_source"
+                    + " where source_id = :targetId and deleted_at is null";
         };
         return jdbcClient.sql(query)
                 .param("targetId", targetId)

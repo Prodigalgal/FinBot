@@ -43,6 +43,13 @@ import io.omnnu.finbot.domain.catalog.CatalogStatus;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.MarketType;
 import io.omnnu.finbot.domain.ingestion.SourceId;
+import io.omnnu.finbot.domain.ingestion.CollectionRunId;
+import io.omnnu.finbot.domain.ingestion.CollectionStatus;
+import io.omnnu.finbot.domain.ingestion.InformationSource;
+import io.omnnu.finbot.domain.ingestion.SourceMode;
+import io.omnnu.finbot.domain.ingestion.SourcePriority;
+import io.omnnu.finbot.domain.ingestion.SourceTier;
+import io.omnnu.finbot.application.ingestion.SourceCollectionRun;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import io.omnnu.finbot.domain.workflow.WorkflowAccepted;
 import io.omnnu.finbot.domain.workflow.WorkflowEventId;
@@ -849,6 +856,114 @@ class LiquibasePostgresIntegrationTest {
                         current.version(),
                         Instant.parse("2026-07-15T01:01:00Z"))
                 .isEmpty());
+    }
+
+    @Test
+    void managesInformationSourceWithoutDeletingHistoricalCollection() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var repository = new JdbcIngestionRepository(jdbcClient, new ObjectMapper());
+        var sourceId = new SourceId("source_managed_integration01");
+        var source = new InformationSource(
+                sourceId,
+                "Managed integration source",
+                SourceMode.RSS,
+                SourceTier.T2,
+                "market_news",
+                "integration",
+                new BigDecimal("0.75"),
+                900,
+                SourcePriority.P2,
+                List.of("BTCUSDT"),
+                List.of(java.net.URI.create("https://example.com/feed.xml")),
+                List.of(),
+                List.of(),
+                null,
+                "FINBOT_INFORMATION_SOURCE_KEYS_JSON",
+                OutboundRoute.PUBLIC_DATA,
+                10,
+                0,
+                true,
+                0);
+        var createdAt = Instant.parse("2026-07-16T14:00:00Z");
+        var created = repository.createSource(source, createdAt).orElseThrow();
+        var updatedSource = new InformationSource(
+                created.sourceId(),
+                "Managed integration source updated",
+                created.mode(),
+                created.tier(),
+                created.category(),
+                created.provider(),
+                created.trustWeight(),
+                created.pollIntervalSeconds(),
+                created.priority(),
+                created.assetScope(),
+                created.feedUrls(),
+                created.seedUrls(),
+                created.searchQueries(),
+                created.endpointBaseUrl(),
+                created.credentialEnvironmentVariable(),
+                created.outboundRoute(),
+                created.maximumResults(),
+                created.maximumScrapeTargets(),
+                created.enabled(),
+                created.version());
+        var updated = repository.updateSource(
+                        updatedSource,
+                        created.version(),
+                        createdAt.plusSeconds(1))
+                .orElseThrow();
+        assertEquals(created.version() + 1, updated.version());
+
+        var collectionId = new CollectionRunId("collection_managed_integration01");
+        repository.startCollection(new SourceCollectionRun(
+                collectionId,
+                null,
+                sourceId,
+                "integration probe",
+                CollectionStatus.RUNNING,
+                0,
+                0,
+                0,
+                null,
+                null,
+                createdAt.plusSeconds(2),
+                null));
+        repository.finishCollection(
+                collectionId,
+                CollectionStatus.COMPLETED,
+                0,
+                0,
+                0,
+                null,
+                null,
+                createdAt.plusSeconds(3));
+        jdbcClient.sql("""
+                insert into runtime_secret_override (
+                  scope_type, target_id, secret_name, version, updated_at
+                ) values ('INFORMATION_SOURCE', :sourceId, 'API_KEY', 1, :updatedAt)
+                """)
+                .param("sourceId", sourceId.value())
+                .param("updatedAt", OffsetDateTime.parse("2026-07-16T14:00:04Z"))
+                .update();
+
+        assertTrue(repository.archiveSource(
+                sourceId,
+                updated.version(),
+                createdAt.plusSeconds(5)));
+
+        assertTrue(repository.findSource(sourceId).isEmpty());
+        assertEquals(1, jdbcClient.sql("""
+                select count(*) from source_collection_run where source_id = :sourceId
+                """).param("sourceId", sourceId.value()).query(Long.class).single());
+        assertEquals(0, jdbcClient.sql("""
+                select count(*) from runtime_secret_override where target_id = :sourceId
+                """).param("sourceId", sourceId.value()).query(Long.class).single());
+        assertTrue(jdbcClient.sql("""
+                select deleted_at is not null from information_source where source_id = :sourceId
+                """).param("sourceId", sourceId.value()).query(Boolean.class).single());
     }
 
     @Test

@@ -6,34 +6,38 @@ from typing import Any
 from finbot_proxy.models import Hysteria2Node, ProxyNode, VlessNode
 
 
-def build_configuration(nodes: tuple[ProxyNode, ...], *, listen_port: int) -> str:
+def build_configuration(
+    nodes: tuple[ProxyNode, ...], *, listen_port_start: int
+) -> str:
     if not nodes:
         raise ValueError("At least one supported proxy node is required")
     outbounds = [_outbound(node, index) for index, node in enumerate(nodes)]
-    tags = [str(outbound["tag"]) for outbound in outbounds]
-    outbounds.append(
+    inbounds = [
         {
-            "type": "urltest",
-            "tag": "proxy-pool",
-            "outbounds": tags,
-            "url": "https://www.gstatic.com/generate_204",
-            "interval": "3m",
-            "tolerance": 100,
-            "interrupt_exist_connections": False,
+            "type": "mixed",
+            "tag": f"node-in-{index}",
+            "listen": "127.0.0.1",
+            "listen_port": listen_port_start + index,
         }
-    )
+        for index in range(len(nodes))
+    ]
+    rules = [
+        {
+            "inbound": [f"node-in-{index}"],
+            "action": "route",
+            "outbound": f"proxy-{index}",
+        }
+        for index in range(len(nodes))
+    ]
     configuration: dict[str, Any] = {
         "log": {"level": "warn", "timestamp": True},
-        "inbounds": [
-            {
-                "type": "mixed",
-                "tag": "gateway-in",
-                "listen": "0.0.0.0",
-                "listen_port": listen_port,
-            }
-        ],
+        "inbounds": inbounds,
         "outbounds": outbounds,
-        "route": {"final": "proxy-pool", "auto_detect_interface": True},
+        "route": {
+            "rules": rules,
+            "final": "proxy-0",
+            "auto_detect_interface": True,
+        },
     }
     return json.dumps(configuration, ensure_ascii=True, separators=(",", ":"))
 

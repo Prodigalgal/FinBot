@@ -6,7 +6,7 @@ from finbot_proxy.models import VlessNode
 from finbot_proxy.singbox import build_configuration
 
 
-def test_generates_one_fail_closed_urltest_pool() -> None:
+def test_generates_one_fail_closed_inbound_per_node() -> None:
     node = VlessNode(
         address="example.com",
         port=443,
@@ -23,9 +23,17 @@ def test_generates_one_fail_closed_urltest_pool() -> None:
         insecure=False,
         name="SG",
     )
-    result = json.loads(build_configuration((node,), listen_port=8080))
+    result = json.loads(build_configuration((node,), listen_port_start=10000))
 
-    assert result["route"]["final"] == "proxy-pool"
-    assert result["inbounds"][0]["listen"] == "0.0.0.0"
-    assert result["outbounds"][-1]["outbounds"] == ["proxy-0"]
+    assert result["route"]["final"] == "proxy-0"
+    assert result["route"]["rules"] == [
+        {
+            "inbound": ["node-in-0"],
+            "action": "route",
+            "outbound": "proxy-0",
+        }
+    ]
+    assert result["inbounds"][0]["listen"] == "127.0.0.1"
+    assert result["inbounds"][0]["listen_port"] == 10000
+    assert all(outbound["type"] != "urltest" for outbound in result["outbounds"])
     assert all(outbound["type"] != "direct" for outbound in result["outbounds"])

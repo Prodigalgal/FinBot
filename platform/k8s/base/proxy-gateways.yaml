@@ -50,6 +50,8 @@ spec:
                   key: FIRECRAWL_VLESS_SUBSCRIPTION_URL
             - name: PROXY_MAXIMUM_NODES
               value: "32"
+            - name: PROXY_NODE_PORT_START
+              value: "10000"
             - name: PROXY_SUBSCRIPTION_REFRESH_SECONDS
               value: "1800"
             - name: PROXY_ALLOW_INSECURE_TLS
@@ -156,6 +158,8 @@ spec:
               value: "JP,OSAKA,SG"
             - name: PROXY_MAXIMUM_NODES
               value: "16"
+            - name: PROXY_NODE_PORT_START
+              value: "10000"
             - name: PROXY_SUBSCRIPTION_REFRESH_SECONDS
               value: "1800"
             - name: PROXY_ALLOW_INSECURE_TLS

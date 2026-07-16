@@ -26,6 +26,11 @@
 - 所有 Provider 的 bootstrap fallback 仅使用 `FINBOT_AI_PROVIDER_KEYS_JSON` 这一通用映射，以 `providerId` 为键；应用层和 UI 不再出现厂商专用 Key 环境变量。
 - 交易所账户统一使用 `FINBOT_EXCHANGE_ACCOUNT_CREDENTIALS_JSON`，以 `accountId` 为键、`API_KEY`/`API_SECRET` 为凭据名；不得再按 Gate、Bybit 或交易产品命名 Key。
 - 信息源、代理路由与代理网关分别使用资源级通用映射；对外 DTO 只暴露是否支持、有效来源、指纹与版本，不暴露 fallback ENV 名称。
+- 信息源是可管理资源，不再局限于 Liquibase 内置数据：管理员可新增、编辑、启停、在线测试和软删除 RSS、Firecrawl、结构化 API 与交易所公开数据源。
+- 信息源普通配置与凭据分离；`InformationSource` 只记录 endpoint、URL/查询、路由、调度、信任权重和结果上限，API Key 仍绑定 `(INFORMATION_SOURCE, sourceId, API_KEY)`。
+- 信息源删除保留历史采集、原始证据、规范化文档和研究引用，仅从后续调度及可选列表中归档，并清除该资源的数据库热凭据。
+- Firecrawl 代理池必须按新客户端连接轮询节点；Java Firecrawl 请求不得复用上一请求的代理隧道。`urltest` 只能用于健康选择，不得作为代理池轮换语义。
+- Firecrawl 对 403、429 和可恢复 5xx 应使用新代理连接有限重试，失败信息必须保留 HTTP 状态、尝试次数和可观测的代理轮换计数，且不得记录响应中的敏感内容。
 - 保存后无需重启；探测接口必须使用刚保存的有效配置。
 - UI 区分“已热配置”“ENV fallback”“未配置”，不把 ENV 名称或模型家族误当凭据归属。
 
@@ -49,3 +54,6 @@
 7. Java/Web/Python/OpenAPI/Kustomize/Secret scan 通过，并完成线上热更新与探测 smoke。
 8. Provider/Model 创建、更新与删除契约不暴露 ENV 名称；无引用 Provider 采用软删除并保留历史调用外键，有引用 Provider 删除返回冲突。
 9. Gate 与 Bybit 账户共享同一凭据解析路径，切换交易所或增加账户不需要新增 Java 分支或新增厂商专用 Secret key。
+10. 信源 CRUD 采用乐观锁；软删除后历史证据仍可查询，但新调度和 active source API 不再返回该信源。
+11. 信源在线测试使用刚保存的 endpoint、代理和凭据，并返回本次采集的结构化结果。
+12. 连续 Firecrawl 请求建立独立代理连接并按节点轮询；线上出口采样不能持续固定在单一节点，403/429 不再以同一毫秒批次无重试扩散到全部信源。

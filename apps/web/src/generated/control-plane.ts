@@ -55,8 +55,10 @@ export type ControlPlanePath =
   | "/api/v2/setup-profiles/{profileId}/preview"
   | "/api/v2/setup-profiles/history"
   | "/api/v2/sources"
+  | "/api/v2/sources/{sourceId}"
   | "/api/v2/sources/{sourceId}/collect"
   | "/api/v2/sources/{sourceId}/status"
+  | "/api/v2/sources/{sourceId}/test"
   | "/api/v2/trading/accounts"
   | "/api/v2/trading/accounts/{accountId}/configuration"
   | "/api/v2/trading/accounts/{accountId}/positions"
@@ -142,8 +144,10 @@ export type ControlPlaneRequestPathBase =
   | `/api/v2/setup-profiles/${string}/preview`
   | `/api/v2/setup-profiles/history`
   | `/api/v2/sources`
+  | `/api/v2/sources/${string}`
   | `/api/v2/sources/${string}/collect`
   | `/api/v2/sources/${string}/status`
+  | `/api/v2/sources/${string}/test`
   | `/api/v2/trading/accounts`
   | `/api/v2/trading/accounts/${string}/configuration`
   | `/api/v2/trading/accounts/${string}/positions`
@@ -246,7 +250,9 @@ export type ControlPlanePostRequestPathBase =
   | `/api/v2/research/history/${string}/resume`
   | `/api/v2/research/instant`
   | `/api/v2/setup-profiles/${string}/apply`
+  | `/api/v2/sources`
   | `/api/v2/sources/${string}/collect`
+  | `/api/v2/sources/${string}/test`
   | `/api/v2/trading/accounts/${string}/test`
   | `/api/v2/trading/automation-configuration/risk-policies`
   | `/api/v2/watchlists`
@@ -267,6 +273,7 @@ export type ControlPlanePutRequestPathBase =
   | `/api/v2/operations/schedules/${string}`
   | `/api/v2/research/review/${string}/feedback`
   | `/api/v2/runtime-secrets/${string}/${string}/${string}`
+  | `/api/v2/sources/${string}`
   | `/api/v2/sources/${string}/status`
   | `/api/v2/trading/accounts/${string}/configuration`
   | `/api/v2/trading/automation-configuration/ai-stages/${string}`
@@ -281,6 +288,7 @@ export type ControlPlaneDeleteRequestPathBase =
   | `/api/v2/agent-roles/${string}`
   | `/api/v2/configuration/providers/${string}`
   | `/api/v2/runtime-secrets/${string}/${string}/${string}`
+  | `/api/v2/sources/${string}`
   | `/api/v2/watchlists/${string}`
   | `/api/v2/watchlists/${string}/items/${string}`;
 
@@ -353,8 +361,12 @@ export type ControlPlaneOperation =
   | { method: 'GET'; path: "/setup-profiles/{profileId}/preview" }
   | { method: 'GET'; path: "/setup-profiles/history" }
   | { method: 'GET'; path: "/sources" }
+  | { method: 'POST'; path: "/sources" }
+  | { method: 'DELETE'; path: "/sources/{sourceId}" }
+  | { method: 'PUT'; path: "/sources/{sourceId}" }
   | { method: 'POST'; path: "/sources/{sourceId}/collect" }
   | { method: 'PUT'; path: "/sources/{sourceId}/status" }
+  | { method: 'POST'; path: "/sources/{sourceId}/test" }
   | { method: 'GET'; path: "/trading/accounts" }
   | { method: 'PUT'; path: "/trading/accounts/{accountId}/configuration" }
   | { method: 'GET'; path: "/trading/accounts/{accountId}/positions" }

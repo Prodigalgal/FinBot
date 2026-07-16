@@ -428,7 +428,39 @@ export interface AiModel {
 }
 export interface ConfigurationSnapshot { settings: SystemSetting[]; providers: AiProvider[]; models: AiModel[] }
 
-export interface SourceRecord { sourceId: string; displayName: string; mode: string; tier: string; category: string; provider: string; trustWeight: number; pollIntervalSeconds: number; priority: string; assetScope: string[]; outboundRoute: string | null; enabled: boolean; version: number }
+export interface SourceRecord {
+  sourceId: string;
+  displayName: string;
+  mode: string;
+  tier: string;
+  category: string;
+  provider: string | null;
+  trustWeight: number;
+  pollIntervalSeconds: number;
+  priority: string;
+  assetScope: string[];
+  feedUrls: string[];
+  seedUrls: string[];
+  searchQueries: string[];
+  endpointBaseUrl: string | null;
+  credentialSupported: boolean;
+  outboundRoute: string | null;
+  maximumResults: number;
+  maximumScrapeTargets: number;
+  enabled: boolean;
+  version: number;
+}
+export type SourceMutation = Omit<SourceRecord, 'sourceId' | 'version'>;
+export interface SourceTestResult {
+  collectionId: string;
+  sourceId: string;
+  status: string;
+  fetchedCount: number;
+  insertedCount: number;
+  duplicateCount: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
 export interface EvidenceDocument { documentId: string; evidenceId: string; sourceId: string; sourceTier: string; category: string; trustWeight: number; canonicalUrl: string | null; title: string; language: string; excerpt: string; assetScope: string[]; publishedAt: string | null; fetchedAt: string }
 
 export interface AutonomousStatus {

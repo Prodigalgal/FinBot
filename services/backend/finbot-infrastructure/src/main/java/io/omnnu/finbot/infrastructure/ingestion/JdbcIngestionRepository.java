@@ -61,7 +61,9 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
     public List<InformationSource> listSources(boolean enabledOnly) {
         var sql = "select " + SOURCE_COLUMNS + " from information_source";
         if (enabledOnly) {
-            sql += " where enabled = true";
+            sql += " where enabled = true and deleted_at is null";
+        } else {
+            sql += " where deleted_at is null";
         }
         sql += " order by priority, source_tier, source_id";
         return jdbcClient.sql(sql).query(this::source).list();
@@ -71,10 +73,149 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
     @Transactional(readOnly = true)
     public Optional<InformationSource> findSource(SourceId sourceId) {
         return jdbcClient.sql("select " + SOURCE_COLUMNS
-                        + " from information_source where source_id = :sourceId")
+                        + " from information_source"
+                        + " where source_id = :sourceId and deleted_at is null")
                 .param("sourceId", sourceId.value())
                 .query(this::source)
                 .optional();
+    }
+
+    @Override
+    @Transactional
+    public Optional<InformationSource> createSource(
+            InformationSource source,
+            Instant createdAt) {
+        var inserted = jdbcClient.sql("""
+                insert into information_source (
+                  source_id, display_name, source_mode, source_tier, category, provider,
+                  trust_weight, poll_interval_seconds, priority, asset_scope, feed_urls,
+                  seed_urls, search_queries, endpoint_base_url, credential_env,
+                  proxy_route_type, maximum_results, maximum_scrape_targets, enabled,
+                  version, created_at, updated_at
+                ) values (
+                  :sourceId, :displayName, :sourceMode, :sourceTier, :category, :provider,
+                  :trustWeight, :pollIntervalSeconds, :priority, cast(:assetScope as jsonb),
+                  cast(:feedUrls as jsonb), cast(:seedUrls as jsonb),
+                  cast(:searchQueries as jsonb), :endpointBaseUrl, :credentialEnv,
+                  :proxyRouteType, :maximumResults, :maximumScrapeTargets, :enabled,
+                  0, :createdAt, :createdAt
+                ) on conflict (source_id) do nothing
+                """)
+                .param("sourceId", source.sourceId().value())
+                .param("displayName", source.displayName())
+                .param("sourceMode", source.mode().name())
+                .param("sourceTier", source.tier().name())
+                .param("category", source.category())
+                .param("provider", source.provider())
+                .param("trustWeight", source.trustWeight())
+                .param("pollIntervalSeconds", source.pollIntervalSeconds())
+                .param("priority", source.priority().name())
+                .param("assetScope", json(source.assetScope()))
+                .param("feedUrls", json(source.feedUrls().stream().map(URI::toString).toList()))
+                .param("seedUrls", json(source.seedUrls().stream().map(URI::toString).toList()))
+                .param("searchQueries", json(source.searchQueries()))
+                .param("endpointBaseUrl", uri(source.endpointBaseUrl()))
+                .param("credentialEnv", source.credentialEnvironmentVariable())
+                .param("proxyRouteType", source.outboundRoute() == null
+                        ? null
+                        : source.outboundRoute().name())
+                .param("maximumResults", source.maximumResults())
+                .param("maximumScrapeTargets", source.maximumScrapeTargets())
+                .param("enabled", source.enabled())
+                .param("createdAt", timestamp(createdAt))
+                .update();
+        return inserted == 1 ? findSource(source.sourceId()) : Optional.empty();
+    }
+
+    @Override
+    @Transactional
+    public Optional<InformationSource> updateSource(
+            InformationSource source,
+            long expectedVersion,
+            Instant updatedAt) {
+        var changed = jdbcClient.sql("""
+                update information_source
+                set display_name = :displayName,
+                    source_mode = :sourceMode,
+                    source_tier = :sourceTier,
+                    category = :category,
+                    provider = :provider,
+                    trust_weight = :trustWeight,
+                    poll_interval_seconds = :pollIntervalSeconds,
+                    priority = :priority,
+                    asset_scope = cast(:assetScope as jsonb),
+                    feed_urls = cast(:feedUrls as jsonb),
+                    seed_urls = cast(:seedUrls as jsonb),
+                    search_queries = cast(:searchQueries as jsonb),
+                    endpoint_base_url = :endpointBaseUrl,
+                    credential_env = :credentialEnv,
+                    proxy_route_type = :proxyRouteType,
+                    maximum_results = :maximumResults,
+                    maximum_scrape_targets = :maximumScrapeTargets,
+                    enabled = :enabled,
+                    version = version + 1,
+                    updated_at = :updatedAt
+                where source_id = :sourceId
+                  and version = :expectedVersion
+                  and deleted_at is null
+                """)
+                .param("sourceId", source.sourceId().value())
+                .param("displayName", source.displayName())
+                .param("sourceMode", source.mode().name())
+                .param("sourceTier", source.tier().name())
+                .param("category", source.category())
+                .param("provider", source.provider())
+                .param("trustWeight", source.trustWeight())
+                .param("pollIntervalSeconds", source.pollIntervalSeconds())
+                .param("priority", source.priority().name())
+                .param("assetScope", json(source.assetScope()))
+                .param("feedUrls", json(source.feedUrls().stream().map(URI::toString).toList()))
+                .param("seedUrls", json(source.seedUrls().stream().map(URI::toString).toList()))
+                .param("searchQueries", json(source.searchQueries()))
+                .param("endpointBaseUrl", uri(source.endpointBaseUrl()))
+                .param("credentialEnv", source.credentialEnvironmentVariable())
+                .param("proxyRouteType", source.outboundRoute() == null
+                        ? null
+                        : source.outboundRoute().name())
+                .param("maximumResults", source.maximumResults())
+                .param("maximumScrapeTargets", source.maximumScrapeTargets())
+                .param("enabled", source.enabled())
+                .param("expectedVersion", expectedVersion)
+                .param("updatedAt", timestamp(updatedAt))
+                .update();
+        return changed == 1 ? findSource(source.sourceId()) : Optional.empty();
+    }
+
+    @Override
+    @Transactional
+    public boolean archiveSource(
+            SourceId sourceId,
+            long expectedVersion,
+            Instant archivedAt) {
+        var changed = jdbcClient.sql("""
+                update information_source
+                set enabled = false,
+                    deleted_at = :archivedAt,
+                    version = version + 1,
+                    updated_at = :archivedAt
+                where source_id = :sourceId
+                  and version = :expectedVersion
+                  and deleted_at is null
+                """)
+                .param("sourceId", sourceId.value())
+                .param("expectedVersion", expectedVersion)
+                .param("archivedAt", timestamp(archivedAt))
+                .update();
+        if (changed != 1) {
+            return false;
+        }
+        jdbcClient.sql("""
+                delete from runtime_secret_override
+                where scope_type = 'INFORMATION_SOURCE' and target_id = :sourceId
+                """)
+                .param("sourceId", sourceId.value())
+                .update();
+        return true;
     }
 
     @Override
@@ -90,6 +231,7 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                     version = version + 1,
                     updated_at = :updatedAt
                 where source_id = :sourceId and version = :expectedVersion
+                  and deleted_at is null
                 """)
                 .param("sourceId", sourceId.value())
                 .param("enabled", enabled)

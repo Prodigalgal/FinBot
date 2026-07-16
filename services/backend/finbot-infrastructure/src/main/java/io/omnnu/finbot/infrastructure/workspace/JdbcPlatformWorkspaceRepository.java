@@ -114,6 +114,7 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                   order by run.started_at desc, run.id desc
                   limit 1
                 ) latest on true
+                where source.deleted_at is null
                 order by source.enabled desc, source.priority, source.source_tier, source.id
                 """)
                 .query((resultSet, rowNumber) -> ingestionSource(resultSet))
@@ -397,7 +398,8 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
     }
 
     private PlatformReadiness.Check sourceCheck(Instant now) {
-        var enabledSources = scalarLong("select count(*) from information_source where enabled");
+        var enabledSources = scalarLong(
+                "select count(*) from information_source where enabled and deleted_at is null");
         var firecrawlReady = routeReady(OutboundRoute.FIRECRAWL);
         var status = enabledSources == 0 || !firecrawlReady ? "BLOCKED" : "READY";
         var detail = enabledSources + " 个信息源已启用；Firecrawl 路由"
@@ -647,7 +649,7 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 select run.status, run.error_message, run.started_at
                 from source_collection_run run
                 join information_source source on source.source_id = run.source_id
-                where source.proxy_route_type = :routeType
+                where source.proxy_route_type = :routeType and source.deleted_at is null
                 order by run.started_at desc, run.id desc
                 limit 1
                 """)

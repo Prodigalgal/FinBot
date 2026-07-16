@@ -63,3 +63,5 @@ databaseChangeLog:
       file: db/changelog/releases/031-multi-agent-evidence-consensus.sql
   - include:
       file: db/changelog/releases/032-runtime-configuration-control-plane.sql
+  - include:
+      file: db/changelog/releases/033-information-source-management.sql

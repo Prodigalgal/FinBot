@@ -10,6 +10,8 @@ import java.net.ProxySelector;
 import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,7 +23,7 @@ import org.springframework.stereotype.Component;
 public final class RoutedHttpClientFactory {
     private final ProxyRouteResolver routeResolver;
     private final Executor executor;
-    private final ConcurrentHashMap<OutboundRoute, HttpClient> clients = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<ClientKey, HttpClient> clients = new ConcurrentHashMap<>();
 
     public RoutedHttpClientFactory(
             ProxyRouteResolver routeResolver,
@@ -32,15 +34,21 @@ public final class RoutedHttpClientFactory {
 
     public HttpClient client(OutboundRoute route) {
         Objects.requireNonNull(route, "route");
-        return clients.computeIfAbsent(route, this::build);
+        var decision = routeResolver.resolve(route);
+        var key = new ClientKey(route, decisionFingerprint(decision));
+        clients.keySet().removeIf(existing -> existing.route() == route && !existing.equals(key));
+        return clients.computeIfAbsent(key, ignored -> build(decision));
+    }
+
+    public HttpClient clientForRequest(ProxyRouteDecision decision) {
+        return build(Objects.requireNonNull(decision, "decision"));
     }
 
     public ProxyRouteDecision route(OutboundRoute route) {
         return routeResolver.resolve(route);
     }
 
-    private HttpClient build(OutboundRoute route) {
-        var decision = routeResolver.resolve(route);
+    private HttpClient build(ProxyRouteDecision decision) {
         var builder = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .executor(executor)
@@ -70,6 +78,17 @@ public final class RoutedHttpClientFactory {
         return builder.build();
     }
 
+    private static String decisionFingerprint(ProxyRouteDecision decision) {
+        var value = decision.proxyUrl() == null ? "direct" : decision.proxyUrl().toASCIIString();
+        try {
+            return java.util.HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
     private static ProxyCredentials decodedCredentials(String userInfo) {
         var separator = userInfo.indexOf(':');
         var username = separator < 0 ? userInfo : userInfo.substring(0, separator);
@@ -80,5 +99,8 @@ public final class RoutedHttpClientFactory {
     }
 
     private record ProxyCredentials(String username, String password) {
+    }
+
+    private record ClientKey(OutboundRoute route, String decisionFingerprint) {
     }
 }

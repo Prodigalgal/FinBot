@@ -814,16 +814,80 @@ paths:
   /sources:
     get:
       operationId: getSources
+      parameters:
+        - name: enabledOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Active information sources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SourceResponse"
         default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createInformationSource
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceMutationRequest"
+      responses:
+        "201":
+          description: Source created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceResponse"
+        default:
+          $ref: "#/components/responses/Problem"
+  /sources/{sourceId}:
+    delete:
+      operationId: deleteInformationSource
+      parameters:
+        - $ref: "#/components/parameters/SourceId"
+        - $ref: "#/components/parameters/ExpectedVersion"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Source archived while preserving history
+        "409":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: updateInformationSource
+      parameters:
+        - $ref: "#/components/parameters/SourceId"
+        - $ref: "#/components/parameters/ExpectedVersion"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceMutationRequest"
+      responses:
+        "200":
+          description: Source updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceResponse"
+        "409":
           $ref: "#/components/responses/Problem"
   /sources/{sourceId}/collect:
     post:
       operationId: postSourcesSourceIdCollect
       responses:
-        "200":
+        "202":
           $ref: "#/components/responses/JsonObject"
         default:
           $ref: "#/components/responses/Problem"
@@ -855,6 +919,34 @@ paths:
         "200":
           $ref: "#/components/responses/JsonObject"
         "409":
+          $ref: "#/components/responses/Problem"
+  /sources/{sourceId}/test:
+    post:
+      operationId: testInformationSource
+      parameters:
+        - $ref: "#/components/parameters/SourceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+      responses:
+        "200":
+          description: Synchronous source probe result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceTestResponse"
+        default:
           $ref: "#/components/responses/Problem"
   /trading/accounts:
     get:
@@ -1336,6 +1428,21 @@ components:
       schema:
         type: string
         minLength: 1
+    SourceId:
+      name: sourceId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^source_[a-z0-9_-]{4,72}$
+    ExpectedVersion:
+      name: expectedVersion
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
     RunIdPath:
       name: runId
       in: path
@@ -1385,6 +1492,181 @@ components:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
   schemas:
+    SourceDefinition:
+      type: object
+      required:
+        - displayName
+        - mode
+        - tier
+        - category
+        - trustWeight
+        - pollIntervalSeconds
+        - priority
+        - assetScope
+        - feedUrls
+        - seedUrls
+        - searchQueries
+        - credentialSupported
+        - maximumResults
+        - maximumScrapeTargets
+        - enabled
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 160
+        mode:
+          type: string
+          enum:
+            - RSS
+            - FIRECRAWL_SCRAPE
+            - FIRECRAWL_SEARCH
+            - FIRECRAWL_SEARCH_THEN_SCRAPE
+            - STRUCTURED_API
+            - EXCHANGE_PUBLIC_API
+        tier:
+          type: string
+          enum:
+            - T0
+            - T1
+            - T2
+            - T3
+            - T4
+            - T5
+        category:
+          type: string
+          minLength: 1
+          maxLength: 80
+        provider:
+          type:
+            - string
+            - "null"
+          maxLength: 80
+        trustWeight:
+          type: number
+          minimum: 0
+          maximum: 1
+        pollIntervalSeconds:
+          type: integer
+          minimum: 10
+          maximum: 2592000
+        priority:
+          type: string
+          enum:
+            - P0
+            - P1
+            - P2
+            - P3
+        assetScope:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            minLength: 1
+            maxLength: 32
+        feedUrls:
+          $ref: "#/components/schemas/SourceUrlList"
+        seedUrls:
+          $ref: "#/components/schemas/SourceUrlList"
+        searchQueries:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        endpointBaseUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        credentialSupported:
+          type: boolean
+        outboundRoute:
+          type:
+            - string
+            - "null"
+          enum:
+            - FIRECRAWL
+            - EXCHANGE_GATE
+            - EXCHANGE_BYBIT
+            - PUBLIC_DATA
+            - null
+        maximumResults:
+          type: integer
+          minimum: 1
+          maximum: 100
+        maximumScrapeTargets:
+          type: integer
+          minimum: 0
+          maximum: 20
+        enabled:
+          type: boolean
+    SourceMutationRequest:
+      allOf:
+        - $ref: "#/components/schemas/SourceDefinition"
+      unevaluatedProperties: false
+    SourceResponse:
+      allOf:
+        - $ref: "#/components/schemas/SourceDefinition"
+        - type: object
+          required:
+            - sourceId
+            - version
+          properties:
+            sourceId:
+              type: string
+              pattern: ^source_[a-z0-9_-]{4,72}$
+            version:
+              type: integer
+              format: int64
+              minimum: 0
+      unevaluatedProperties: false
+    SourceUrlList:
+      type: array
+      maxItems: 32
+      items:
+        type: string
+        format: uri
+    SourceTestResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - collectionId
+        - sourceId
+        - status
+        - fetchedCount
+        - insertedCount
+        - duplicateCount
+      properties:
+        collectionId:
+          type: string
+        sourceId:
+          type: string
+        status:
+          type: string
+          enum:
+            - COMPLETED
+            - PARTIAL
+            - BLOCKED
+            - FAILED
+        fetchedCount:
+          type: integer
+          minimum: 0
+        insertedCount:
+          type: integer
+          minimum: 0
+        duplicateCount:
+          type: integer
+          minimum: 0
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
     AiProvider:
       type: object
       additionalProperties: false
@@ -1418,12 +1700,19 @@ components:
           maxLength: 120
         protocol:
           type: string
-          enum: [CHAT, RESPONSES]
+          enum:
+            - CHAT
+            - RESPONSES
         reasoningParameterStyle:
           type: string
-          enum: [NONE, FLAT, NESTED]
+          enum:
+            - NONE
+            - FLAT
+            - NESTED
         baseUrl:
-          type: [string, "null"]
+          type:
+            - string
+            - "null"
           format: uri
           maxLength: 1000
         baseUrlConfigured:
@@ -1432,16 +1721,23 @@ components:
           type: boolean
         credentialSource:
           type: string
-          enum: [DATABASE_OVERRIDE, ENVIRONMENT_FALLBACK, UNCONFIGURED]
+          enum:
+            - DATABASE_OVERRIDE
+            - ENVIRONMENT_FALLBACK
+            - UNCONFIGURED
         credentialFingerprint:
-          type: [string, "null"]
+          type:
+            - string
+            - "null"
           pattern: ^[0-9a-f]{16}$
         credentialVersion:
           type: integer
           format: int64
           minimum: 0
         credentialUpdatedAt:
-          type: [string, "null"]
+          type:
+            - string
+            - "null"
           format: date-time
         enabled:
           type: boolean
@@ -1542,10 +1838,15 @@ components:
           maxLength: 120
         protocol:
           type: string
-          enum: [CHAT, RESPONSES]
+          enum:
+            - CHAT
+            - RESPONSES
         reasoningParameterStyle:
           type: string
-          enum: [NONE, FLAT, NESTED]
+          enum:
+            - NONE
+            - FLAT
+            - NESTED
         baseUrl:
           type: string
           format: uri
@@ -1624,10 +1925,15 @@ components:
           maxLength: 120
         protocol:
           type: string
-          enum: [CHAT, RESPONSES]
+          enum:
+            - CHAT
+            - RESPONSES
         reasoningParameterStyle:
           type: string
-          enum: [NONE, FLAT, NESTED]
+          enum:
+            - NONE
+            - FLAT
+            - NESTED
         baseUrl:
           type: string
           format: uri
