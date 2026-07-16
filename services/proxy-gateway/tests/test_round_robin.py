@@ -1,7 +1,9 @@
 import socket
 import threading
 
-from finbot_proxy.round_robin import NodeRotator, RoundRobinTcpProxy
+import pytest
+
+from finbot_proxy.round_robin import NodeAssignment, NodeRotator, RoundRobinTcpProxy
 
 
 def test_rotates_every_new_connection_across_all_nodes() -> None:
@@ -30,6 +32,17 @@ def test_replacing_nodes_restarts_rotation_from_first_healthy_node() -> None:
     rotator.replace((11000, 11001, 11002))
 
     assert rotator.next().port == 11000
+
+
+def test_filtered_assignments_preserve_original_node_indices_and_can_be_cleared() -> None:
+    rotator = NodeRotator()
+    rotator.replace_assignments((NodeAssignment(4, 10004), NodeAssignment(18, 10018)))
+
+    assert [rotator.next().index for _ in range(3)] == [4, 18, 4]
+
+    rotator.clear()
+    with pytest.raises(RuntimeError, match="no active nodes"):
+        rotator.next()
 
 
 def test_tcp_proxy_assigns_consecutive_connections_to_different_targets() -> None:

@@ -45,6 +45,14 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
     }
 
     @Override
+    public CompletionStage<ProxyGatewayRuntimeStatus> status(String gatewayId) {
+        var profile = profiles.find(Objects.requireNonNull(gatewayId, "gatewayId").strip())
+                .filter(ProxyGatewayProfile::enabled)
+                .orElseThrow(() -> new IllegalArgumentException("Proxy gateway does not exist or is disabled"));
+        return gateway.status(profile);
+    }
+
+    @Override
     public List<CompletionStage<ProxyGatewayReloadResult>> reloadAll() {
         return profiles.list().stream()
                 .filter(ProxyGatewayProfile::enabled)

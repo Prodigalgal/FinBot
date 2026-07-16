@@ -605,6 +605,23 @@ export interface NetworkWorkspace {
   generatedAt: string;
 }
 
+export interface ProxyGatewayRuntimeStatus {
+  gatewayId: string;
+  serviceReady: boolean;
+  egressReady: boolean;
+  nodeCount: number;
+  healthyNodeCount: number;
+  unhealthyNodeCount: number;
+  healthyNodeIndices: number[];
+  probeFailureCounts: Record<string, number>;
+  validationEnabled: boolean;
+  validationTarget: string | null;
+  generation: number;
+  refreshAttempt: number;
+  lastRefreshAt: string | null;
+  error: string | null;
+}
+
 export interface NetworkDiagnostic {
   diagnosticId: string; route: string; status: string; proxyConfigured: boolean;
   proxied: boolean; safeEndpoint: string; httpStatus: number | null;

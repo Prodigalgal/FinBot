@@ -13,11 +13,13 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from finbot_proxy.models import Subscription
-from finbot_proxy.round_robin import RoundRobinTcpProxy
+from finbot_proxy.round_robin import NodeAssignment, RoundRobinTcpProxy
 from finbot_proxy.singbox import build_configuration
 from finbot_proxy.subscription import load_subscription, parse_subscription, select_nodes
+from finbot_proxy.target_probe import TargetProbeConfiguration, probe_targets
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +36,7 @@ class RuntimeConfiguration:
     sing_box_path: Path
     runtime_directory: Path
     allow_insecure_tls: bool
+    target_probe: TargetProbeConfiguration | None
 
     @classmethod
     def from_environment(cls) -> RuntimeConfiguration:
@@ -70,6 +73,7 @@ class RuntimeConfiguration:
             sing_box_path=Path(os.getenv("SING_BOX_PATH", "/usr/local/bin/sing-box")),
             runtime_directory=Path(os.getenv("PROXY_RUNTIME_DIRECTORY", "/tmp/finbot-proxy")),
             allow_insecure_tls=_boolean("PROXY_ALLOW_INSECURE_TLS", False),
+            target_probe=_target_probe_from_environment(),
         )
 
     def with_dynamic_payload(self, payload: dict[str, Any]) -> RuntimeConfiguration:
@@ -98,6 +102,7 @@ class RuntimeConfiguration:
             sing_box_path=self.sing_box_path,
             runtime_directory=self.runtime_directory,
             allow_insecure_tls=allow_insecure_tls,
+            target_probe=self.target_probe,
         )
 
 
@@ -106,7 +111,15 @@ class GatewayState:
         self._lock = threading.Lock()
         self._refresh_condition = threading.Condition(self._lock)
         self._ready = False
+        self._service_ready = False
         self._node_count = 0
+        self._healthy_node_count = 0
+        self._unhealthy_node_count = 0
+        self._healthy_node_indices: tuple[int, ...] = ()
+        self._probe_failure_counts: dict[str, int] = {}
+        self._validation_enabled = False
+        self._validation_target: str | None = None
+        self._last_validation_epoch_seconds: float | None = None
         self._invalid_node_count = 0
         self._insecure_node_count = 0
         self._rejected_insecure_node_count = 0
@@ -128,10 +141,21 @@ class GatewayState:
         rejected_insecure_node_count: int,
         enabled_insecure_node_count: int,
         allow_insecure_tls: bool,
+        healthy_node_indices: tuple[int, ...],
+        probe_failure_counts: dict[str, int],
+        validation_target: str | None,
     ) -> None:
         with self._lock:
-            self._ready = True
+            self._service_ready = True
+            self._ready = bool(healthy_node_indices)
             self._node_count = node_count
+            self._healthy_node_count = len(healthy_node_indices)
+            self._unhealthy_node_count = node_count - len(healthy_node_indices)
+            self._healthy_node_indices = healthy_node_indices
+            self._probe_failure_counts = dict(probe_failure_counts)
+            self._validation_enabled = validation_target is not None
+            self._validation_target = validation_target
+            self._last_validation_epoch_seconds = time.time()
             self._invalid_node_count = invalid_node_count
             self._insecure_node_count = insecure_node_count
             self._rejected_insecure_node_count = rejected_insecure_node_count
@@ -140,12 +164,15 @@ class GatewayState:
             self._generation += 1
             self._refresh_attempt += 1
             self._last_refresh_epoch_seconds = time.time()
-            self._last_error = None
+            self._last_error = (
+                None if self._ready else "Proxy target validation found no healthy nodes"
+            )
             self._refresh_condition.notify_all()
 
     def failed_refresh(self, error: Exception, *, process_alive: bool) -> None:
         with self._lock:
-            self._ready = process_alive
+            self._service_ready = process_alive
+            self._ready = self._ready and process_alive
             self._refresh_attempt += 1
             self._last_refresh_epoch_seconds = time.time()
             self._last_error = _safe_error(error)
@@ -154,6 +181,7 @@ class GatewayState:
     def process_stopped(self) -> None:
         with self._lock:
             self._ready = False
+            self._service_ready = False
 
     def assigned_node(self, node_index: int) -> None:
         with self._lock:
@@ -182,7 +210,15 @@ class GatewayState:
         return {
             "status": "ready" if self._ready else "not-ready",
             "ready": self._ready,
+            "serviceReady": self._service_ready,
             "nodeCount": self._node_count,
+            "healthyNodeCount": self._healthy_node_count,
+            "unhealthyNodeCount": self._unhealthy_node_count,
+            "healthyNodeIndices": list(self._healthy_node_indices),
+            "probeFailureCounts": dict(self._probe_failure_counts),
+            "validationEnabled": self._validation_enabled,
+            "validationTarget": self._validation_target,
+            "lastValidationEpochSeconds": self._last_validation_epoch_seconds,
             "invalidNodeCount": self._invalid_node_count,
             "insecureNodeCount": self._insecure_node_count,
             "rejectedInsecureNodeCount": self._rejected_insecure_node_count,
@@ -234,13 +270,20 @@ class ProxyGateway:
         self._stop.set()
         self._reload_requested.set()
 
-    def reconfigure(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def reconfigure(
+        self,
+        payload: dict[str, Any],
+        *,
+        force_refresh: bool = False,
+    ) -> dict[str, Any]:
         with self._refresh_lock:
             with self._configuration_lock:
                 configuration = self._configuration.with_dynamic_payload(payload)
                 self._validate_runtime(configuration)
                 reload_required = (
-                    configuration != self._configuration or self._state.requires_refresh()
+                    force_refresh
+                    or configuration != self._configuration
+                    or self._state.requires_refresh()
                 )
                 previous_refresh_attempt = int(
                     self._state.snapshot()["refreshAttempt"]
@@ -282,6 +325,23 @@ class ProxyGateway:
         if generated_hash != self._configuration_hash or not self._process_alive():
             self._replace_process(generated, configuration, len(selection.nodes))
             self._configuration_hash = generated_hash
+        assignments = tuple(
+            NodeAssignment(index=index, port=configuration.node_port_start + index)
+            for index in range(len(selection.nodes))
+        )
+        if configuration.target_probe is None:
+            healthy_assignments = assignments
+            probe_failure_counts: dict[str, int] = {}
+            validation_target = None
+        else:
+            probe_summary = probe_targets(assignments, configuration.target_probe)
+            healthy_assignments = probe_summary.healthy_assignments
+            probe_failure_counts = probe_summary.failure_counts
+            validation_target = configuration.target_probe.target
+        if healthy_assignments:
+            self._round_robin.update_assignments(healthy_assignments)
+        else:
+            self._round_robin.clear_targets()
         self._state.successful_refresh(
             node_count=len(selection.nodes),
             invalid_node_count=subscription.invalid_node_count,
@@ -289,6 +349,9 @@ class ProxyGateway:
             rejected_insecure_node_count=selection.rejected_insecure_node_count,
             enabled_insecure_node_count=selection.enabled_insecure_node_count,
             allow_insecure_tls=configuration.allow_insecure_tls,
+            healthy_node_indices=tuple(item.index for item in healthy_assignments),
+            probe_failure_counts=probe_failure_counts,
+            validation_target=validation_target,
         )
 
     def _load_nodes(self, configuration: RuntimeConfiguration) -> Subscription:
@@ -332,6 +395,7 @@ class ProxyGateway:
         if checked.returncode != 0:
             raise RuntimeError("sing-box rejected generated configuration")
         candidate.replace(active)
+        self._round_robin.clear_targets()
         self._stop_process()
         self._process = subprocess.Popen(
             [str(configuration.sing_box_path), "run", "-c", str(active)],
@@ -346,7 +410,6 @@ class ProxyGateway:
             if self._process.poll() is not None:
                 raise RuntimeError("sing-box exited during startup")
             if all(_tcp_connectable("127.0.0.1", port) for port in node_ports):
-                self._round_robin.update_targets(node_ports)
                 return
             time.sleep(0.2)
         self._stop_process()
@@ -394,6 +457,13 @@ def serve_health(
             if self.path == "/health/live":
                 self._reply(HTTPStatus.OK, {"status": "live"})
             elif self.path == "/health/ready":
+                status = (
+                    HTTPStatus.OK
+                    if snapshot["serviceReady"]
+                    else HTTPStatus.SERVICE_UNAVAILABLE
+                )
+                self._reply(status, snapshot)
+            elif self.path == "/health/egress":
                 status = HTTPStatus.OK if snapshot["ready"] else HTTPStatus.SERVICE_UNAVAILABLE
                 self._reply(status, snapshot)
             elif self.path == "/health":
@@ -404,7 +474,8 @@ def serve_health(
                 self._reply(HTTPStatus.NOT_FOUND, {"status": "not-found"})
 
         def do_PUT(self) -> None:
-            if self.path != "/control/config":
+            request_uri = urlsplit(self.path)
+            if request_uri.path != "/control/config":
                 self._reply(HTTPStatus.NOT_FOUND, {"status": "not-found"})
                 return
             if not self._authorized():
@@ -412,7 +483,8 @@ def serve_health(
                 return
             try:
                 payload = self._json_body()
-                response = gateway.reconfigure(payload)
+                force_refresh = parse_qs(request_uri.query).get("force", []) == ["true"]
+                response = gateway.reconfigure(payload, force_refresh=force_refresh)
                 previous_attempt = int(response.pop("_previousRefreshAttempt"))
             except (json.JSONDecodeError, UnicodeError, ValueError) as error:
                 self._reply(
@@ -515,6 +587,32 @@ def _boolean(name: str, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     raise ValueError(f"{name} must be a boolean")
+
+
+def _target_probe_from_environment() -> TargetProbeConfiguration | None:
+    url = os.getenv("PROXY_PROBE_URL", "").strip()
+    if not url:
+        return None
+    method = os.getenv("PROXY_PROBE_METHOD", "GET").strip().upper()
+    raw_body = os.getenv("PROXY_PROBE_BODY")
+    body = raw_body.strip() if raw_body is not None and raw_body.strip() else None
+    raw_expected_body = os.getenv("PROXY_PROBE_EXPECTED_BODY")
+    expected_body = (
+        raw_expected_body
+        if raw_expected_body is not None and raw_expected_body
+        else None
+    )
+    return TargetProbeConfiguration(
+        url=url,
+        method=method,
+        body=body,
+        expected_status=_integer(
+            "PROXY_PROBE_EXPECTED_STATUS", 200, minimum=100, maximum=599
+        ),
+        expected_body_substring=expected_body,
+        timeout_seconds=float(os.getenv("PROXY_PROBE_TIMEOUT_SECONDS", "15")),
+        concurrency=_integer("PROXY_PROBE_CONCURRENCY", 4, minimum=1, maximum=16),
+    )
 
 
 def _validate_port_ranges(

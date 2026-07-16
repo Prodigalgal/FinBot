@@ -392,6 +392,19 @@ paths:
         "202":
           $ref: "#/components/responses/JsonArray"
   /network/proxy-gateways/{gatewayId}:
+    get:
+      operationId: getNetworkProxyGatewayRuntimeStatus
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: gatewayId
+          in: path
+          required: true
+          schema:
+            type: string
     put:
       operationId: putNetworkProxyGatewaysGatewayId
       requestBody:

@@ -193,6 +193,7 @@ export type ControlPlaneGetRequestPathBase =
   | `/api/v2/ingestion/workspace`
   | `/api/v2/network`
   | `/api/v2/network/diagnostics`
+  | `/api/v2/network/proxy-gateways/${string}`
   | `/api/v2/operations`
   | `/api/v2/operations/events`
   | `/api/v2/operations/tasks`
@@ -330,6 +331,7 @@ export type ControlPlaneOperation =
   | { method: 'GET'; path: "/network" }
   | { method: 'GET'; path: "/network/diagnostics" }
   | { method: 'POST'; path: "/network/diagnostics" }
+  | { method: 'GET'; path: "/network/proxy-gateways/{gatewayId}" }
   | { method: 'PUT'; path: "/network/proxy-gateways/{gatewayId}" }
   | { method: 'POST'; path: "/network/proxy-gateways/{gatewayId}/reload" }
   | { method: 'GET'; path: "/operations" }

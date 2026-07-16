@@ -6,4 +6,6 @@ public interface ProxyGatewayControlGateway {
     CompletionStage<Void> apply(
             ProxyGatewayProfile profile,
             ProxyGatewayRuntimeConfiguration configuration);
+
+    CompletionStage<ProxyGatewayRuntimeStatus> status(ProxyGatewayProfile profile);
 }

@@ -2,6 +2,7 @@ package io.omnnu.finbot.api.network;
 
 import io.omnnu.finbot.application.network.ProxyGatewayControlUseCase;
 import io.omnnu.finbot.application.network.ProxyGatewayReloadResult;
+import io.omnnu.finbot.application.network.ProxyGatewayRuntimeStatus;
 import io.omnnu.finbot.application.network.ProxyGatewayProfile;
 import io.omnnu.finbot.application.network.UpdateProxyGatewayProfileCommand;
 import jakarta.validation.Valid;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -30,6 +32,11 @@ public final class ProxyGatewayControlController {
     @PostMapping("/{gatewayId}/reload")
     public CompletionStage<ProxyGatewayReloadResult> reload(@PathVariable String gatewayId) {
         return useCase.reload(gatewayId);
+    }
+
+    @GetMapping("/{gatewayId}")
+    public CompletionStage<ProxyGatewayRuntimeStatus> status(@PathVariable String gatewayId) {
+        return useCase.status(gatewayId);
     }
 
     @PutMapping("/{gatewayId}")

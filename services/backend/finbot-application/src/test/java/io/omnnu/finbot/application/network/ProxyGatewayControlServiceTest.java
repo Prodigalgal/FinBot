@@ -15,6 +15,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
@@ -101,6 +102,20 @@ class ProxyGatewayControlServiceTest {
         assertTrue(reloads.getFirst().toCompletableFuture().isCompletedExceptionally());
     }
 
+    @Test
+    void exposesLiveGatewayStatusWithoutReturningNodeSecrets() {
+        var profile = profile(true, 3);
+        var gateway = new CapturingGateway();
+        var service = service(new FakeRepository(profile, true), new EmptyMutatingStore(), gateway);
+
+        var status = service.status(profile.gatewayId()).toCompletableFuture().join();
+
+        assertTrue(status.serviceReady());
+        assertFalse(status.egressReady());
+        assertEquals(4, status.nodeCount());
+        assertEquals(Map.of("CONNECTION_ERROR", 4), status.probeFailureCounts());
+    }
+
     private static ProxyGatewayControlService service(
             ProxyGatewayProfileRepository repository,
             RuntimeSecretStore secrets,
@@ -169,6 +184,26 @@ class ProxyGatewayControlServiceTest {
                 ProxyGatewayRuntimeConfiguration configuration) {
             this.configuration = configuration;
             return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<ProxyGatewayRuntimeStatus> status(
+                ProxyGatewayProfile profile) {
+            return CompletableFuture.completedFuture(new ProxyGatewayRuntimeStatus(
+                    profile.gatewayId(),
+                    true,
+                    false,
+                    4,
+                    0,
+                    4,
+                    List.of(),
+                    Map.of("CONNECTION_ERROR", 4),
+                    true,
+                    "api.example.com",
+                    2,
+                    3,
+                    NOW,
+                    "Proxy target validation found no healthy nodes"));
         }
     }
 

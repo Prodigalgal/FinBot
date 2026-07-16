@@ -56,6 +56,18 @@ spec:
               value: "1800"
             - name: PROXY_ALLOW_INSECURE_TLS
               value: "false"
+            - name: PROXY_PROBE_URL
+              value: https://api.firecrawl.dev/v2/scrape
+            - name: PROXY_PROBE_METHOD
+              value: POST
+            - name: PROXY_PROBE_BODY
+              value: '{"url":"https://example.com","formats":["markdown"]}'
+            - name: PROXY_PROBE_EXPECTED_BODY
+              value: '"success":true'
+            - name: PROXY_PROBE_TIMEOUT_SECONDS
+              value: "25"
+            - name: PROXY_PROBE_CONCURRENCY
+              value: "4"
           ports:
             - name: proxy
               containerPort: 8080
@@ -164,6 +176,16 @@ spec:
               value: "1800"
             - name: PROXY_ALLOW_INSECURE_TLS
               value: "false"
+            - name: PROXY_PROBE_URL
+              value: https://api-demo.bybit.com/v5/market/time
+            - name: PROXY_PROBE_METHOD
+              value: GET
+            - name: PROXY_PROBE_EXPECTED_BODY
+              value: '"retCode":0'
+            - name: PROXY_PROBE_TIMEOUT_SECONDS
+              value: "15"
+            - name: PROXY_PROBE_CONCURRENCY
+              value: "4"
           ports:
             - name: proxy
               containerPort: 8080

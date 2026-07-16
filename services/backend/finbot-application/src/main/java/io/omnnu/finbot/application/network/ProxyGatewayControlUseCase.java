@@ -6,6 +6,8 @@ import java.util.concurrent.CompletionStage;
 public interface ProxyGatewayControlUseCase {
     CompletionStage<ProxyGatewayReloadResult> reload(String gatewayId);
 
+    CompletionStage<ProxyGatewayRuntimeStatus> status(String gatewayId);
+
     ProxyGatewayProfile update(UpdateProxyGatewayProfileCommand command);
 
     List<CompletionStage<ProxyGatewayReloadResult>> reloadAll();

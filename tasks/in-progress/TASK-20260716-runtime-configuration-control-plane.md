@@ -17,6 +17,7 @@
 - Liquibase 033 信息源归档契约、代理出口轮换和 Firecrawl 线上成功率验证。
 - 定时任务重叠抑制：同一 schedule 存在 `PENDING`/`CLAIMED` 实例时只推进调度游标，不重复入队。
 - Worker 周期恢复过期租约，覆盖滚动发布时旧 Pod 在新 Pod 启动后才停止形成的孤儿任务。
+- 目标感知代理健康：业务流量只轮转真实通过 Firecrawl/Bybit 探测的节点，UI 区分服务就绪与出口可用。
 
 ## 非目标
 

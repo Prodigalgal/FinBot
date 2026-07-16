@@ -16,25 +16,39 @@ class NodeAssignment:
 class NodeRotator:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._ports: tuple[int, ...] = ()
+        self._assignments: tuple[NodeAssignment, ...] = ()
         self._next_index = 0
 
     def replace(self, ports: tuple[int, ...]) -> None:
-        if not ports or len(set(ports)) != len(ports):
+        self.replace_assignments(
+            tuple(NodeAssignment(index=index, port=port) for index, port in enumerate(ports))
+        )
+
+    def replace_assignments(self, assignments: tuple[NodeAssignment, ...]) -> None:
+        ports = tuple(assignment.port for assignment in assignments)
+        indices = tuple(assignment.index for assignment in assignments)
+        if not assignments or len(set(ports)) != len(ports):
             raise ValueError("Round-robin node ports must be non-empty and unique")
+        if len(set(indices)) != len(indices) or any(index < 0 for index in indices):
+            raise ValueError("Round-robin node indices must be non-negative and unique")
         if any(port < 1 or port > 65535 for port in ports):
             raise ValueError("Round-robin node port is invalid")
         with self._lock:
-            self._ports = ports
+            self._assignments = assignments
+            self._next_index = 0
+
+    def clear(self) -> None:
+        with self._lock:
+            self._assignments = ()
             self._next_index = 0
 
     def next(self) -> NodeAssignment:
         with self._lock:
-            if not self._ports:
+            if not self._assignments:
                 raise RuntimeError("Round-robin proxy has no active nodes")
-            index = self._next_index
-            self._next_index = (index + 1) % len(self._ports)
-            return NodeAssignment(index=index, port=self._ports[index])
+            position = self._next_index
+            self._next_index = (position + 1) % len(self._assignments)
+            return self._assignments[position]
 
 
 class RoundRobinTcpProxy:
@@ -75,6 +89,12 @@ class RoundRobinTcpProxy:
 
     def update_targets(self, ports: tuple[int, ...]) -> None:
         self._rotator.replace(ports)
+
+    def update_assignments(self, assignments: tuple[NodeAssignment, ...]) -> None:
+        self._rotator.replace_assignments(assignments)
+
+    def clear_targets(self) -> None:
+        self._rotator.clear()
 
     def stop(self) -> None:
         server = self._server

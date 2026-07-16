@@ -2,7 +2,7 @@ import type {
   AccountsOverview, ActivityPage, AgentRole, AiExperiment, AiModel, AiProvider,
   AuthChallenge, AuthStatus, AutonomousStatus, ConfigurationSnapshot, EvidenceDocument,
   ExecutionAiStage, IngestionWorkspace, NetworkDiagnostic, NetworkWorkspace,
-  OperationsOverview, OperationsReport, PlatformReadiness, PositionRecord,
+  OperationsOverview, OperationsReport, PlatformReadiness, PositionRecord, ProxyGatewayRuntimeStatus,
   CatalogSyncRun, ProductDetail, ProductPage, ProviderModelCatalog, QuantWorkspace, ResearchComparison,
   ResearchCase, ResearchFeedback, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, ResearchSummary, RiskPolicy,
   ScheduleRecord, SetupProfileApplication, SetupProfileDefinition, SetupProfilePreview,
@@ -237,5 +237,6 @@ export const api = {
       expectedVersion: gateway.version,
     }),
   }),
+  proxyGatewayStatus: (gatewayId: string) => request<ProxyGatewayRuntimeStatus>(`/api/v2/network/proxy-gateways/${encodeURIComponent(gatewayId)}`),
   reloadProxyGateway: (gatewayId: string) => request<unknown>(`/api/v2/network/proxy-gateways/${encodeURIComponent(gatewayId)}/reload`, { method: 'POST', body: '{}' }),
 };
