@@ -66,7 +66,7 @@ paths:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
         "201":
-          $ref: "#/components/responses/JsonObject"
+          $ref: "#/components/responses/AiModel"
   /ai-experiments/{experimentId}:
     put:
       operationId: putAiExperimentsExperimentId
@@ -197,12 +197,34 @@ paths:
           $ref: "#/components/responses/JsonObject"
         default:
           $ref: "#/components/responses/Problem"
+  /configuration/models:
+    post:
+      operationId: postConfigurationModels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAiModelRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
   /configuration/models/{modelProfileId}:
     put:
       operationId: putConfigurationModelsModelProfileId
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAiModelRequest"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          $ref: "#/components/responses/AiModel"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -212,12 +234,55 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+  /configuration/providers:
+    post:
+      operationId: postConfigurationProviders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAiProviderRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/AiProvider"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
   /configuration/providers/{profileId}:
+    delete:
+      operationId: deleteConfigurationProvidersProfileId
+      responses:
+        "204":
+          description: Operation completed without a response body.
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: expectedVersion
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - $ref: "#/components/parameters/CsrfToken"
     put:
       operationId: putConfigurationProvidersProfileId
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAiProviderRequest"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          $ref: "#/components/responses/AiProvider"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -326,6 +391,42 @@ paths:
       responses:
         "202":
           $ref: "#/components/responses/JsonArray"
+  /network/proxy-gateways/{gatewayId}:
+    put:
+      operationId: putNetworkProxyGatewaysGatewayId
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyGatewayUpdateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: gatewayId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /network/proxy-gateways/{gatewayId}/reload:
+    post:
+      operationId: postNetworkProxyGatewaysGatewayIdReload
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: gatewayId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
   /operations:
     get:
       operationId: getOperations
@@ -593,6 +694,75 @@ paths:
           $ref: "#/components/responses/JsonObject"
         default:
           $ref: "#/components/responses/Problem"
+  /runtime-secrets/{scope}/{targetId}/{secretName}:
+    delete:
+      operationId: deleteRuntimeSecretsScopeTargetIdSecretName
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeSecretClearRequest"
+      responses:
+        "200":
+          description: Effective secret status after clearing the database override.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeSecretStatus"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: scope
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: targetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: secretName
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+    put:
+      operationId: putRuntimeSecretsScopeTargetIdSecretName
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeSecretPutRequest"
+      responses:
+        "200":
+          description: Effective secret status after storing the encrypted override.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeSecretStatus"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: scope
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: targetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: secretName
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
   /setup-profiles:
     get:
       operationId: getSetupProfiles
@@ -723,6 +893,21 @@ paths:
           required: true
           schema:
             type: string
+  /trading/accounts/{accountId}/test:
+    post:
+      operationId: postTradingAccountsAccountIdTest
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
   /trading/activity:
     get:
       operationId: getTradingActivity
@@ -1165,6 +1350,18 @@ components:
         type: string
         pattern: ^workflowversion_[a-z0-9_-]{4,60}$
   responses:
+    AiProvider:
+      description: AI provider profile with masked credential state and usage references.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AiProvider"
+    AiModel:
+      description: Model profile owned by one AI provider.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AiModel"
     JsonObject:
       description: Successful structured response.
       content:
@@ -1188,6 +1385,412 @@ components:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
   schemas:
+    AiProvider:
+      type: object
+      additionalProperties: false
+      required:
+        - profileId
+        - displayName
+        - protocol
+        - reasoningParameterStyle
+        - baseUrl
+        - baseUrlConfigured
+        - apiKeyConfigured
+        - credentialSource
+        - credentialFingerprint
+        - credentialVersion
+        - credentialUpdatedAt
+        - enabled
+        - connectTimeoutSeconds
+        - requestTimeoutSeconds
+        - workflowNodeUsageCount
+        - roleTemplateUsageCount
+        - executionStageUsageCount
+        - totalUsageCount
+        - version
+        - updatedAt
+      properties:
+        profileId:
+          type: string
+          maxLength: 80
+        displayName:
+          type: string
+          maxLength: 120
+        protocol:
+          type: string
+          enum: [CHAT, RESPONSES]
+        reasoningParameterStyle:
+          type: string
+          enum: [NONE, FLAT, NESTED]
+        baseUrl:
+          type: [string, "null"]
+          format: uri
+          maxLength: 1000
+        baseUrlConfigured:
+          type: boolean
+        apiKeyConfigured:
+          type: boolean
+        credentialSource:
+          type: string
+          enum: [DATABASE_OVERRIDE, ENVIRONMENT_FALLBACK, UNCONFIGURED]
+        credentialFingerprint:
+          type: [string, "null"]
+          pattern: ^[0-9a-f]{16}$
+        credentialVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        credentialUpdatedAt:
+          type: [string, "null"]
+          format: date-time
+        enabled:
+          type: boolean
+        connectTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 60
+        requestTimeoutSeconds:
+          type: integer
+          minimum: 5
+          maximum: 1800
+        workflowNodeUsageCount:
+          type: integer
+          format: int64
+          minimum: 0
+        roleTemplateUsageCount:
+          type: integer
+          format: int64
+          minimum: 0
+        executionStageUsageCount:
+          type: integer
+          format: int64
+          minimum: 0
+        totalUsageCount:
+          type: integer
+          format: int64
+          minimum: 0
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+    AiModel:
+      type: object
+      additionalProperties: false
+      required:
+        - modelProfileId
+        - providerProfileId
+        - modelName
+        - defaultReasoningEffort
+        - maximumReasoningEffort
+        - inputUsdPerMillion
+        - outputUsdPerMillion
+        - enabled
+        - version
+        - updatedAt
+      properties:
+        modelProfileId:
+          type: string
+          maxLength: 100
+        providerProfileId:
+          type: string
+          maxLength: 80
+        modelName:
+          type: string
+          maxLength: 160
+        defaultReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        maximumReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        inputUsdPerMillion:
+          type: number
+          minimum: 0
+        outputUsdPerMillion:
+          type: number
+          minimum: 0
+        enabled:
+          type: boolean
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+    CreateAiProviderRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - displayName
+        - protocol
+        - reasoningParameterStyle
+        - baseUrl
+        - enabled
+        - connectTimeoutSeconds
+        - requestTimeoutSeconds
+        - initialModelName
+        - defaultReasoningEffort
+        - maximumReasoningEffort
+        - inputUsdPerMillion
+        - outputUsdPerMillion
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 120
+        protocol:
+          type: string
+          enum: [CHAT, RESPONSES]
+        reasoningParameterStyle:
+          type: string
+          enum: [NONE, FLAT, NESTED]
+        baseUrl:
+          type: string
+          format: uri
+          maxLength: 1000
+        enabled:
+          type: boolean
+        connectTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 60
+        requestTimeoutSeconds:
+          type: integer
+          minimum: 5
+          maximum: 1800
+        initialModelName:
+          type: string
+          minLength: 1
+          maxLength: 160
+        defaultReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        maximumReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        inputUsdPerMillion:
+          type: number
+          minimum: 0
+        outputUsdPerMillion:
+          type: number
+          minimum: 0
+    CreateAiModelRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - providerProfileId
+        - modelName
+        - defaultReasoningEffort
+        - maximumReasoningEffort
+        - inputUsdPerMillion
+        - outputUsdPerMillion
+        - enabled
+      properties:
+        providerProfileId:
+          type: string
+          maxLength: 80
+        modelName:
+          type: string
+          minLength: 1
+          maxLength: 160
+        defaultReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        maximumReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        inputUsdPerMillion:
+          type: number
+          minimum: 0
+        outputUsdPerMillion:
+          type: number
+          minimum: 0
+        enabled:
+          type: boolean
+    UpdateAiProviderRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - displayName
+        - protocol
+        - reasoningParameterStyle
+        - baseUrl
+        - enabled
+        - connectTimeoutSeconds
+        - requestTimeoutSeconds
+        - expectedVersion
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 120
+        protocol:
+          type: string
+          enum: [CHAT, RESPONSES]
+        reasoningParameterStyle:
+          type: string
+          enum: [NONE, FLAT, NESTED]
+        baseUrl:
+          type: string
+          format: uri
+          maxLength: 1000
+        enabled:
+          type: boolean
+        connectTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 60
+        requestTimeoutSeconds:
+          type: integer
+          minimum: 5
+          maximum: 1800
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+    UpdateAiModelRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - defaultReasoningEffort
+        - maximumReasoningEffort
+        - inputUsdPerMillion
+        - outputUsdPerMillion
+        - enabled
+        - expectedVersion
+      properties:
+        defaultReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        maximumReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        inputUsdPerMillion:
+          type: number
+          minimum: 0
+        outputUsdPerMillion:
+          type: number
+          minimum: 0
+        enabled:
+          type: boolean
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+    ReasoningEffort:
+      type: string
+      enum:
+        - PROVIDER_DEFAULT
+        - NONE
+        - MINIMAL
+        - LOW
+        - MEDIUM
+        - HIGH
+        - XHIGH
+        - MAX
+    RuntimeSecretPutRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - value
+        - expectedVersion
+      properties:
+        value:
+          type: string
+          minLength: 8
+          maxLength: 16384
+          writeOnly: true
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+    RuntimeSecretClearRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedVersion
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+    RuntimeSecretStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+        - targetId
+        - secretName
+        - source
+        - configured
+        - version
+      properties:
+        scope:
+          type: string
+          enum:
+            - AI_PROVIDER
+            - EXCHANGE_ACCOUNT
+            - PROXY_ROUTE
+            - PROXY_GATEWAY
+            - INFORMATION_SOURCE
+        targetId:
+          type: string
+          maxLength: 80
+        secretName:
+          type: string
+          maxLength: 40
+        source:
+          type: string
+          enum:
+            - DATABASE_OVERRIDE
+            - ENVIRONMENT_FALLBACK
+            - UNCONFIGURED
+        configured:
+          type: boolean
+        fingerprint:
+          type:
+            - string
+            - "null"
+          pattern: ^[0-9a-f]{16}$
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+    ProxyGatewayUpdateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - preferredNames
+        - maximumNodes
+        - refreshSeconds
+        - allowInsecureTls
+        - enabled
+        - expectedVersion
+      properties:
+        preferredNames:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            minLength: 1
+            maxLength: 80
+        maximumNodes:
+          type: integer
+          minimum: 1
+          maximum: 128
+        refreshSeconds:
+          type: integer
+          minimum: 60
+          maximum: 86400
+        allowInsecureTls:
+          type: boolean
+        enabled:
+          type: boolean
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
     ExchangeCapability:
       type: object
       additionalProperties: false

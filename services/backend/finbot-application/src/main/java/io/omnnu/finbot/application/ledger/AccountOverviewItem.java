@@ -5,6 +5,7 @@ import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import java.math.BigDecimal;
 import java.time.Instant;
+import io.omnnu.finbot.application.configuration.RuntimeSecretSource;
 
 public record AccountOverviewItem(
         ExchangeAccountId accountId,
@@ -15,6 +16,12 @@ public record AccountOverviewItem(
         boolean enabled,
         long version,
         boolean credentialConfigured,
+        RuntimeSecretSource apiKeySource,
+        String apiKeyFingerprint,
+        long apiKeyVersion,
+        RuntimeSecretSource apiSecretSource,
+        String apiSecretFingerprint,
+        long apiSecretVersion,
         AccountDataStatus dataStatus,
         String currency,
         BigDecimal equity,

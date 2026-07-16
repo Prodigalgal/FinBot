@@ -76,51 +76,36 @@ spec:
                 secretKeyRef:
                   name: finbot-secrets
                   key: FINBOT_QUANT_SERVICE_TOKEN
-            - name: FINBOT_MIMO_API_KEY
+            - name: FINBOT_RUNTIME_SECRET_MASTER_KEY
               valueFrom:
                 secretKeyRef:
                   name: finbot-secrets
-                  key: MIMO_API_KEY
-            - name: FINBOT_DEEPSEEK_API_KEY
+                  key: RUNTIME_SECRET_MASTER_KEY
+            - name: FINBOT_AI_PROVIDER_KEYS_JSON
               valueFrom:
                 secretKeyRef:
                   name: finbot-secrets
-                  key: DEEPSEEK_API_KEY
-            - name: FINBOT_SUB2API_API_KEY
+                  key: AI_PROVIDER_KEYS_JSON
+            - name: FINBOT_EXCHANGE_ACCOUNT_CREDENTIALS_JSON
               valueFrom:
                 secretKeyRef:
                   name: finbot-secrets
-                  key: SUB2API_API_KEY
-            - name: FINBOT_GROK_SUB2API_API_KEY
+                  key: EXCHANGE_ACCOUNT_CREDENTIALS_JSON
+            - name: FINBOT_INFORMATION_SOURCE_KEYS_JSON
               valueFrom:
                 secretKeyRef:
                   name: finbot-secrets
-                  key: GROK_SUB2API_API_KEY
-            - name: FINBOT_GEMINI_API_KEY
+                  key: INFORMATION_SOURCE_KEYS_JSON
+            - name: FINBOT_PROXY_ROUTE_URLS_JSON
               valueFrom:
                 secretKeyRef:
                   name: finbot-secrets
-                  key: GEMINI_API_KEY
-            - name: FINBOT_GATE_API_KEY
+                  key: PROXY_ROUTE_URLS_JSON
+            - name: FINBOT_PROXY_GATEWAY_SECRETS_JSON
               valueFrom:
                 secretKeyRef:
                   name: finbot-secrets
-                  key: GATE_TESTNET_API_KEY
-            - name: FINBOT_GATE_API_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: finbot-secrets
-                  key: GATE_TESTNET_API_SECRET
-            - name: FINBOT_BYBIT_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: finbot-secrets
-                  key: BYBIT_DEMO_API_KEY
-            - name: FINBOT_BYBIT_API_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: finbot-secrets
-                  key: BYBIT_DEMO_API_SECRET
+                  key: PROXY_GATEWAY_SECRETS_JSON
           ports:
             - name: http
               containerPort: 8080

@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.omnnu.finbot.application.ingestion.CollectedPayload;
 import io.omnnu.finbot.application.ingestion.SourceCollectionException;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.application.network.ProxyRouteUnavailableException;
 import io.omnnu.finbot.domain.ingestion.InformationSource;
 import io.omnnu.finbot.domain.ingestion.SourceMode;
@@ -34,14 +36,17 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
     private final RoutedHttpClientFactory httpClients;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final RuntimeSecretStore runtimeSecrets;
 
     FirecrawlSourceCollector(
             RoutedHttpClientFactory httpClients,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock,
+            RuntimeSecretStore runtimeSecrets) {
         this.httpClients = Objects.requireNonNull(httpClients, "httpClients");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
     }
 
     @Override
@@ -339,18 +344,19 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
         }
     }
 
-    private static String credential(InformationSource source) {
+    private String credential(InformationSource source) {
         if (source.credentialEnvironmentVariable() == null) {
             return null;
         }
-        var value = System.getenv(source.credentialEnvironmentVariable());
-        if (value == null || value.isBlank()) {
-            throw new SourceCollectionException(
-                    "FIRECRAWL_CREDENTIAL_MISSING",
-                    "Configured Firecrawl credential is unavailable",
-                    true);
-        }
-        return value.strip();
+        return runtimeSecrets.resolve(
+                        RuntimeSecretScope.INFORMATION_SOURCE,
+                        source.sourceId().value(),
+                        "API_KEY",
+                        source.credentialEnvironmentVariable())
+                .orElseThrow(() -> new SourceCollectionException(
+                        "FIRECRAWL_CREDENTIAL_MISSING",
+                        "Configured Firecrawl credential is unavailable",
+                        true));
     }
 
     private String json(ObjectNode node) {

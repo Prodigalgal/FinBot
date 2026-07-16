@@ -207,16 +207,30 @@ public class RuntimeConfiguration {
     ConfigurationUseCase configurationUseCase(
             ConfigurationRepository repository,
             EnvironmentValueResolver environmentValueResolver,
+            io.omnnu.finbot.application.configuration.RuntimeSecretStore runtimeSecretStore,
+            SortableIdGenerator idGenerator,
             Clock clock) {
-        return new ConfigurationApplicationService(repository, environmentValueResolver, clock);
+        return new ConfigurationApplicationService(
+                repository, environmentValueResolver, runtimeSecretStore, idGenerator, clock);
+    }
+
+    @Bean
+    io.omnnu.finbot.application.configuration.RuntimeSecretManagementUseCase runtimeSecretManagementUseCase(
+            io.omnnu.finbot.application.configuration.RuntimeSecretStore store,
+            io.omnnu.finbot.application.configuration.RuntimeSecretTargetRepository targets,
+            Clock clock) {
+        return new io.omnnu.finbot.application.configuration.RuntimeSecretManagementService(
+                store, targets, clock);
     }
 
     @Bean
     ProviderModelCatalogUseCase providerModelCatalogUseCase(
-            ConfigurationUseCase configuration,
-            EnvironmentValueResolver environmentValueResolver,
+            ConfigurationRepository configuration,
+            EnvironmentValueResolver environment,
+            io.omnnu.finbot.application.configuration.RuntimeSecretStore runtimeSecretStore,
             ProviderModelCatalogGateway gateway) {
-        return new ProviderModelCatalogService(configuration, environmentValueResolver, gateway);
+        return new ProviderModelCatalogService(
+                configuration, environment, runtimeSecretStore, gateway);
     }
 
     @Bean
@@ -238,12 +252,12 @@ public class RuntimeConfiguration {
     @Bean
     TradingLedgerQueryUseCase tradingLedgerQueryUseCase(
             TradingLedgerQueryRepository repository,
-            EnvironmentValueResolver environmentValueResolver,
+            io.omnnu.finbot.application.configuration.RuntimeSecretStore runtimeSecretStore,
             Clock clock,
             TradingLedgerProperties properties) {
         return new TradingLedgerQueryService(
                 repository,
-                environmentValueResolver,
+                runtimeSecretStore,
                 clock,
                 properties.staleAfter());
     }
@@ -480,6 +494,16 @@ public class RuntimeConfiguration {
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
         return new NetworkDiagnosticsService(
                 routeResolver, probeGateway, store, idGenerator, clock, executor);
+    }
+
+    @Bean
+    io.omnnu.finbot.application.network.ProxyGatewayControlUseCase proxyGatewayControlUseCase(
+            io.omnnu.finbot.application.network.ProxyGatewayProfileRepository profiles,
+            io.omnnu.finbot.application.configuration.RuntimeSecretStore runtimeSecretStore,
+            io.omnnu.finbot.application.network.ProxyGatewayControlGateway gateway,
+            Clock clock) {
+        return new io.omnnu.finbot.application.network.ProxyGatewayControlService(
+                profiles, runtimeSecretStore, gateway, clock);
     }
 
     @Bean

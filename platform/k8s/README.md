@@ -6,6 +6,8 @@
 
 以 [`finbot-secrets.env.example`](./finbot-secrets.env.example) 为字段清单，在受控目录创建 `finbot-secrets.env`。真实 AI key、交易所 key、订阅 token、节点 URL、管理员密码和内部 token 不得进入源码或 GitOps 仓库。
 
+应用层 fallback 按资源 ID 组织，不按厂商命名。`AI_PROVIDER_KEYS_JSON` 为 `{ "providerId": "key" }`；`EXCHANGE_ACCOUNT_CREDENTIALS_JSON` 为 `{ "accountId": { "API_KEY": "...", "API_SECRET": "..." } }`；信息源、出站路由和代理网关分别使用相同的 `sourceId`、`routeType`、`gatewayId` 映射。日常轮换应优先在后台使用加密热配置，这些 JSON 只承担首次启动与灾难恢复。
+
 ```powershell
 $env:KUBECONFIG = 'D:\WorkSpace\Project\服务器管理\private\kubeconfigs\mnnu-admin.conf'
 kubectl create namespace finbot --dry-run=client -o yaml | kubectl apply -f -

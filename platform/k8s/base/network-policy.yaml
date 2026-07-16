@@ -90,6 +90,8 @@ spec:
       ports:
         - port: 8080
           protocol: TCP
+        - port: 8081
+          protocol: TCP
     - to:
         - namespaceSelector:
             matchLabels:
@@ -178,6 +180,8 @@ spec:
               app.kubernetes.io/name: finbot-backend
       ports:
         - port: 8080
+          protocol: TCP
+        - port: 8081
           protocol: TCP
   egress:
     - to:

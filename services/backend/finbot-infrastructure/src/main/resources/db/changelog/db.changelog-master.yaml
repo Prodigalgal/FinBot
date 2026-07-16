@@ -61,3 +61,5 @@ databaseChangeLog:
       file: db/changelog/releases/030-segmented-environment-research.sql
   - include:
       file: db/changelog/releases/031-multi-agent-evidence-consensus.sql
+  - include:
+      file: db/changelog/releases/032-runtime-configuration-control-plane.sql

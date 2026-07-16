@@ -142,6 +142,7 @@ export const api = {
   accounts: (range = 'ALL', from?: string, to?: string) => request<AccountsOverview>(`/api/v2/trading/accounts${query({ range, from, to })}`),
   setExchangeAccountEnabled: (accountId: string, enabled: boolean, expectedVersion: number) =>
     request<{ accountId: string; enabled: boolean; version: number }>(`/api/v2/trading/accounts/${encodeURIComponent(accountId)}/configuration`, { method: 'PUT', body: JSON.stringify({ enabled, expectedVersion }) }),
+  testExchangeAccount: (accountId: string) => request<unknown>(`/api/v2/trading/accounts/${encodeURIComponent(accountId)}/test`, { method: 'POST', body: '{}' }),
   positions: (accountId: string) => request<PositionRecord[]>(`/api/v2/trading/accounts/${encodeURIComponent(accountId)}/positions`),
   activity: (params: {
     accountId?: string; source?: string; activityType?: string; status?: string; symbol?: string;
@@ -191,15 +192,18 @@ export const api = {
       protocol: provider.protocol,
       reasoningParameterStyle: provider.reasoningParameterStyle,
       baseUrl: provider.baseUrl,
-      baseUrlEnv: provider.baseUrlEnv,
-      apiKeyEnv: provider.apiKeyEnv,
       enabled: provider.enabled,
       connectTimeoutSeconds: provider.connectTimeoutSeconds,
       requestTimeoutSeconds: provider.requestTimeoutSeconds,
       expectedVersion: provider.version,
     }),
   }),
+  createProvider: (body: Record<string, unknown>) => request<AiProvider>('/api/v2/configuration/providers', { method: 'POST', body: JSON.stringify(body) }),
+  deleteProvider: (profileId: string, expectedVersion: number) => request<void>(`/api/v2/configuration/providers/${encodeURIComponent(profileId)}${query({ expectedVersion })}`, { method: 'DELETE' }),
+  createModel: (body: Record<string, unknown>) => request<AiModel>('/api/v2/configuration/models', { method: 'POST', body: JSON.stringify(body) }),
   updateModel: (model: AiModel) => request<AiModel>(`/api/v2/configuration/models/${encodeURIComponent(model.modelProfileId)}`, { method: 'PUT', body: JSON.stringify({ defaultReasoningEffort: model.defaultReasoningEffort, maximumReasoningEffort: model.maximumReasoningEffort, inputUsdPerMillion: model.inputUsdPerMillion, outputUsdPerMillion: model.outputUsdPerMillion, enabled: model.enabled, expectedVersion: model.version }) }),
+  putRuntimeSecret: (scope: string, targetId: string, secretName: string, value: string, expectedVersion: number) => request<unknown>(`/api/v2/runtime-secrets/${encodeURIComponent(scope)}/${encodeURIComponent(targetId)}/${encodeURIComponent(secretName)}`, { method: 'PUT', body: JSON.stringify({ value, expectedVersion }) }),
+  clearRuntimeSecret: (scope: string, targetId: string, secretName: string, expectedVersion: number) => request<unknown>(`/api/v2/runtime-secrets/${encodeURIComponent(scope)}/${encodeURIComponent(targetId)}/${encodeURIComponent(secretName)}`, { method: 'DELETE', body: JSON.stringify({ expectedVersion }) }),
   probeProvider: (profileId: string) => request<ProviderModelCatalog>(`/api/v2/configuration/providers/${encodeURIComponent(profileId)}/probe`, { method: 'POST', body: '{}' }),
   setupProfiles: () => request<SetupProfileDefinition[]>('/api/v2/setup-profiles'),
   previewSetupProfile: (profileId: SetupProfileDefinition['profileId']) => request<SetupProfilePreview>(`/api/v2/setup-profiles/${profileId}/preview`),
@@ -218,4 +222,16 @@ export const api = {
   network: () => request<NetworkWorkspace>('/api/v2/network'),
   networkDiagnostics: (limit = 100) => request<NetworkDiagnostic[]>(`/api/v2/network/diagnostics${query({ limit })}`),
   startNetworkDiagnostics: (routes: string[]) => request<NetworkDiagnostic[]>('/api/v2/network/diagnostics', { method: 'POST', headers: idempotency(crypto.randomUUID()), body: JSON.stringify({ routes }) }),
+  updateProxyGateway: (gateway: NetworkWorkspace['proxyGateways'][number]) => request<unknown>(`/api/v2/network/proxy-gateways/${encodeURIComponent(gateway.gatewayId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      preferredNames: gateway.preferredNames.split(',').map((name) => name.trim()).filter(Boolean),
+      maximumNodes: gateway.maximumNodes,
+      refreshSeconds: gateway.refreshSeconds,
+      allowInsecureTls: gateway.allowInsecureTls,
+      enabled: gateway.enabled,
+      expectedVersion: gateway.version,
+    }),
+  }),
+  reloadProxyGateway: (gatewayId: string) => request<unknown>(`/api/v2/network/proxy-gateways/${encodeURIComponent(gatewayId)}/reload`, { method: 'POST', body: '{}' }),
 };

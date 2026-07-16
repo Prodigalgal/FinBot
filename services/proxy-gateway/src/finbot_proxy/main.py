@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from finbot_proxy.runtime import (
     GatewayState,
     ProxyGateway,
@@ -13,7 +15,12 @@ def run() -> None:
     configuration = RuntimeConfiguration.from_environment()
     state = GatewayState()
     gateway = ProxyGateway(configuration, state)
-    health_server = serve_health(state, configuration.health_port)
+    health_server = serve_health(
+        state,
+        gateway,
+        configuration.health_port,
+        os.getenv("PROXY_CONTROL_TOKEN", "").strip() or None,
+    )
     install_signal_handlers(gateway)
     try:
         gateway.run()

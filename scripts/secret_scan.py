@@ -42,13 +42,15 @@ def main() -> None:
 
 def _tracked_files() -> list[Path]:
     result = subprocess.run(
-        ["git", "ls-files", "-z"],
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
         cwd=ROOT,
         check=False,
         capture_output=True,
     )
     if result.returncode == 0 and result.stdout:
-        return [ROOT / value.decode("utf-8") for value in result.stdout.split(b"\0") if value]
+        return sorted(
+            {ROOT / value.decode("utf-8") for value in result.stdout.split(b"\0") if value}
+        )
     return [
         path
         for path in ROOT.rglob("*")

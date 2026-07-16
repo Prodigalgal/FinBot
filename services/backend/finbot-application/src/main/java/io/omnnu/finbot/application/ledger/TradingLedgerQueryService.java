@@ -1,6 +1,7 @@
 package io.omnnu.finbot.application.ledger;
 
-import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -12,17 +13,17 @@ public final class TradingLedgerQueryService implements TradingLedgerQueryUseCas
     private static final String REPORTING_CURRENCY = "USDT";
 
     private final TradingLedgerQueryRepository repository;
-    private final EnvironmentValueResolver environment;
+    private final RuntimeSecretStore runtimeSecrets;
     private final Clock clock;
     private final Duration staleAfter;
 
     public TradingLedgerQueryService(
             TradingLedgerQueryRepository repository,
-            EnvironmentValueResolver environment,
+            RuntimeSecretStore runtimeSecrets,
             Clock clock,
             Duration staleAfter) {
         this.repository = Objects.requireNonNull(repository, "repository");
-        this.environment = Objects.requireNonNull(environment, "environment");
+        this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.staleAfter = Objects.requireNonNull(staleAfter, "staleAfter");
     }
@@ -56,7 +57,17 @@ public final class TradingLedgerQueryService implements TradingLedgerQueryUseCas
     }
 
     private AccountOverviewItem toOverview(AccountLedgerProjection projection, java.time.Instant now) {
-        var credentialsConfigured = configured(projection.apiKeyEnv()) && configured(projection.apiSecretEnv());
+        var apiKey = runtimeSecrets.status(
+                RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                projection.accountId().value(),
+                "API_KEY",
+                projection.apiKeyEnv());
+        var apiSecret = runtimeSecrets.status(
+                RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                projection.accountId().value(),
+                "API_SECRET",
+                projection.apiSecretEnv());
+        var credentialsConfigured = apiKey.configured() && apiSecret.configured();
         var dataStatus = status(projection, credentialsConfigured, now);
         return new AccountOverviewItem(
                 projection.accountId(),
@@ -67,6 +78,12 @@ public final class TradingLedgerQueryService implements TradingLedgerQueryUseCas
                 projection.enabled(),
                 projection.version(),
                 credentialsConfigured,
+                apiKey.source(),
+                apiKey.fingerprint(),
+                apiKey.version(),
+                apiSecret.source(),
+                apiSecret.fingerprint(),
+                apiSecret.version(),
                 dataStatus,
                 projection.currency(),
                 projection.equity(),
@@ -92,10 +109,6 @@ public final class TradingLedgerQueryService implements TradingLedgerQueryUseCas
             return AccountDataStatus.STALE;
         }
         return AccountDataStatus.READY;
-    }
-
-    private boolean configured(String environmentVariable) {
-        return environment.resolve(environmentVariable).filter(value -> !value.isBlank()).isPresent();
     }
 
     private static BigDecimal sum(

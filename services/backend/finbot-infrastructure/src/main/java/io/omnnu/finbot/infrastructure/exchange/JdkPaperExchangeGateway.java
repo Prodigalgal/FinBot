@@ -3,7 +3,8 @@ package io.omnnu.finbot.infrastructure.exchange;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.application.exchange.ExchangeAccountConfiguration;
 import io.omnnu.finbot.application.exchange.ExchangeAccountConfigurationRepository;
 import io.omnnu.finbot.application.exchange.ExchangeSubmissionResult;
@@ -38,19 +39,19 @@ public final class JdkPaperExchangeGateway implements PaperExchangeGateway {
     private static final int MAXIMUM_RESPONSE_BYTES = 2 * 1024 * 1024;
 
     private final ExchangeAccountConfigurationRepository accountRepository;
-    private final EnvironmentValueResolver environment;
+    private final RuntimeSecretStore runtimeSecrets;
     private final RoutedHttpClientFactory httpClients;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public JdkPaperExchangeGateway(
             ExchangeAccountConfigurationRepository accountRepository,
-            EnvironmentValueResolver environment,
+            RuntimeSecretStore runtimeSecrets,
             RoutedHttpClientFactory httpClients,
             ObjectMapper objectMapper,
             Clock clock) {
         this.accountRepository = Objects.requireNonNull(accountRepository, "accountRepository");
-        this.environment = Objects.requireNonNull(environment, "environment");
+        this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
         this.httpClients = Objects.requireNonNull(httpClients, "httpClients");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -321,9 +322,17 @@ public final class JdkPaperExchangeGateway implements PaperExchangeGateway {
         var account = accountRepository.find(order.accountId())
                 .orElseThrow(() -> new IllegalStateException("Exchange account does not exist"));
         requireMatchingAccount(order, account);
-        var key = environment.resolve(account.apiKeyEnvironmentVariable())
+        var key = runtimeSecrets.resolve(
+                        RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                        account.accountId().value(),
+                        "API_KEY",
+                        account.apiKeyEnvironmentVariable())
                 .orElseThrow(() -> new IllegalStateException("Exchange API key is not configured"));
-        var secret = environment.resolve(account.apiSecretEnvironmentVariable())
+        var secret = runtimeSecrets.resolve(
+                        RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                        account.accountId().value(),
+                        "API_SECRET",
+                        account.apiSecretEnvironmentVariable())
                 .orElseThrow(() -> new IllegalStateException("Exchange API secret is not configured"));
         return new Credentials(key, secret);
     }

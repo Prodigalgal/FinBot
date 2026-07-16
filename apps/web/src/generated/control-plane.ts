@@ -14,7 +14,9 @@ export type ControlPlanePath =
   | "/api/v2/autonomous"
   | "/api/v2/autonomous/runs"
   | "/api/v2/configuration"
+  | "/api/v2/configuration/models"
   | "/api/v2/configuration/models/{modelProfileId}"
+  | "/api/v2/configuration/providers"
   | "/api/v2/configuration/providers/{profileId}"
   | "/api/v2/configuration/providers/{profileId}/probe"
   | "/api/v2/configuration/settings/{settingKey}"
@@ -23,6 +25,8 @@ export type ControlPlanePath =
   | "/api/v2/ingestion/workspace"
   | "/api/v2/network"
   | "/api/v2/network/diagnostics"
+  | "/api/v2/network/proxy-gateways/{gatewayId}"
+  | "/api/v2/network/proxy-gateways/{gatewayId}/reload"
   | "/api/v2/operations"
   | "/api/v2/operations/events"
   | "/api/v2/operations/schedules/{scheduleId}"
@@ -45,6 +49,7 @@ export type ControlPlanePath =
   | "/api/v2/research/review/{runId}/feedback"
   | "/api/v2/research/review/compare"
   | "/api/v2/research/review/feedback"
+  | "/api/v2/runtime-secrets/{scope}/{targetId}/{secretName}"
   | "/api/v2/setup-profiles"
   | "/api/v2/setup-profiles/{profileId}/apply"
   | "/api/v2/setup-profiles/{profileId}/preview"
@@ -55,6 +60,7 @@ export type ControlPlanePath =
   | "/api/v2/trading/accounts"
   | "/api/v2/trading/accounts/{accountId}/configuration"
   | "/api/v2/trading/accounts/{accountId}/positions"
+  | "/api/v2/trading/accounts/{accountId}/test"
   | "/api/v2/trading/activity"
   | "/api/v2/trading/automation-configuration"
   | "/api/v2/trading/automation-configuration/ai-stages/{stage}"
@@ -95,7 +101,9 @@ export type ControlPlaneRequestPathBase =
   | `/api/v2/autonomous`
   | `/api/v2/autonomous/runs`
   | `/api/v2/configuration`
+  | `/api/v2/configuration/models`
   | `/api/v2/configuration/models/${string}`
+  | `/api/v2/configuration/providers`
   | `/api/v2/configuration/providers/${string}`
   | `/api/v2/configuration/providers/${string}/probe`
   | `/api/v2/configuration/settings/${string}`
@@ -104,6 +112,8 @@ export type ControlPlaneRequestPathBase =
   | `/api/v2/ingestion/workspace`
   | `/api/v2/network`
   | `/api/v2/network/diagnostics`
+  | `/api/v2/network/proxy-gateways/${string}`
+  | `/api/v2/network/proxy-gateways/${string}/reload`
   | `/api/v2/operations`
   | `/api/v2/operations/events`
   | `/api/v2/operations/schedules/${string}`
@@ -126,6 +136,7 @@ export type ControlPlaneRequestPathBase =
   | `/api/v2/research/review/${string}/feedback`
   | `/api/v2/research/review/compare`
   | `/api/v2/research/review/feedback`
+  | `/api/v2/runtime-secrets/${string}/${string}/${string}`
   | `/api/v2/setup-profiles`
   | `/api/v2/setup-profiles/${string}/apply`
   | `/api/v2/setup-profiles/${string}/preview`
@@ -136,6 +147,7 @@ export type ControlPlaneRequestPathBase =
   | `/api/v2/trading/accounts`
   | `/api/v2/trading/accounts/${string}/configuration`
   | `/api/v2/trading/accounts/${string}/positions`
+  | `/api/v2/trading/accounts/${string}/test`
   | `/api/v2/trading/activity`
   | `/api/v2/trading/automation-configuration`
   | `/api/v2/trading/automation-configuration/ai-stages/${string}`
@@ -223,8 +235,11 @@ export type ControlPlanePostRequestPathBase =
   | `/api/v2/auth/login`
   | `/api/v2/auth/logout`
   | `/api/v2/autonomous/runs`
+  | `/api/v2/configuration/models`
+  | `/api/v2/configuration/providers`
   | `/api/v2/configuration/providers/${string}/probe`
   | `/api/v2/network/diagnostics`
+  | `/api/v2/network/proxy-gateways/${string}/reload`
   | `/api/v2/products/catalog-sync/${string}/${string}`
   | `/api/v2/quant/previews`
   | `/api/v2/research/history/${string}/replay`
@@ -232,6 +247,7 @@ export type ControlPlanePostRequestPathBase =
   | `/api/v2/research/instant`
   | `/api/v2/setup-profiles/${string}/apply`
   | `/api/v2/sources/${string}/collect`
+  | `/api/v2/trading/accounts/${string}/test`
   | `/api/v2/trading/automation-configuration/risk-policies`
   | `/api/v2/watchlists`
   | `/api/v2/workflow-definitions/${string}/rollback/${string}`
@@ -247,8 +263,10 @@ export type ControlPlanePutRequestPathBase =
   | `/api/v2/configuration/models/${string}`
   | `/api/v2/configuration/providers/${string}`
   | `/api/v2/configuration/settings/${string}`
+  | `/api/v2/network/proxy-gateways/${string}`
   | `/api/v2/operations/schedules/${string}`
   | `/api/v2/research/review/${string}/feedback`
+  | `/api/v2/runtime-secrets/${string}/${string}/${string}`
   | `/api/v2/sources/${string}/status`
   | `/api/v2/trading/accounts/${string}/configuration`
   | `/api/v2/trading/automation-configuration/ai-stages/${string}`
@@ -261,6 +279,8 @@ export type ControlPlanePutRequestPath = ControlPlanePutRequestPathBase | `${Con
 
 export type ControlPlaneDeleteRequestPathBase =
   | `/api/v2/agent-roles/${string}`
+  | `/api/v2/configuration/providers/${string}`
+  | `/api/v2/runtime-secrets/${string}/${string}/${string}`
   | `/api/v2/watchlists/${string}`
   | `/api/v2/watchlists/${string}/items/${string}`;
 
@@ -289,7 +309,10 @@ export type ControlPlaneOperation =
   | { method: 'GET'; path: "/autonomous" }
   | { method: 'POST'; path: "/autonomous/runs" }
   | { method: 'GET'; path: "/configuration" }
+  | { method: 'POST'; path: "/configuration/models" }
   | { method: 'PUT'; path: "/configuration/models/{modelProfileId}" }
+  | { method: 'POST'; path: "/configuration/providers" }
+  | { method: 'DELETE'; path: "/configuration/providers/{profileId}" }
   | { method: 'PUT'; path: "/configuration/providers/{profileId}" }
   | { method: 'POST'; path: "/configuration/providers/{profileId}/probe" }
   | { method: 'PUT'; path: "/configuration/settings/{settingKey}" }
@@ -299,6 +322,8 @@ export type ControlPlaneOperation =
   | { method: 'GET'; path: "/network" }
   | { method: 'GET'; path: "/network/diagnostics" }
   | { method: 'POST'; path: "/network/diagnostics" }
+  | { method: 'PUT'; path: "/network/proxy-gateways/{gatewayId}" }
+  | { method: 'POST'; path: "/network/proxy-gateways/{gatewayId}/reload" }
   | { method: 'GET'; path: "/operations" }
   | { method: 'GET'; path: "/operations/events" }
   | { method: 'PUT'; path: "/operations/schedules/{scheduleId}" }
@@ -321,6 +346,8 @@ export type ControlPlaneOperation =
   | { method: 'PUT'; path: "/research/review/{runId}/feedback" }
   | { method: 'GET'; path: "/research/review/compare" }
   | { method: 'GET'; path: "/research/review/feedback" }
+  | { method: 'DELETE'; path: "/runtime-secrets/{scope}/{targetId}/{secretName}" }
+  | { method: 'PUT'; path: "/runtime-secrets/{scope}/{targetId}/{secretName}" }
   | { method: 'GET'; path: "/setup-profiles" }
   | { method: 'POST'; path: "/setup-profiles/{profileId}/apply" }
   | { method: 'GET'; path: "/setup-profiles/{profileId}/preview" }
@@ -331,6 +358,7 @@ export type ControlPlaneOperation =
   | { method: 'GET'; path: "/trading/accounts" }
   | { method: 'PUT'; path: "/trading/accounts/{accountId}/configuration" }
   | { method: 'GET'; path: "/trading/accounts/{accountId}/positions" }
+  | { method: 'POST'; path: "/trading/accounts/{accountId}/test" }
   | { method: 'GET'; path: "/trading/activity" }
   | { method: 'GET'; path: "/trading/automation-configuration" }
   | { method: 'PUT'; path: "/trading/automation-configuration/ai-stages/{stage}" }

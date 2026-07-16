@@ -2,6 +2,8 @@ package io.omnnu.finbot.api.exchange;
 
 import io.omnnu.finbot.application.exchange.ExchangeAccountControl;
 import io.omnnu.finbot.application.exchange.ExchangeAccountControlUseCase;
+import io.omnnu.finbot.application.exchange.ExchangeAccountSyncResult;
+import io.omnnu.finbot.application.exchange.ExchangeAccountSyncUseCase;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
@@ -9,6 +11,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.concurrent.CompletionStage;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,9 +23,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v2/trading/accounts")
 public final class ExchangeAccountControlController {
     private final ExchangeAccountControlUseCase useCase;
+    private final ExchangeAccountSyncUseCase syncUseCase;
 
-    public ExchangeAccountControlController(ExchangeAccountControlUseCase useCase) {
+    public ExchangeAccountControlController(
+            ExchangeAccountControlUseCase useCase,
+            ExchangeAccountSyncUseCase syncUseCase) {
         this.useCase = Objects.requireNonNull(useCase, "useCase");
+        this.syncUseCase = Objects.requireNonNull(syncUseCase, "syncUseCase");
     }
 
     @PutMapping("/{accountId}/configuration")
@@ -32,6 +40,11 @@ public final class ExchangeAccountControlController {
                 new ExchangeAccountId(accountId),
                 request.enabled(),
                 request.expectedVersion()));
+    }
+
+    @PostMapping("/{accountId}/test")
+    public CompletionStage<ExchangeAccountSyncResult> test(@PathVariable String accountId) {
+        return syncUseCase.synchronize(new ExchangeAccountId(accountId));
     }
 
     public record UpdateAccountControlRequest(

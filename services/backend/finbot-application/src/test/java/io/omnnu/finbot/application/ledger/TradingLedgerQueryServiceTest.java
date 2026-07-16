@@ -3,6 +3,10 @@ package io.omnnu.finbot.application.ledger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretSource;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStatus;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
@@ -44,7 +48,7 @@ class TradingLedgerQueryServiceTest {
                 : Optional.empty();
         var service = new TradingLedgerQueryService(
                 repository,
-                environment,
+                new EnvironmentBackedRuntimeSecretStore(environment),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Duration.ofMinutes(10));
 
@@ -88,6 +92,59 @@ class TradingLedgerQueryServiceTest {
         @Override
         public TradingActivityPage activity(TradingActivityCriteria criteria) {
             return new TradingActivityPage(List.of(), null, 0, List.of(), List.of());
+        }
+    }
+
+    private record EnvironmentBackedRuntimeSecretStore(EnvironmentValueResolver environment)
+            implements RuntimeSecretStore {
+        @Override
+        public Optional<String> resolve(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String fallbackEnvironmentVariable) {
+            return environment.resolve(fallbackEnvironmentVariable);
+        }
+
+        @Override
+        public RuntimeSecretStatus status(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String fallbackEnvironmentVariable) {
+            var configured = resolve(scope, targetId, secretName, fallbackEnvironmentVariable).isPresent();
+            return new RuntimeSecretStatus(
+                    scope,
+                    targetId,
+                    secretName,
+                    configured ? RuntimeSecretSource.ENVIRONMENT_FALLBACK : RuntimeSecretSource.UNCONFIGURED,
+                    configured,
+                    null,
+                    0,
+                    null);
+        }
+
+        @Override
+        public Optional<RuntimeSecretStatus> put(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String value,
+                String fallbackEnvironmentVariable,
+                long expectedVersion,
+                Instant updatedAt) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<RuntimeSecretStatus> clear(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String fallbackEnvironmentVariable,
+                long expectedVersion,
+                Instant updatedAt) {
+            return Optional.empty();
         }
     }
 }

@@ -3,7 +3,8 @@ package io.omnnu.finbot.infrastructure.exchange;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.application.exchange.ExchangeAccountConfiguration;
 import io.omnnu.finbot.application.exchange.ExchangeAccountConfigurationRepository;
 import io.omnnu.finbot.application.exchange.ExchangeAccountGateway;
@@ -57,19 +58,19 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
     private static final int MAXIMUM_RESPONSE_BYTES = 8 * 1024 * 1024;
 
     private final ExchangeAccountConfigurationRepository accounts;
-    private final EnvironmentValueResolver environment;
+    private final RuntimeSecretStore runtimeSecrets;
     private final RoutedHttpClientFactory httpClients;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public JdkExchangeAccountGateway(
             ExchangeAccountConfigurationRepository accounts,
-            EnvironmentValueResolver environment,
+            RuntimeSecretStore runtimeSecrets,
             RoutedHttpClientFactory httpClients,
             ObjectMapper objectMapper,
             Clock clock) {
         this.accounts = Objects.requireNonNull(accounts, "accounts");
-        this.environment = Objects.requireNonNull(environment, "environment");
+        this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
         this.httpClients = Objects.requireNonNull(httpClients, "httpClients");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -652,9 +653,17 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
 
     private Credentials credentials(ExchangeAccountConfiguration account) {
         return new Credentials(
-                environment.resolve(account.apiKeyEnvironmentVariable())
+                runtimeSecrets.resolve(
+                                RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                                account.accountId().value(),
+                                "API_KEY",
+                                account.apiKeyEnvironmentVariable())
                         .orElseThrow(() -> new IllegalStateException("Exchange API key is not configured")),
-                environment.resolve(account.apiSecretEnvironmentVariable())
+                runtimeSecrets.resolve(
+                                RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                                account.accountId().value(),
+                                "API_SECRET",
+                                account.apiSecretEnvironmentVariable())
                         .orElseThrow(() -> new IllegalStateException("Exchange API secret is not configured")));
     }
 

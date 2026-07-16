@@ -282,6 +282,10 @@ export interface AccountOverview {
   enabled: boolean;
   version: number;
   credentialConfigured: boolean;
+  apiKeySource: 'DATABASE_OVERRIDE' | 'ENVIRONMENT_FALLBACK' | 'UNCONFIGURED';
+  apiKeyFingerprint: string | null; apiKeyVersion: number;
+  apiSecretSource: 'DATABASE_OVERRIDE' | 'ENVIRONMENT_FALLBACK' | 'UNCONFIGURED';
+  apiSecretFingerprint: string | null; apiSecretVersion: number;
   dataStatus: string;
   currency: string;
   equity: number;
@@ -409,9 +413,13 @@ export interface WorkflowSchema {
 export interface SystemSetting { key: string; type: string; value: string; source: string; description: string; version: number; updatedAt: string }
 export interface AiProvider {
   profileId: string; displayName: string; protocol: string; reasoningParameterStyle: string;
-  baseUrl: string | null; baseUrlEnv: string | null; apiKeyEnv: string; baseUrlConfigured: boolean;
-  apiKeyConfigured: boolean; enabled: boolean; connectTimeoutSeconds: number;
-  requestTimeoutSeconds: number; version: number; updatedAt: string;
+  baseUrl: string | null; baseUrlConfigured: boolean;
+  apiKeyConfigured: boolean;
+  credentialSource: 'DATABASE_OVERRIDE' | 'ENVIRONMENT_FALLBACK' | 'UNCONFIGURED';
+  credentialFingerprint: string | null; credentialVersion: number; credentialUpdatedAt: string | null;
+  enabled: boolean; connectTimeoutSeconds: number;
+  requestTimeoutSeconds: number; workflowNodeUsageCount: number; roleTemplateUsageCount: number;
+  executionStageUsageCount: number; totalUsageCount: number; version: number; updatedAt: string;
 }
 export interface AiModel {
   modelProfileId: string; providerProfileId: string; modelName: string;
@@ -502,7 +510,9 @@ export interface IngestionWorkspace {
   aiReviewCount: number;
   sources: Array<{
     sourceId: string; displayName: string; mode: string; tier: string; category: string;
-    outboundRoute: string | null; credentialEnvironment: string | null; credentialConfigured: boolean;
+    outboundRoute: string | null; credentialSupported: boolean; credentialConfigured: boolean;
+    credentialSource: 'DATABASE_OVERRIDE' | 'ENVIRONMENT_FALLBACK' | 'UNCONFIGURED' | 'NOT_REQUIRED';
+    credentialFingerprint: string | null; credentialVersion: number;
     enabled: boolean; version: number; latestStatus: string | null;
     fetchedCount: number; insertedCount: number; duplicateCount: number;
     errorCode: string | null; errorMessage: string | null; lastCollectedAt: string | null;
@@ -547,9 +557,18 @@ export interface NetworkWorkspace {
   routes: Array<{
     routeId: string; routeType: string; displayName: string; enabled: boolean;
     requireProxy: boolean; allowDirect: boolean; proxyConfigured: boolean;
+    proxyCredentialSource: 'DATABASE_OVERRIDE' | 'ENVIRONMENT_FALLBACK' | 'UNCONFIGURED';
+    proxyCredentialFingerprint: string | null; proxyCredentialVersion: number;
     expectedIpFamily: string; resolvedEndpoint: string; status: string;
     latestDependencyStatus: string; latestError: string | null;
     latestActivityAt: string | null; updatedAt: string;
+  }>;
+  proxyGateways: Array<{
+    gatewayId: string; displayName: string; enabled: boolean; preferredNames: string;
+    maximumNodes: number; refreshSeconds: number; allowInsecureTls: boolean;
+    subscriptionSupported: boolean; subscriptionSource: string; subscriptionFingerprint: string | null; subscriptionVersion: number;
+    inlineNodesSupported: boolean; inlineNodesSource: string; inlineNodesFingerprint: string | null; inlineNodesVersion: number;
+    status: string; version: number; updatedAt: string;
   }>;
   generatedAt: string;
 }

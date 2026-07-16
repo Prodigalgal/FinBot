@@ -6,12 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.omnnu.finbot.application.configuration.AiModelProfile;
+import io.omnnu.finbot.application.configuration.AiProviderProfile;
 import io.omnnu.finbot.domain.operations.WorkerId;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
 import io.omnnu.finbot.application.ai.AiProviderUnavailableException;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretSource;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStatus;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
@@ -19,6 +26,9 @@ import io.omnnu.finbot.infrastructure.exchange.JdbcExchangeAccountControlReposit
 import io.omnnu.finbot.infrastructure.catalog.JdbcProductCatalogSyncStore;
 import io.omnnu.finbot.infrastructure.ingestion.JdbcIngestionRepository;
 import io.omnnu.finbot.infrastructure.ai.JdbcAiRuntimeProfileResolver;
+import io.omnnu.finbot.infrastructure.configuration.AesGcmRuntimeSecretCipher;
+import io.omnnu.finbot.infrastructure.configuration.JdbcConfigurationRepository;
+import io.omnnu.finbot.infrastructure.configuration.JdbcEncryptedRuntimeSecretStore;
 import io.omnnu.finbot.infrastructure.network.JdbcNetworkDiagnosticStore;
 import io.omnnu.finbot.infrastructure.setup.JdbcSetupProfileRepository;
 import io.omnnu.finbot.infrastructure.operations.JdbcBackgroundTaskStore;
@@ -48,7 +58,9 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.Base64;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -57,26 +69,142 @@ import liquibase.LabelExpression;
 import liquibase.Liquibase;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
-@Testcontainers(disabledWithoutDocker = true)
 class LiquibasePostgresIntegrationTest {
     private static final String CHANGELOG = "db/changelog/db.changelog-master.yaml";
+
+    @Test
+    void encryptsHotRuntimeSecretsAndFallsBackToEnvironmentAfterClear() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var masterKey = Base64.getEncoder().encodeToString(
+                "0123456789abcdef0123456789abcdef".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        io.omnnu.finbot.application.configuration.EnvironmentValueResolver environment = name -> switch (name) {
+            case "FINBOT_RUNTIME_SECRET_MASTER_KEY" -> Optional.of(masterKey);
+            case "FINBOT_AI_PROVIDER_KEYS_JSON" -> Optional.of(
+                    "{\"provider_grok_sub2api\":\"environment-fallback-key\"}");
+            case "FINBOT_EXCHANGE_ACCOUNT_CREDENTIALS_JSON" -> Optional.of("""
+                    {"account_gate_testnet_default":{
+                      "API_KEY":"exchange-fallback-key",
+                      "API_SECRET":"exchange-fallback-secret"
+                    }}
+                    """);
+            case "FINBOT_INFORMATION_SOURCE_KEYS_JSON" -> Optional.of(
+                    "{\"source_test\":\"source-fallback-key\"}");
+            case "FINBOT_PROXY_ROUTE_URLS_JSON" -> Optional.of(
+                    "{\"FIRECRAWL\":\"http://proxy.example:8080\"}");
+            case "FINBOT_PROXY_GATEWAY_SECRETS_JSON" -> Optional.of("""
+                    {"proxygateway_firecrawl":{
+                      "SUBSCRIPTION_URL":"https://subscription.example/list"
+                    }}
+                    """);
+            default -> Optional.empty();
+        };
+        var store = new JdbcEncryptedRuntimeSecretStore(
+                JdbcClient.create(dataSource),
+                environment,
+                new AesGcmRuntimeSecretCipher(environment),
+                new ObjectMapper());
+        var scope = RuntimeSecretScope.AI_PROVIDER;
+        var targetId = "provider_grok_sub2api";
+
+        var stored = store.put(
+                scope,
+                targetId,
+                "API_KEY",
+                "database-hot-key",
+                "FINBOT_AI_PROVIDER_KEYS_JSON",
+                0,
+                Instant.parse("2026-07-16T08:00:00Z")).orElseThrow();
+
+        assertEquals(RuntimeSecretSource.DATABASE_OVERRIDE, stored.source());
+        assertEquals("database-hot-key", store.resolve(
+                scope, targetId, "API_KEY", "FINBOT_AI_PROVIDER_KEYS_JSON").orElseThrow());
+        assertTrue(store.put(
+                scope,
+                targetId,
+                "API_KEY",
+                "stale-write-key",
+                "FINBOT_AI_PROVIDER_KEYS_JSON",
+                0,
+                Instant.parse("2026-07-16T08:01:00Z")).isEmpty());
+        var rotated = store.put(
+                scope,
+                targetId,
+                "API_KEY",
+                "database-rotated-key",
+                "FINBOT_AI_PROVIDER_KEYS_JSON",
+                stored.version(),
+                Instant.parse("2026-07-16T08:01:30Z")).orElseThrow();
+        assertEquals(stored.version() + 1, rotated.version());
+        assertEquals("database-rotated-key", store.resolve(
+                scope, targetId, "API_KEY", "FINBOT_AI_PROVIDER_KEYS_JSON").orElseThrow());
+
+        var cleared = store.clear(
+                scope,
+                targetId,
+                "API_KEY",
+                "FINBOT_AI_PROVIDER_KEYS_JSON",
+                rotated.version(),
+                Instant.parse("2026-07-16T08:02:00Z")).orElseThrow();
+
+        assertEquals(RuntimeSecretSource.ENVIRONMENT_FALLBACK, cleared.source());
+        assertEquals("environment-fallback-key", store.resolve(
+                scope, targetId, "API_KEY", "FINBOT_AI_PROVIDER_KEYS_JSON").orElseThrow());
+        var jdbc = JdbcClient.create(dataSource);
+        assertEquals(3L, jdbc.sql("""
+                select count(*) from runtime_secret_audit
+                where scope_type = 'AI_PROVIDER' and target_id = 'provider_grok_sub2api'
+                """).query(Long.class).single());
+        assertEquals(0L, jdbc.sql("""
+                select count(*) from runtime_secret_audit
+                where cast(fingerprint as text) like '%database-hot-key%'
+                """).query(Long.class).single());
+        assertEquals("exchange-fallback-key", store.resolve(
+                RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                "account_gate_testnet_default",
+                "API_KEY",
+                "FINBOT_EXCHANGE_ACCOUNT_CREDENTIALS_JSON").orElseThrow());
+        assertEquals("exchange-fallback-secret", store.resolve(
+                RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                "account_gate_testnet_default",
+                "API_SECRET",
+                "FINBOT_EXCHANGE_ACCOUNT_CREDENTIALS_JSON").orElseThrow());
+        assertEquals("source-fallback-key", store.resolve(
+                RuntimeSecretScope.INFORMATION_SOURCE,
+                "source_test",
+                "API_KEY",
+                "FINBOT_INFORMATION_SOURCE_KEYS_JSON").orElseThrow());
+        assertEquals("http://proxy.example:8080", store.resolve(
+                RuntimeSecretScope.PROXY_ROUTE,
+                "FIRECRAWL",
+                "PROXY_URL",
+                "FINBOT_PROXY_ROUTE_URLS_JSON").orElseThrow());
+        assertEquals("https://subscription.example/list", store.resolve(
+                RuntimeSecretScope.PROXY_GATEWAY,
+                "proxygateway_firecrawl",
+                "SUBSCRIPTION_URL",
+                "FINBOT_PROXY_GATEWAY_SECRETS_JSON").orElseThrow());
+    }
 
     @Test
     void resolvesProviderAndModelCapabilitiesWithoutVendorSpecificApplicationBranches() throws Exception {
         updateSchema();
         var dataSource = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-        var resolver = new JdbcAiRuntimeProfileResolver(JdbcClient.create(dataSource));
+        var resolver = new JdbcAiRuntimeProfileResolver(
+                JdbcClient.create(dataSource),
+                new EmptyRuntimeSecretStore(),
+                ignored -> java.util.Optional.empty());
 
         var resolved = resolver.resolve(new AiModelBinding(
                 new AiProviderProfileId("provider_grok_sub2api"),
@@ -91,11 +219,90 @@ class LiquibasePostgresIntegrationTest {
                 ReasoningEffort.MAX)));
     }
 
-    @Container
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.5-alpine")
-            .withDatabaseName("finbot")
-            .withUsername("finbot")
-            .withPassword("finbot-test");
+    @Test
+    void createsModelsAndSoftDeletesOnlyUnreferencedAiProviders() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var repository = new JdbcConfigurationRepository(jdbcClient);
+        var suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        var providerId = "provider_runtime_" + suffix;
+        var now = Instant.parse("2026-07-16T09:00:00Z");
+        var provider = new AiProviderProfile(
+                providerId,
+                "Runtime provider " + suffix,
+                AiProtocol.RESPONSES,
+                ReasoningParameterStyle.NESTED,
+                "https://provider.example/v1",
+                null,
+                "FINBOT_AI_PROVIDER_KEYS_JSON",
+                true,
+                10,
+                1800,
+                0,
+                now);
+        var primaryModel = new AiModelProfile(
+                "model_runtime_primary_" + suffix,
+                providerId,
+                "provider-test-primary-" + suffix,
+                ReasoningEffort.MAX,
+                ReasoningEffort.MAX,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                true,
+                0,
+                now);
+
+        assertTrue(repository.createProvider(provider, primaryModel, now).isPresent());
+        assertTrue(repository.createModel(new AiModelProfile(
+                "model_runtime_secondary_" + suffix,
+                providerId,
+                "provider-test-secondary-" + suffix,
+                ReasoningEffort.XHIGH,
+                ReasoningEffort.MAX,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                true,
+                0,
+                now), now).isPresent());
+        assertFalse(repository.providerUsages().get(providerId).inUse());
+        assertTrue(repository.archiveProvider(providerId, 0, now.plusSeconds(60)));
+        assertFalse(repository.listProviders().stream()
+                .anyMatch(candidate -> candidate.profileId().equals(providerId)));
+        assertFalse(repository.listModels().stream()
+                .anyMatch(candidate -> candidate.providerProfileId().equals(providerId)));
+        assertEquals(1L, jdbcClient.sql("""
+                select count(*) from ai_provider_profile
+                where profile_id = :profileId and deleted_at is not null and enabled = false
+                """).param("profileId", providerId).query(Long.class).single());
+
+        var usages = repository.providerUsages();
+        var referenced = repository.listProviders().stream()
+                .filter(candidate -> usages.getOrDefault(
+                        candidate.profileId(),
+                        io.omnnu.finbot.application.configuration.AiProviderUsage.NONE).inUse())
+                .findFirst()
+                .orElseThrow();
+        assertFalse(repository.archiveProvider(
+                referenced.profileId(), referenced.version(), now.plusSeconds(120)));
+    }
+
+    private static final PostgresTestDatabase POSTGRES = new PostgresTestDatabase(
+            "postgres:17.5-alpine",
+            "finbot",
+            "finbot",
+            "finbot-test");
+
+    @BeforeAll
+    static void startPostgres() {
+        POSTGRES.start();
+    }
+
+    @AfterAll
+    static void stopPostgres() {
+        POSTGRES.stop();
+    }
 
     @Test
     void catalogSyncReusesPersistedInstrumentIdentityForQuoteFacts() throws Exception {
@@ -186,6 +393,8 @@ class LiquibasePostgresIntegrationTest {
                             'exchange_submission_attempt', 'estimated_trade_projection'
                             , 'research_feedback', 'setup_profile_application', 'ai_experiment'
                             , 'network_diagnostic_batch', 'network_diagnostic_run'
+                            , 'runtime_secret_override', 'runtime_secret_audit'
+                            , 'proxy_gateway_profile'
                             , 'product_catalog_sync_run', 'instrument_quote_snapshot'
                             , 'research_market_scope', 'research_forecast'
                             , 'legacy_import_manifest'
@@ -195,7 +404,7 @@ class LiquibasePostgresIntegrationTest {
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
-                assertEquals(77, result.getInt(1));
+                assertEquals(80, result.getInt(1));
             }
         }
 
@@ -456,7 +665,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(32, result.getInt("changeset_count"));
+                    assertEquals(34, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
@@ -878,5 +1087,56 @@ class LiquibasePostgresIntegrationTest {
             }
         }
         throw new IllegalStateException("Unable to find deterministic candidate bucket");
+    }
+
+    private static final class EmptyRuntimeSecretStore implements RuntimeSecretStore {
+        @Override
+        public Optional<String> resolve(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String fallbackEnvironmentVariable) {
+            return Optional.empty();
+        }
+
+        @Override
+        public RuntimeSecretStatus status(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String fallbackEnvironmentVariable) {
+            return new RuntimeSecretStatus(
+                    scope,
+                    targetId,
+                    secretName,
+                    RuntimeSecretSource.UNCONFIGURED,
+                    false,
+                    null,
+                    0,
+                    null);
+        }
+
+        @Override
+        public Optional<RuntimeSecretStatus> put(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String value,
+                String fallbackEnvironmentVariable,
+                long expectedVersion,
+                Instant updatedAt) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<RuntimeSecretStatus> clear(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String fallbackEnvironmentVariable,
+                long expectedVersion,
+                Instant updatedAt) {
+            return Optional.empty();
+        }
     }
 }

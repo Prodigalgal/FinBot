@@ -38,6 +38,11 @@ spec:
         - name: proxy
           image: ghcr.io/example/finbot-proxy:latest
           env:
+            - name: PROXY_CONTROL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_JAVA_SERVICE_TOKEN
             - name: PROXY_SUBSCRIPTION_URL
               valueFrom:
                 secretKeyRef:
@@ -137,6 +142,11 @@ spec:
         - name: proxy
           image: ghcr.io/example/finbot-proxy:latest
           env:
+            - name: PROXY_CONTROL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_JAVA_SERVICE_TOKEN
             - name: PROXY_NODES
               valueFrom:
                 secretKeyRef:

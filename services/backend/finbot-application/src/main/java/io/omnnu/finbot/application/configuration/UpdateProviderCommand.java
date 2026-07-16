@@ -9,8 +9,6 @@ public record UpdateProviderCommand(
         AiProtocol protocol,
         ReasoningParameterStyle reasoningParameterStyle,
         String baseUrl,
-        String baseUrlEnv,
-        String apiKeyEnv,
         boolean enabled,
         int connectTimeoutSeconds,
         int requestTimeoutSeconds,

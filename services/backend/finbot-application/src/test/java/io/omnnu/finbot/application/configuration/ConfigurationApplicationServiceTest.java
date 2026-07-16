@@ -2,14 +2,20 @@ package io.omnnu.finbot.application.configuration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.omnnu.finbot.domain.configuration.AiProtocol;
+import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
 import io.omnnu.finbot.domain.configuration.SettingSource;
 import io.omnnu.finbot.domain.configuration.SettingType;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -43,11 +49,66 @@ class ConfigurationApplicationServiceTest {
         assertEquals(SettingSource.USER, updated.source());
     }
 
+    @Test
+    void createsVendorAgnosticProviderCredentialBinding() {
+        var repository = new FakeConfigurationRepository(List.of());
+        var service = service(repository);
+
+        var created = service.createProvider(new CreateProviderCommand(
+                "任意兼容厂商",
+                AiProtocol.RESPONSES,
+                ReasoningParameterStyle.NESTED,
+                "https://provider.example/v1",
+                true,
+                10,
+                1800,
+                "frontier-model",
+                ReasoningEffort.MAX,
+                ReasoningEffort.MAX,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO));
+
+        assertEquals("provider_test_generated_id", created.profileId());
+        assertEquals(
+                "FINBOT_AI_PROVIDER_KEYS_JSON",
+                repository.providers.getFirst().apiKeyEnv());
+        assertEquals(
+                created.profileId(),
+                repository.models.getFirst().providerProfileId());
+    }
+
+    @Test
+    void refusesToDeleteReferencedProvider() {
+        var repository = new FakeConfigurationRepository(List.of());
+        var service = service(repository);
+        var created = service.createProvider(new CreateProviderCommand(
+                "被引用厂商",
+                AiProtocol.CHAT,
+                ReasoningParameterStyle.FLAT,
+                "https://provider.example/v1",
+                true,
+                10,
+                120,
+                "referenced-model",
+                ReasoningEffort.XHIGH,
+                ReasoningEffort.XHIGH,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO));
+        repository.usages = Map.of(created.profileId(), new AiProviderUsage(1, 0, 0));
+
+        assertThrows(ConfigurationConflictException.class, () -> service.deleteProvider(
+                new DeleteProviderCommand(created.profileId(), created.version())));
+        assertTrue(repository.providers.stream()
+                .anyMatch(provider -> provider.profileId().equals(created.profileId())));
+    }
+
     private static ConfigurationApplicationService service(ConfigurationRepository repository) {
         EnvironmentValueResolver environment = ignored -> Optional.empty();
         return new ConfigurationApplicationService(
                 repository,
                 environment,
+                new EmptyRuntimeSecretStore(),
+                prefix -> prefix + "test_generated_id",
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -57,6 +118,9 @@ class ConfigurationApplicationServiceTest {
 
     private static final class FakeConfigurationRepository implements ConfigurationRepository {
         private final List<SystemSetting> settings;
+        private final List<AiProviderProfile> providers = new ArrayList<>();
+        private final List<AiModelProfile> models = new ArrayList<>();
+        private Map<String, AiProviderUsage> usages = Map.of();
 
         private FakeConfigurationRepository(List<SystemSetting> settings) {
             this.settings = new ArrayList<>(settings);
@@ -69,12 +133,33 @@ class ConfigurationApplicationServiceTest {
 
         @Override
         public List<AiProviderProfile> listProviders() {
-            return List.of();
+            return List.copyOf(providers);
         }
 
         @Override
         public List<AiModelProfile> listModels() {
-            return List.of();
+            return List.copyOf(models);
+        }
+
+        @Override
+        public Map<String, AiProviderUsage> providerUsages() {
+            return usages;
+        }
+
+        @Override
+        public Optional<AiProviderProfile> createProvider(
+                AiProviderProfile provider,
+                AiModelProfile initialModel,
+                Instant createdAt) {
+            providers.add(provider);
+            models.add(initialModel);
+            return Optional.of(provider);
+        }
+
+        @Override
+        public Optional<AiModelProfile> createModel(AiModelProfile model, Instant createdAt) {
+            models.add(model);
+            return Optional.of(model);
         }
 
         @Override
@@ -105,8 +190,65 @@ class ConfigurationApplicationServiceTest {
         }
 
         @Override
+        public boolean archiveProvider(String profileId, long expectedVersion, Instant archivedAt) {
+            return providers.removeIf(provider -> provider.profileId().equals(profileId)
+                    && provider.version() == expectedVersion);
+        }
+
+        @Override
         public Optional<AiModelProfile> updateModel(
                 AiModelProfile profile,
+                long expectedVersion,
+                Instant updatedAt) {
+            return Optional.empty();
+        }
+    }
+
+    private static final class EmptyRuntimeSecretStore implements RuntimeSecretStore {
+        @Override
+        public Optional<String> resolve(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String fallbackEnvironmentVariable) {
+            return Optional.empty();
+        }
+
+        @Override
+        public RuntimeSecretStatus status(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String fallbackEnvironmentVariable) {
+            return new RuntimeSecretStatus(
+                    scope,
+                    targetId,
+                    secretName,
+                    RuntimeSecretSource.UNCONFIGURED,
+                    false,
+                    null,
+                    0,
+                    null);
+        }
+
+        @Override
+        public Optional<RuntimeSecretStatus> put(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String value,
+                String fallbackEnvironmentVariable,
+                long expectedVersion,
+                Instant updatedAt) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<RuntimeSecretStatus> clear(
+                RuntimeSecretScope scope,
+                String targetId,
+                String secretName,
+                String fallbackEnvironmentVariable,
                 long expectedVersion,
                 Instant updatedAt) {
             return Optional.empty();

@@ -2,6 +2,9 @@ package io.omnnu.finbot.infrastructure.ai;
 
 import io.omnnu.finbot.application.ai.AiRuntimeBinding;
 import io.omnnu.finbot.application.ai.AiRuntimeBindingResolver;
+import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
@@ -14,16 +17,24 @@ import org.springframework.stereotype.Component;
 @Component
 public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResolver {
     private final JdbcClient jdbcClient;
+    private final RuntimeSecretStore runtimeSecrets;
+    private final EnvironmentValueResolver environment;
 
-    public JdbcAiRuntimeProfileResolver(JdbcClient jdbcClient) {
+    public JdbcAiRuntimeProfileResolver(
+            JdbcClient jdbcClient,
+            RuntimeSecretStore runtimeSecrets,
+            EnvironmentValueResolver environment) {
         this.jdbcClient = Objects.requireNonNull(jdbcClient, "jdbcClient");
+        this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
+        this.environment = Objects.requireNonNull(environment, "environment");
     }
 
     AiRuntimeProfile resolve(AiProviderProfileId profileId) {
         var stored = jdbcClient.sql("""
                 select protocol, reasoning_parameter_style, base_url, base_url_env, api_key_env,
                        enabled, request_timeout_seconds
-                from ai_provider_profile where profile_id = :profileId
+                from ai_provider_profile
+                where profile_id = :profileId and deleted_at is null
                 """)
                 .param("profileId", profileId.value())
                 .query((resultSet, rowNumber) -> new StoredProfile(
@@ -43,7 +54,13 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
                 ? environment(stored.baseUrlEnv(), "AI provider base URL")
                 : stored.baseUrl();
         var uri = parseAndValidateUri(baseUrl);
-        var apiKey = environment(stored.apiKeyEnv(), "AI provider credential");
+        var apiKey = runtimeSecrets.resolve(
+                        RuntimeSecretScope.AI_PROVIDER,
+                        profileId.value(),
+                        "API_KEY",
+                        stored.apiKeyEnv())
+                .orElseThrow(() -> new AiProviderConfigurationException(
+                        "AI provider credential is not configured"));
         return new AiRuntimeProfile(
                 profileId,
                 stored.protocol(),
@@ -62,6 +79,7 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
                   on model.provider_profile_id = provider.profile_id
                 where provider.profile_id = :profileId
                   and model.model_name = :modelName
+                  and provider.deleted_at is null
                   and provider.enabled = true
                   and model.enabled = true
                 """)
@@ -81,8 +99,8 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
         return resolved;
     }
 
-    private static String environment(String name, String label) {
-        var value = name == null ? null : System.getenv(name);
+    private String environment(String name, String label) {
+        var value = name == null ? null : environment.resolve(name).orElse(null);
         if (value == null || value.isBlank()) {
             throw new AiProviderConfigurationException(label + " is not configured");
         }

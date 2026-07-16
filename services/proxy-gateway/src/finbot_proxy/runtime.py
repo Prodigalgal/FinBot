@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import signal
@@ -64,10 +65,38 @@ class RuntimeConfiguration:
             allow_insecure_tls=_boolean("PROXY_ALLOW_INSECURE_TLS", False),
         )
 
+    def with_dynamic_payload(self, payload: dict[str, Any]) -> RuntimeConfiguration:
+        subscription_url = _optional_payload_string(payload, "subscriptionUrl")
+        inline_nodes = _optional_payload_string(payload, "inlineNodes")
+        if subscription_url is None and inline_nodes is None:
+            raise ValueError("subscriptionUrl or inlineNodes is required")
+        preferred_names = _string_list(payload, "preferredNames", maximum_items=32)
+        maximum_nodes = _payload_integer(payload, "maximumNodes", minimum=1, maximum=128)
+        refresh_seconds = _payload_integer(
+            payload, "refreshSeconds", minimum=60, maximum=86400
+        )
+        allow_insecure_tls = payload.get("allowInsecureTls")
+        if not isinstance(allow_insecure_tls, bool):
+            raise ValueError("allowInsecureTls must be a boolean")
+        return RuntimeConfiguration(
+            subscription_url=subscription_url,
+            inline_nodes=inline_nodes,
+            preferred_names=preferred_names,
+            maximum_nodes=maximum_nodes,
+            refresh_seconds=refresh_seconds,
+            fetch_timeout_seconds=self.fetch_timeout_seconds,
+            proxy_port=self.proxy_port,
+            health_port=self.health_port,
+            sing_box_path=self.sing_box_path,
+            runtime_directory=self.runtime_directory,
+            allow_insecure_tls=allow_insecure_tls,
+        )
+
 
 class GatewayState:
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._refresh_condition = threading.Condition(self._lock)
         self._ready = False
         self._node_count = 0
         self._invalid_node_count = 0
@@ -76,6 +105,7 @@ class GatewayState:
         self._enabled_insecure_node_count = 0
         self._allow_insecure_tls = False
         self._generation = 0
+        self._refresh_attempt = 0
         self._last_refresh_epoch_seconds: float | None = None
         self._last_error: str | None = None
 
@@ -98,14 +128,18 @@ class GatewayState:
             self._enabled_insecure_node_count = enabled_insecure_node_count
             self._allow_insecure_tls = allow_insecure_tls
             self._generation += 1
+            self._refresh_attempt += 1
             self._last_refresh_epoch_seconds = time.time()
             self._last_error = None
+            self._refresh_condition.notify_all()
 
     def failed_refresh(self, error: Exception, *, process_alive: bool) -> None:
         with self._lock:
             self._ready = process_alive
+            self._refresh_attempt += 1
             self._last_refresh_epoch_seconds = time.time()
             self._last_error = _safe_error(error)
+            self._refresh_condition.notify_all()
 
     def process_stopped(self) -> None:
         with self._lock:
@@ -113,19 +147,37 @@ class GatewayState:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return {
-                "status": "ready" if self._ready else "not-ready",
-                "ready": self._ready,
-                "nodeCount": self._node_count,
-                "invalidNodeCount": self._invalid_node_count,
-                "insecureNodeCount": self._insecure_node_count,
-                "rejectedInsecureNodeCount": self._rejected_insecure_node_count,
-                "enabledInsecureNodeCount": self._enabled_insecure_node_count,
-                "allowInsecureTls": self._allow_insecure_tls,
-                "generation": self._generation,
-                "lastRefreshEpochSeconds": self._last_refresh_epoch_seconds,
-                "lastError": self._last_error,
-            }
+            return self._snapshot()
+
+    def requires_refresh(self) -> bool:
+        with self._lock:
+            return not self._ready or self._last_error is not None
+
+    def wait_for_refresh(
+        self, previous_attempt: int, timeout_seconds: float
+    ) -> dict[str, Any]:
+        with self._refresh_condition:
+            self._refresh_condition.wait_for(
+                lambda: self._refresh_attempt > previous_attempt,
+                timeout=timeout_seconds,
+            )
+            return self._snapshot()
+
+    def _snapshot(self) -> dict[str, Any]:
+        return {
+            "status": "ready" if self._ready else "not-ready",
+            "ready": self._ready,
+            "nodeCount": self._node_count,
+            "invalidNodeCount": self._invalid_node_count,
+            "insecureNodeCount": self._insecure_node_count,
+            "rejectedInsecureNodeCount": self._rejected_insecure_node_count,
+            "enabledInsecureNodeCount": self._enabled_insecure_node_count,
+            "allowInsecureTls": self._allow_insecure_tls,
+            "generation": self._generation,
+            "refreshAttempt": self._refresh_attempt,
+            "lastRefreshEpochSeconds": self._last_refresh_epoch_seconds,
+            "lastError": self._last_error,
+        }
 
 
 class ProxyGateway:
@@ -133,39 +185,76 @@ class ProxyGateway:
         self._configuration = configuration
         self._state = state
         self._stop = threading.Event()
+        self._reload_requested = threading.Event()
+        self._configuration_lock = threading.Lock()
+        self._refresh_lock = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
         self._configuration_hash: str | None = None
 
     def run(self) -> None:
-        self._validate_runtime()
+        self._validate_runtime(self._configuration)
         while not self._stop.is_set():
-            try:
-                self._refresh()
-            except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
-                self._state.failed_refresh(error, process_alive=self._process_alive())
-            self._stop.wait(self._configuration.refresh_seconds)
+            with self._refresh_lock:
+                configuration = self._current_configuration()
+                try:
+                    self._refresh(configuration)
+                except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+                    self._state.failed_refresh(error, process_alive=self._process_alive())
+            self._reload_requested.wait(configuration.refresh_seconds)
+            self._reload_requested.clear()
         self._stop_process()
 
     def stop(self) -> None:
         self._stop.set()
+        self._reload_requested.set()
 
-    def _refresh(self) -> None:
-        subscription = self._load_nodes()
+    def reconfigure(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._refresh_lock:
+            with self._configuration_lock:
+                configuration = self._configuration.with_dynamic_payload(payload)
+                self._validate_runtime(configuration)
+                reload_required = (
+                    configuration != self._configuration or self._state.requires_refresh()
+                )
+                previous_refresh_attempt = int(
+                    self._state.snapshot()["refreshAttempt"]
+                )
+                self._configuration = configuration
+        if reload_required:
+            self._reload_requested.set()
+        return {
+            "status": "reload-accepted" if reload_required else "configuration-unchanged",
+            "reloadRequired": reload_required,
+            "subscriptionConfigured": configuration.subscription_url is not None,
+            "inlineNodesConfigured": configuration.inline_nodes is not None,
+            "preferredNameCount": len(configuration.preferred_names),
+            "maximumNodes": configuration.maximum_nodes,
+            "refreshSeconds": configuration.refresh_seconds,
+            "allowInsecureTls": configuration.allow_insecure_tls,
+            "_previousRefreshAttempt": previous_refresh_attempt,
+        }
+
+    def _current_configuration(self) -> RuntimeConfiguration:
+        with self._configuration_lock:
+            return self._configuration
+
+    def _refresh(self, configuration: RuntimeConfiguration) -> None:
+        subscription = self._load_nodes(configuration)
         selection = select_nodes(
             subscription,
-            maximum_nodes=self._configuration.maximum_nodes,
-            preferred_names=self._configuration.preferred_names,
-            allow_insecure_tls=self._configuration.allow_insecure_tls,
+            maximum_nodes=configuration.maximum_nodes,
+            preferred_names=configuration.preferred_names,
+            allow_insecure_tls=configuration.allow_insecure_tls,
         )
         if not selection.nodes:
             raise RuntimeError("Proxy subscription contains no secure supported nodes")
         generated = build_configuration(
             selection.nodes,
-            listen_port=self._configuration.proxy_port,
+            listen_port=configuration.proxy_port,
         )
         generated_hash = hashlib.sha256(generated.encode("utf-8")).hexdigest()
         if generated_hash != self._configuration_hash or not self._process_alive():
-            self._replace_process(generated)
+            self._replace_process(generated, configuration)
             self._configuration_hash = generated_hash
         self._state.successful_refresh(
             node_count=len(selection.nodes),
@@ -173,21 +262,21 @@ class ProxyGateway:
             insecure_node_count=selection.insecure_node_count,
             rejected_insecure_node_count=selection.rejected_insecure_node_count,
             enabled_insecure_node_count=selection.enabled_insecure_node_count,
-            allow_insecure_tls=self._configuration.allow_insecure_tls,
+            allow_insecure_tls=configuration.allow_insecure_tls,
         )
 
-    def _load_nodes(self) -> Subscription:
+    def _load_nodes(self, configuration: RuntimeConfiguration) -> Subscription:
         subscriptions: list[Subscription] = []
-        if self._configuration.subscription_url is not None:
+        if configuration.subscription_url is not None:
             subscriptions.append(
                 load_subscription(
-                    self._configuration.subscription_url,
-                    timeout_seconds=self._configuration.fetch_timeout_seconds,
+                    configuration.subscription_url,
+                    timeout_seconds=configuration.fetch_timeout_seconds,
                 )
             )
-        if self._configuration.inline_nodes is not None:
+        if configuration.inline_nodes is not None:
             subscriptions.append(
-                parse_subscription(self._configuration.inline_nodes.replace(";", "\n"))
+                parse_subscription(configuration.inline_nodes.replace(";", "\n"))
             )
         nodes = tuple(node for subscription in subscriptions for node in subscription.nodes)
         unique_nodes = tuple(dict.fromkeys(nodes))
@@ -196,15 +285,15 @@ class ProxyGateway:
             invalid_node_count=sum(item.invalid_node_count for item in subscriptions),
         )
 
-    def _replace_process(self, generated: str) -> None:
-        runtime = self._configuration.runtime_directory
+    def _replace_process(self, generated: str, configuration: RuntimeConfiguration) -> None:
+        runtime = configuration.runtime_directory
         runtime.mkdir(parents=True, exist_ok=True)
         candidate = runtime / "sing-box.candidate.json"
         active = runtime / "sing-box.json"
         candidate.write_text(generated, encoding="utf-8")
         candidate.chmod(0o600)
         checked = subprocess.run(
-            [str(self._configuration.sing_box_path), "check", "-c", str(candidate)],
+            [str(configuration.sing_box_path), "check", "-c", str(candidate)],
             capture_output=True,
             timeout=20,
             check=False,
@@ -214,7 +303,7 @@ class ProxyGateway:
         candidate.replace(active)
         self._stop_process()
         self._process = subprocess.Popen(
-            [str(self._configuration.sing_box_path), "run", "-c", str(active)],
+            [str(configuration.sing_box_path), "run", "-c", str(active)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -222,7 +311,7 @@ class ProxyGateway:
         while time.monotonic() < deadline:
             if self._process.poll() is not None:
                 raise RuntimeError("sing-box exited during startup")
-            if _tcp_connectable("127.0.0.1", self._configuration.proxy_port):
+            if _tcp_connectable("127.0.0.1", configuration.proxy_port):
                 return
             time.sleep(0.2)
         self._stop_process()
@@ -245,14 +334,19 @@ class ProxyGateway:
     def _process_alive(self) -> bool:
         return self._process is not None and self._process.poll() is None
 
-    def _validate_runtime(self) -> None:
-        if not self._configuration.sing_box_path.is_file():
+    def _validate_runtime(self, configuration: RuntimeConfiguration) -> None:
+        if not configuration.sing_box_path.is_file():
             raise FileNotFoundError("sing-box executable is unavailable")
-        if self._configuration.fetch_timeout_seconds <= 0:
+        if configuration.fetch_timeout_seconds <= 0:
             raise ValueError("PROXY_FETCH_TIMEOUT_SECONDS must be positive")
 
 
-def serve_health(state: GatewayState, port: int) -> ThreadingHTTPServer:
+def serve_health(
+    state: GatewayState,
+    gateway: ProxyGateway,
+    port: int,
+    control_token: str | None,
+) -> ThreadingHTTPServer:
     class HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             snapshot = state.snapshot()
@@ -263,8 +357,56 @@ def serve_health(state: GatewayState, port: int) -> ThreadingHTTPServer:
                 self._reply(status, snapshot)
             elif self.path == "/health":
                 self._reply(HTTPStatus.OK, snapshot)
+            elif self.path == "/control/status" and self._authorized():
+                self._reply(HTTPStatus.OK, snapshot)
             else:
                 self._reply(HTTPStatus.NOT_FOUND, {"status": "not-found"})
+
+        def do_PUT(self) -> None:
+            if self.path != "/control/config":
+                self._reply(HTTPStatus.NOT_FOUND, {"status": "not-found"})
+                return
+            if not self._authorized():
+                self._reply(HTTPStatus.UNAUTHORIZED, {"status": "unauthorized"})
+                return
+            try:
+                payload = self._json_body()
+                response = gateway.reconfigure(payload)
+                previous_attempt = int(response.pop("_previousRefreshAttempt"))
+            except (json.JSONDecodeError, UnicodeError, ValueError) as error:
+                self._reply(
+                    HTTPStatus.BAD_REQUEST,
+                    {"status": "invalid-configuration", "error": type(error).__name__},
+                )
+                return
+            if response["reloadRequired"]:
+                snapshot = state.wait_for_refresh(previous_attempt, timeout_seconds=45)
+                if int(snapshot["refreshAttempt"]) <= previous_attempt:
+                    self._reply(
+                        HTTPStatus.GATEWAY_TIMEOUT,
+                        {"status": "reload-timeout"},
+                    )
+                    return
+            else:
+                snapshot = state.snapshot()
+            if not snapshot["ready"] or snapshot["lastError"] is not None:
+                self._reply(
+                    HTTPStatus.BAD_GATEWAY,
+                    {
+                        "status": "reload-failed",
+                        "error": snapshot["lastError"] or "proxy-not-ready",
+                    },
+                )
+                return
+            self._reply(
+                HTTPStatus.OK,
+                {
+                    **response,
+                    "status": "ready",
+                    "generation": snapshot["generation"],
+                    "nodeCount": snapshot["nodeCount"],
+                },
+            )
 
         def log_message(self, format_string: str, *arguments: object) -> None:
             del format_string, arguments
@@ -276,6 +418,21 @@ def serve_health(state: GatewayState, port: int) -> ThreadingHTTPServer:
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _authorized(self) -> bool:
+            if not control_token:
+                return False
+            supplied = self.headers.get("Authorization", "")
+            return hmac.compare_digest(supplied, "Bearer " + control_token)
+
+        def _json_body(self) -> dict[str, Any]:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 2 or length > 6_000_000:
+                raise ValueError("Control payload size is invalid")
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("Control payload must be an object")
+            return payload
 
     server = ThreadingHTTPServer(("0.0.0.0", port), HealthHandler)
     threading.Thread(target=server.serve_forever, name="proxy-health", daemon=True).start()
@@ -317,6 +474,41 @@ def _boolean(name: str, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     raise ValueError(f"{name} must be a boolean")
+
+
+def _optional_payload_string(payload: dict[str, Any], name: str) -> str | None:
+    value = payload.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string or null")
+    normalized = value.strip()
+    return normalized or None
+
+
+def _payload_integer(
+    payload: dict[str, Any], name: str, *, minimum: int, maximum: int
+) -> int:
+    value = payload.get(name)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{name} must be an integer")
+    if value < minimum or value > maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return value
+
+
+def _string_list(
+    payload: dict[str, Any], name: str, *, maximum_items: int
+) -> tuple[str, ...]:
+    value = payload.get(name)
+    if not isinstance(value, list) or len(value) > maximum_items:
+        raise ValueError(f"{name} must be a bounded string list")
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip() or len(item.strip()) > 80:
+            raise ValueError(f"{name} contains an invalid value")
+        result.append(item.strip())
+    return tuple(result)
 
 
 def _safe_error(error: Exception) -> str:

@@ -9,6 +9,9 @@ const apiMock = vi.hoisted(() => ({
   tradeAutomations: vi.fn(),
   positions: vi.fn(),
   setExchangeAccountEnabled: vi.fn(),
+  putRuntimeSecret: vi.fn(),
+  clearRuntimeSecret: vi.fn(),
+  testExchangeAccount: vi.fn(),
   tradeAutomation: vi.fn(),
 }));
 
@@ -34,6 +37,12 @@ const accounts: AccountsOverview = {
     enabled: true,
     version: 7,
     credentialConfigured: true,
+    apiKeySource: 'ENVIRONMENT_FALLBACK',
+    apiKeyFingerprint: 'keyfingerprint01',
+    apiKeyVersion: 0,
+    apiSecretSource: 'ENVIRONMENT_FALLBACK',
+    apiSecretFingerprint: 'secretfingerpr01',
+    apiSecretVersion: 0,
     dataStatus: 'READY',
     currency: 'USDT',
     equity: 1000,

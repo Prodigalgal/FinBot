@@ -3,6 +3,8 @@ package io.omnnu.finbot.infrastructure.network;
 import io.omnnu.finbot.application.network.ProxyRouteDecision;
 import io.omnnu.finbot.application.network.ProxyRouteResolver;
 import io.omnnu.finbot.application.network.ProxyRouteUnavailableException;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import java.net.URI;
 import java.util.Objects;
@@ -12,9 +14,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public final class JdbcProxyRouteResolver implements ProxyRouteResolver {
     private final JdbcClient jdbcClient;
+    private final RuntimeSecretStore runtimeSecrets;
 
-    public JdbcProxyRouteResolver(JdbcClient jdbcClient) {
+    public JdbcProxyRouteResolver(JdbcClient jdbcClient, RuntimeSecretStore runtimeSecrets) {
         this.jdbcClient = Objects.requireNonNull(jdbcClient, "jdbcClient");
+        this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
     }
 
     @Override
@@ -36,9 +40,12 @@ public final class JdbcProxyRouteResolver implements ProxyRouteResolver {
         if (!stored.enabled()) {
             throw new ProxyRouteUnavailableException("Outbound route is disabled: " + route);
         }
-        var configuredValue = stored.proxyUrlEnvironmentVariable() == null
-                ? null
-                : System.getenv(stored.proxyUrlEnvironmentVariable());
+        var configuredValue = runtimeSecrets.resolve(
+                        RuntimeSecretScope.PROXY_ROUTE,
+                        route.name(),
+                        "PROXY_URL",
+                        stored.proxyUrlEnvironmentVariable())
+                .orElse(null);
         if (configuredValue == null || configuredValue.isBlank()) {
             if (stored.requireProxy()) {
                 throw new ProxyRouteUnavailableException(

@@ -3,6 +3,8 @@ package io.omnnu.finbot.infrastructure.workspace;
 import static io.omnnu.finbot.infrastructure.jdbc.PostgresJdbcParameters.timestamp;
 
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.application.network.ProxyRouteResolver;
 import io.omnnu.finbot.application.workspace.IngestionWorkspace;
 import io.omnnu.finbot.application.workspace.NetworkWorkspace;
@@ -31,14 +33,17 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
     private final JdbcClient jdbcClient;
     private final EnvironmentValueResolver environment;
     private final ProxyRouteResolver proxyRoutes;
+    private final RuntimeSecretStore runtimeSecrets;
 
     public JdbcPlatformWorkspaceRepository(
             JdbcClient jdbcClient,
             EnvironmentValueResolver environment,
-            ProxyRouteResolver proxyRoutes) {
+            ProxyRouteResolver proxyRoutes,
+            RuntimeSecretStore runtimeSecrets) {
         this.jdbcClient = Objects.requireNonNull(jdbcClient, "jdbcClient");
         this.environment = Objects.requireNonNull(environment, "environment");
         this.proxyRoutes = Objects.requireNonNull(proxyRoutes, "proxyRoutes");
+        this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
     }
 
     @Override
@@ -111,25 +116,7 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 ) latest on true
                 order by source.enabled desc, source.priority, source.source_tier, source.id
                 """)
-                .query((resultSet, rowNumber) -> new IngestionWorkspace.SourceStatus(
-                        resultSet.getString("source_id"),
-                        resultSet.getString("display_name"),
-                        resultSet.getString("source_mode"),
-                        resultSet.getString("source_tier"),
-                        resultSet.getString("category"),
-                        resultSet.getString("proxy_route_type"),
-                        resultSet.getString("credential_env"),
-                        resultSet.getString("credential_env") == null
-                                || configured(resultSet.getString("credential_env")),
-                        resultSet.getBoolean("enabled"),
-                        resultSet.getLong("version"),
-                        resultSet.getString("status"),
-                        resultSet.getInt("fetched_count"),
-                        resultSet.getInt("inserted_count"),
-                        resultSet.getInt("duplicate_count"),
-                        resultSet.getString("error_code"),
-                        safe(resultSet.getString("error_message")),
-                        nullableInstant(resultSet, "started_at")))
+                .query((resultSet, rowNumber) -> ingestionSource(resultSet))
                 .list();
         var runs = jdbcClient.sql("""
                 select run.collection_id, run.workflow_run_id, run.source_id,
@@ -255,7 +242,18 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 """)
                 .query((resultSet, rowNumber) -> networkRoute(resultSet))
                 .list();
-        return new NetworkWorkspace(routes, generatedAt);
+        var proxyGateways = jdbcClient.sql("""
+                select gateway_id, display_name, subscription_url_env, inline_nodes_env,
+                       (select string_agg(value, ',')
+                        from jsonb_array_elements_text(preferred_names) value) as preferred_names,
+                       maximum_nodes, refresh_seconds, allow_insecure_tls,
+                       enabled, version, updated_at
+                from proxy_gateway_profile
+                order by gateway_id
+                """)
+                .query((resultSet, rowNumber) -> proxyGateway(resultSet))
+                .list();
+        return new NetworkWorkspace(routes, proxyGateways, generatedAt);
     }
 
     @Override
@@ -342,10 +340,11 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
 
     private PlatformReadiness.Check providerCheck(Instant now) {
         var providers = jdbcClient.sql("""
-                select api_key_env, base_url, base_url_env
+                select profile_id, api_key_env, base_url, base_url_env
                 from ai_provider_profile where enabled
                 """)
                 .query((resultSet, rowNumber) -> new ProviderConfiguration(
+                        resultSet.getString("profile_id"),
                         resultSet.getString("api_key_env"),
                         resultSet.getString("base_url"),
                         resultSet.getString("base_url_env")))
@@ -408,9 +407,11 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
 
     private PlatformReadiness.Check exchangeCheck(Instant now) {
         var accounts = jdbcClient.sql("""
-                select api_key_env, api_secret_env from exchange_account where enabled
+                select account_id, api_key_env, api_secret_env
+                from exchange_account where enabled
                 """)
                 .query((resultSet, rowNumber) -> new AccountConfiguration(
+                        resultSet.getString("account_id"),
                         resultSet.getString("api_key_env"),
                         resultSet.getString("api_secret_env")))
                 .list();
@@ -508,7 +509,11 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
         var routeType = resultSet.getString("route_type");
         var enabled = resultSet.getBoolean("enabled");
         var proxyEnvironment = resultSet.getString("proxy_url_env");
-        var proxyConfigured = proxyEnvironment != null && configured(proxyEnvironment);
+        var proxyCredential = runtimeSecrets.status(
+                RuntimeSecretScope.PROXY_ROUTE,
+                routeType,
+                "PROXY_URL",
+                proxyEnvironment);
         var resolvedEndpoint = "disabled";
         var status = enabled ? "BLOCKED" : "DISABLED";
         String resolverError = null;
@@ -530,7 +535,10 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 enabled,
                 resultSet.getBoolean("require_proxy"),
                 resultSet.getBoolean("allow_direct"),
-                proxyConfigured,
+                proxyCredential.configured(),
+                proxyCredential.source().name(),
+                proxyCredential.fingerprint(),
+                proxyCredential.version(),
                 resultSet.getString("expected_ip_family"),
                 resolvedEndpoint,
                 status,
@@ -538,6 +546,81 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 latestError,
                 dependency.occurredAt(),
                 instant(resultSet, "updated_at"));
+    }
+
+    private NetworkWorkspace.ProxyGateway proxyGateway(ResultSet resultSet) throws SQLException {
+        var gatewayId = resultSet.getString("gateway_id");
+        var subscriptionEnvironment = resultSet.getString("subscription_url_env");
+        var inlineNodesEnvironment = resultSet.getString("inline_nodes_env");
+        var subscription = subscriptionEnvironment == null
+                ? null
+                : runtimeSecrets.status(
+                        RuntimeSecretScope.PROXY_GATEWAY,
+                        gatewayId,
+                        "SUBSCRIPTION_URL",
+                        subscriptionEnvironment);
+        var inlineNodes = inlineNodesEnvironment == null
+                ? null
+                : runtimeSecrets.status(
+                        RuntimeSecretScope.PROXY_GATEWAY,
+                        gatewayId,
+                        "INLINE_NODES",
+                        inlineNodesEnvironment);
+        var enabled = resultSet.getBoolean("enabled");
+        var configured = subscription != null && subscription.configured()
+                || inlineNodes != null && inlineNodes.configured();
+        return new NetworkWorkspace.ProxyGateway(
+                gatewayId,
+                resultSet.getString("display_name"),
+                enabled,
+                Objects.requireNonNullElse(resultSet.getString("preferred_names"), ""),
+                resultSet.getInt("maximum_nodes"),
+                resultSet.getInt("refresh_seconds"),
+                resultSet.getBoolean("allow_insecure_tls"),
+                subscription != null,
+                subscription == null ? "NOT_SUPPORTED" : subscription.source().name(),
+                subscription == null ? null : subscription.fingerprint(),
+                subscription == null ? 0 : subscription.version(),
+                inlineNodes != null,
+                inlineNodes == null ? "NOT_SUPPORTED" : inlineNodes.source().name(),
+                inlineNodes == null ? null : inlineNodes.fingerprint(),
+                inlineNodes == null ? 0 : inlineNodes.version(),
+                !enabled ? "DISABLED" : configured ? "READY" : "BLOCKED",
+                resultSet.getLong("version"),
+                instant(resultSet, "updated_at"));
+    }
+
+    private IngestionWorkspace.SourceStatus ingestionSource(ResultSet resultSet) throws SQLException {
+        var sourceId = resultSet.getString("source_id");
+        var credentialEnvironment = resultSet.getString("credential_env");
+        var credential = credentialEnvironment == null
+                ? null
+                : runtimeSecrets.status(
+                        RuntimeSecretScope.INFORMATION_SOURCE,
+                        sourceId,
+                        "API_KEY",
+                        credentialEnvironment);
+        return new IngestionWorkspace.SourceStatus(
+                sourceId,
+                resultSet.getString("display_name"),
+                resultSet.getString("source_mode"),
+                resultSet.getString("source_tier"),
+                resultSet.getString("category"),
+                resultSet.getString("proxy_route_type"),
+                credentialEnvironment != null,
+                credential == null || credential.configured(),
+                credential == null ? "NOT_REQUIRED" : credential.source().name(),
+                credential == null ? null : credential.fingerprint(),
+                credential == null ? 0 : credential.version(),
+                resultSet.getBoolean("enabled"),
+                resultSet.getLong("version"),
+                resultSet.getString("status"),
+                resultSet.getInt("fetched_count"),
+                resultSet.getInt("inserted_count"),
+                resultSet.getInt("duplicate_count"),
+                resultSet.getString("error_code"),
+                safe(resultSet.getString("error_message")),
+                nullableInstant(resultSet, "started_at"));
     }
 
     private DependencyStatus latestDependency(String routeType) {
@@ -831,11 +914,27 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
     private boolean providerConfigured(ProviderConfiguration provider) {
         var baseUrlConfigured = provider.baseUrl() != null && !provider.baseUrl().isBlank()
                 || provider.baseUrlEnvironment() != null && configured(provider.baseUrlEnvironment());
-        return baseUrlConfigured && configured(provider.apiKeyEnvironment());
+        return baseUrlConfigured && runtimeSecrets.status(
+                        RuntimeSecretScope.AI_PROVIDER,
+                        provider.profileId(),
+                        "API_KEY",
+                        provider.apiKeyEnvironment())
+                .configured();
     }
 
     private boolean accountConfigured(AccountConfiguration account) {
-        return configured(account.keyEnvironment()) && configured(account.secretEnvironment());
+        return runtimeSecrets.status(
+                                RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                                account.accountId(),
+                                "API_KEY",
+                                account.keyEnvironment())
+                        .configured()
+                && runtimeSecrets.status(
+                                RuntimeSecretScope.EXCHANGE_ACCOUNT,
+                                account.accountId(),
+                                "API_SECRET",
+                                account.secretEnvironment())
+                        .configured();
     }
 
     private boolean configured(String environmentVariable) {
@@ -888,12 +987,16 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
     }
 
     private record ProviderConfiguration(
+            String profileId,
             String apiKeyEnvironment,
             String baseUrl,
             String baseUrlEnvironment) {
     }
 
-    private record AccountConfiguration(String keyEnvironment, String secretEnvironment) {
+    private record AccountConfiguration(
+            String accountId,
+            String keyEnvironment,
+            String secretEnvironment) {
     }
 
     private record ScheduleConfiguration(boolean enabled, int intervalSeconds, Instant nextRunAt) {
