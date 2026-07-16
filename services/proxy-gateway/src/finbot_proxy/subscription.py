@@ -6,7 +6,13 @@ import urllib.request
 from collections.abc import Iterable
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from finbot_proxy.models import Hysteria2Node, ProxyNode, Subscription, VlessNode
+from finbot_proxy.models import (
+    Hysteria2Node,
+    NodeSelection,
+    ProxyNode,
+    Subscription,
+    VlessNode,
+)
 
 MAX_SUBSCRIPTION_BYTES = 5_000_000
 MAX_SUBSCRIPTION_NODES = 10_000
@@ -65,9 +71,13 @@ def select_nodes(
     *,
     maximum_nodes: int,
     preferred_names: Iterable[str],
-) -> tuple[ProxyNode, ...]:
+    allow_insecure_tls: bool = False,
+) -> NodeSelection:
     preferences = tuple(name.strip().casefold() for name in preferred_names if name.strip())
     supported = tuple(node for node in subscription.nodes if _is_supported(node))
+    insecure_node_count = sum(1 for node in supported if node.insecure)
+    if not allow_insecure_tls:
+        supported = tuple(node for node in supported if not node.insecure)
     if preferences:
         preferred = tuple(
             node
@@ -76,7 +86,11 @@ def select_nodes(
         )
         remaining = tuple(node for node in supported if node not in preferred)
         supported = (*preferred, *remaining)
-    return supported[:maximum_nodes]
+    return NodeSelection(
+        nodes=supported[:maximum_nodes],
+        insecure_node_count=insecure_node_count,
+        rejected_insecure_node_count=0 if allow_insecure_tls else insecure_node_count,
+    )
 
 
 def _parse_node(value: str) -> ProxyNode:

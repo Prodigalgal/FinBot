@@ -42,3 +42,14 @@ ProxyNode = VlessNode | Hysteria2Node
 class Subscription:
     nodes: tuple[ProxyNode, ...]
     invalid_node_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class NodeSelection:
+    nodes: tuple[ProxyNode, ...]
+    insecure_node_count: int
+    rejected_insecure_node_count: int
+
+    @property
+    def enabled_insecure_node_count(self) -> int:
+        return sum(1 for node in self.nodes if node.insecure)

@@ -3,12 +3,14 @@ package io.omnnu.finbot.application.operations;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.domain.operations.BackgroundTaskId;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
+import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.operations.WorkerId;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 public final class BackgroundTaskCoordinator {
     private final BackgroundTaskStore store;
@@ -49,8 +51,15 @@ public final class BackgroundTaskCoordinator {
         return store.enqueue(task);
     }
 
-    public Optional<BackgroundTask> claim(WorkerId workerId, Duration leaseDuration) {
-        return store.claimNext(workerId, clock.instant(), leaseDuration);
+    public Optional<BackgroundTask> claim(
+            WorkerId workerId,
+            Duration leaseDuration,
+            Set<BackgroundTaskType> allowedTaskTypes) {
+        return store.claimNext(workerId, clock.instant(), leaseDuration, allowedTaskTypes);
+    }
+
+    public long count(BackgroundTaskStatus status) {
+        return store.count(status);
     }
 
     public void complete(BackgroundTask task, WorkerId workerId) {

@@ -2,11 +2,13 @@ package io.omnnu.finbot.application.operations;
 
 import io.omnnu.finbot.domain.operations.BackgroundTaskId;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
+import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.operations.WorkerId;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 public interface BackgroundTaskStore {
@@ -16,7 +18,13 @@ public interface BackgroundTaskStore {
 
     List<BackgroundTask> list(BackgroundTaskStatus status, int limit);
 
-    Optional<BackgroundTask> claimNext(WorkerId workerId, Instant now, Duration leaseDuration);
+    Optional<BackgroundTask> claimNext(
+            WorkerId workerId,
+            Instant now,
+            Duration leaseDuration,
+            Set<BackgroundTaskType> allowedTaskTypes);
+
+    long count(BackgroundTaskStatus status);
 
     boolean heartbeat(BackgroundTaskId taskId, WorkerId workerId, Instant now, Duration leaseDuration);
 

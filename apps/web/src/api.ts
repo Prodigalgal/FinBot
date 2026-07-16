@@ -11,6 +11,14 @@ import type {
   WatchlistSummary, WorkflowDefinitionSummary, WorkflowEstimate, WorkflowExecutionPlan, WorkflowLearning,
   WorkflowNodeTestResult, WorkflowRun, WorkflowSchema, WorkflowVersion,
 } from './types';
+import type {
+  ControlPlaneDeleteRequestPath,
+  ControlPlaneGetRequestPath,
+  ControlPlanePatchRequestPath,
+  ControlPlanePostRequestPath,
+  ControlPlanePutRequestPath,
+  ControlPlaneRequestPath,
+} from './generated/control-plane';
 
 const API_BASE = import.meta.env.VITE_FINBOT_API_BASE || '';
 export const AUTH_REQUIRED_EVENT = 'finbot:authentication-required';
@@ -23,7 +31,7 @@ export class ApiError extends Error {
   }
 }
 
-function query(values: Record<string, string | number | boolean | null | undefined>): string {
+function query(values: Record<string, string | number | boolean | null | undefined>): '' | `?${string}` {
   const params = new URLSearchParams();
   Object.entries(values).forEach(([key, value]) => {
     if (value !== null && value !== undefined && value !== '') params.set(key, String(value));
@@ -36,7 +44,12 @@ function cookie(name: string): string {
   return document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length) || '';
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+function request<T>(path: ControlPlaneGetRequestPath, init?: RequestInit & { method?: 'GET' }): Promise<T>;
+function request<T>(path: ControlPlanePostRequestPath, init: RequestInit & { method: 'POST' }): Promise<T>;
+function request<T>(path: ControlPlanePutRequestPath, init: RequestInit & { method: 'PUT' }): Promise<T>;
+function request<T>(path: ControlPlaneDeleteRequestPath, init: RequestInit & { method: 'DELETE' }): Promise<T>;
+function request<T>(path: ControlPlanePatchRequestPath, init: RequestInit & { method: 'PATCH' }): Promise<T>;
+async function request<T>(path: ControlPlaneRequestPath, init: RequestInit = {}): Promise<T> {
   const method = (init.method || 'GET').toUpperCase();
   const changing = !['GET', 'HEAD', 'OPTIONS'].includes(method);
   const cookieCsrfToken = decodeURIComponent(cookie('XSRF-TOKEN'));

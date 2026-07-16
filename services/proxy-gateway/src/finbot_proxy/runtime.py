@@ -30,6 +30,7 @@ class RuntimeConfiguration:
     health_port: int
     sing_box_path: Path
     runtime_directory: Path
+    allow_insecure_tls: bool
 
     @classmethod
     def from_environment(cls) -> RuntimeConfiguration:
@@ -60,6 +61,7 @@ class RuntimeConfiguration:
             health_port=health_port,
             sing_box_path=Path(os.getenv("SING_BOX_PATH", "/usr/local/bin/sing-box")),
             runtime_directory=Path(os.getenv("PROXY_RUNTIME_DIRECTORY", "/tmp/finbot-proxy")),
+            allow_insecure_tls=_boolean("PROXY_ALLOW_INSECURE_TLS", False),
         )
 
 
@@ -69,15 +71,32 @@ class GatewayState:
         self._ready = False
         self._node_count = 0
         self._invalid_node_count = 0
+        self._insecure_node_count = 0
+        self._rejected_insecure_node_count = 0
+        self._enabled_insecure_node_count = 0
+        self._allow_insecure_tls = False
         self._generation = 0
         self._last_refresh_epoch_seconds: float | None = None
         self._last_error: str | None = None
 
-    def successful_refresh(self, *, node_count: int, invalid_node_count: int) -> None:
+    def successful_refresh(
+        self,
+        *,
+        node_count: int,
+        invalid_node_count: int,
+        insecure_node_count: int,
+        rejected_insecure_node_count: int,
+        enabled_insecure_node_count: int,
+        allow_insecure_tls: bool,
+    ) -> None:
         with self._lock:
             self._ready = True
             self._node_count = node_count
             self._invalid_node_count = invalid_node_count
+            self._insecure_node_count = insecure_node_count
+            self._rejected_insecure_node_count = rejected_insecure_node_count
+            self._enabled_insecure_node_count = enabled_insecure_node_count
+            self._allow_insecure_tls = allow_insecure_tls
             self._generation += 1
             self._last_refresh_epoch_seconds = time.time()
             self._last_error = None
@@ -99,6 +118,10 @@ class GatewayState:
                 "ready": self._ready,
                 "nodeCount": self._node_count,
                 "invalidNodeCount": self._invalid_node_count,
+                "insecureNodeCount": self._insecure_node_count,
+                "rejectedInsecureNodeCount": self._rejected_insecure_node_count,
+                "enabledInsecureNodeCount": self._enabled_insecure_node_count,
+                "allowInsecureTls": self._allow_insecure_tls,
                 "generation": self._generation,
                 "lastRefreshEpochSeconds": self._last_refresh_epoch_seconds,
                 "lastError": self._last_error,
@@ -128,19 +151,29 @@ class ProxyGateway:
 
     def _refresh(self) -> None:
         subscription = self._load_nodes()
-        nodes = select_nodes(
+        selection = select_nodes(
             subscription,
             maximum_nodes=self._configuration.maximum_nodes,
             preferred_names=self._configuration.preferred_names,
+            allow_insecure_tls=self._configuration.allow_insecure_tls,
         )
-        generated = build_configuration(nodes, listen_port=self._configuration.proxy_port)
+        if not selection.nodes:
+            raise RuntimeError("Proxy subscription contains no secure supported nodes")
+        generated = build_configuration(
+            selection.nodes,
+            listen_port=self._configuration.proxy_port,
+        )
         generated_hash = hashlib.sha256(generated.encode("utf-8")).hexdigest()
         if generated_hash != self._configuration_hash or not self._process_alive():
             self._replace_process(generated)
             self._configuration_hash = generated_hash
         self._state.successful_refresh(
-            node_count=len(nodes),
+            node_count=len(selection.nodes),
             invalid_node_count=subscription.invalid_node_count,
+            insecure_node_count=selection.insecure_node_count,
+            rejected_insecure_node_count=selection.rejected_insecure_node_count,
+            enabled_insecure_node_count=selection.enabled_insecure_node_count,
+            allow_insecure_tls=self._configuration.allow_insecure_tls,
         )
 
     def _load_nodes(self) -> Subscription:
@@ -272,6 +305,18 @@ def _integer(name: str, default: int, *, minimum: int, maximum: int) -> int:
     if value < minimum or value > maximum:
         raise ValueError(f"{name} must be between {minimum} and {maximum}")
     return value
+
+
+def _boolean(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
 
 
 def _safe_error(error: Exception) -> str:

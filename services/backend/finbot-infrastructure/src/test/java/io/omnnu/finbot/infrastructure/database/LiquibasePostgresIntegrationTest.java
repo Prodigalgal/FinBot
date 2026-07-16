@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.domain.operations.WorkerId;
+import io.omnnu.finbot.domain.operations.BackgroundTaskType;
+import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.infrastructure.exchange.JdbcExchangeAccountControlRepository;
 import io.omnnu.finbot.infrastructure.catalog.JdbcProductCatalogSyncStore;
@@ -34,10 +36,15 @@ import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
 import java.sql.DriverManager;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import liquibase.Contexts;
 import liquibase.LabelExpression;
 import liquibase.Liquibase;
@@ -401,6 +408,93 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(stoppedAt, result.getObject("heartbeat_at", OffsetDateTime.class).toInstant());
                 assertEquals(stoppedAt, result.getObject("stopped_at", OffsetDateTime.class).toInstant());
             }
+        }
+    }
+
+    @Test
+    void claimsOnlyAllowedTaskTypesAndRecoversExpiredLease() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var store = new JdbcBackgroundTaskStore(jdbcClient, new TaskPayloadCodec(new ObjectMapper()));
+        var now = Instant.parse("2026-07-16T02:00:00Z");
+        jdbcClient.sql("""
+                insert into background_task (
+                  task_id, task_type, status, priority, idempotency_key, payload,
+                  attempt_count, maximum_attempts, available_at, created_at, updated_at
+                ) values
+                  ('task_allowed_account', 'ACCOUNT_SYNC', 'PENDING', 50, 'test:allowed:account',
+                   '{"accountId":"account_bybit_demo_default"}'::jsonb, 0, 3, :now, :now, :now),
+                  ('task_blocked_research', 'SCHEDULED_RESEARCH', 'PENDING', 100, 'test:blocked:research',
+                   '{"requestSummary":"capacity filter integration test"}'::jsonb, 0, 3, :now, :now, :now)
+                on conflict (idempotency_key) do nothing
+                """)
+                .param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
+                .update();
+        var workerId = new WorkerId("worker_allowed_type_test");
+
+        var claimed = store.claimNext(
+                        workerId,
+                        now,
+                        Duration.ofSeconds(30),
+                        Set.of(BackgroundTaskType.ACCOUNT_SYNC))
+                .orElseThrow();
+
+        assertEquals("task_allowed_account", claimed.taskId().value());
+        assertEquals(BackgroundTaskType.ACCOUNT_SYNC, claimed.taskType());
+        assertTrue(store.recoverExpiredLeases(now.plusSeconds(31)) >= 1);
+        var recovered = store.find(claimed.taskId()).orElseThrow();
+        assertEquals(BackgroundTaskStatus.PENDING, recovered.status());
+        assertEquals("LEASE_EXPIRED", recovered.errorCode());
+    }
+
+    @Test
+    void allowsOnlyOneWorkerToClaimTheSameTaskConcurrently() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var store = new JdbcBackgroundTaskStore(jdbcClient, new TaskPayloadCodec(new ObjectMapper()));
+        var now = Instant.parse("2026-07-16T02:30:00Z");
+        jdbcClient.sql("""
+                insert into background_task (
+                  task_id, task_type, status, priority, idempotency_key, payload,
+                  attempt_count, maximum_attempts, available_at, created_at, updated_at
+                ) values (
+                  'task_concurrent_claim', 'FORECAST_EVALUATION', 'PENDING', 100, 'test:concurrent:claim',
+                  '{"limit":50}'::jsonb, 0, 3, :now, :now, :now
+                ) on conflict (idempotency_key) do nothing
+                """)
+                .param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
+                .update();
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var claims = List.of(
+                    new WorkerId("worker_concurrent_a"),
+                    new WorkerId("worker_concurrent_b"))
+                    .stream()
+                    .map(workerId -> executor.submit(() -> {
+                        ready.countDown();
+                        assertTrue(start.await(2, TimeUnit.SECONDS));
+                        return store.claimNext(
+                                workerId,
+                                now,
+                                Duration.ofSeconds(30),
+                                Set.of(BackgroundTaskType.FORECAST_EVALUATION));
+                    }))
+                    .toList();
+            assertTrue(ready.await(2, TimeUnit.SECONDS));
+            start.countDown();
+
+            var successfulClaims = 0;
+            for (var claim : claims) {
+                if (claim.get(5, TimeUnit.SECONDS).isPresent()) {
+                    successfulClaims++;
+                }
+            }
+            assertEquals(1, successfulClaims);
         }
     }
 

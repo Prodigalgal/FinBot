@@ -75,6 +75,8 @@ jobs:
         run: |
           npm ci
           npx tsc -b --clean
+          npm run contract:check
+          npm test
           npm run build
           npm audit --audit-level=high --registry=https://registry.npmjs.org
 

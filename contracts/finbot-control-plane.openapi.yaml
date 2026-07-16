@@ -8,24 +8,169 @@ servers:
 security:
   - adminSession: []
 paths:
-  /readiness:
+  /agent-roles:
     get:
-      operationId: getPlatformReadiness
+      operationId: getAgentRoles
       responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: postAgentRoles
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+  /agent-roles/{roleTemplateId}:
+    delete:
+      operationId: deleteAgentRolesRoleTemplateId
+      responses:
+        "204":
+          description: Operation completed without a response body.
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: roleTemplateId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+    put:
+      operationId: putAgentRolesRoleTemplateId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: roleTemplateId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /ai-experiments:
+    get:
+      operationId: listAiExperiments
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonArray"
+    post:
+      operationId: createAiExperiment
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "201":
+          $ref: "#/components/responses/JsonObject"
+  /ai-experiments/{experimentId}:
+    put:
+      operationId: putAiExperimentsExperimentId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: experimentId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /analysis/forecasts:
+    get:
+      operationId: listResearchForecasts
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonArray"
+  /analysis/market-runs:
+    post:
+      operationId: startMarketAnalysis
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarketAnalysisCommand"
+      responses:
+        "202":
+          $ref: "#/components/responses/JsonObject"
+  /analysis/market-runs/{runId}/forecast:
+    get:
+      operationId: getResearchForecast
+      parameters:
+        - $ref: "#/components/parameters/RunIdPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /auth/challenge:
+    get:
+      operationId: getAuthChallenge
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      security: []
+  /auth/login:
+    post:
+      operationId: postAuthLogin
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      security: []
+  /auth/logout:
+    post:
+      operationId: postAuthLogout
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+  /auth/status:
+    get:
+      operationId: getAuthStatus
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
   /autonomous:
     get:
       operationId: getAutonomousResearchStatus
       responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
+        "200":
+          $ref: "#/components/responses/JsonObject"
   /autonomous/runs:
     post:
       operationId: triggerAutonomousResearch
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: true
         content:
@@ -35,293 +180,131 @@ paths:
               additionalProperties: false
               properties:
                 requestSummary:
-                  type: [string, 'null']
+                  type:
+                    - string
+                    - "null"
                   maxLength: 1000
       responses:
-        '202':
-          $ref: '#/components/responses/JsonObject'
-        '409':
-          $ref: '#/components/responses/Problem'
-  /research/history/compare:
+        "202":
+          $ref: "#/components/responses/JsonObject"
+        "409":
+          $ref: "#/components/responses/Problem"
+  /configuration:
     get:
-      operationId: compareResearchRuns
-      parameters:
-        - name: leftRunId
-          in: query
-          required: true
-          schema: { $ref: '#/components/schemas/RunId' }
-        - name: rightRunId
-          in: query
-          required: true
-          schema: { $ref: '#/components/schemas/RunId' }
+      operationId: getConfiguration
       responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-  /research/history/{runId}/feedback:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /configuration/models/{modelProfileId}:
     put:
-      operationId: saveResearchFeedback
-      parameters:
-        - $ref: '#/components/parameters/RunIdPath'
-        - $ref: '#/components/parameters/CsrfToken'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ResearchFeedbackCommand'
+      operationId: putConfigurationModelsModelProfileId
       responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-        '409':
-          $ref: '#/components/responses/Problem'
-  /research/cases/by-run/{runId}:
-    get:
-      operationId: getResearchCaseByRunId
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
       parameters:
-        - $ref: '#/components/parameters/RunIdPath'
+        - name: modelProfileId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /configuration/providers/{profileId}:
+    put:
+      operationId: putConfigurationProvidersProfileId
       responses:
-        '200':
-          description: Shared evidence and live/paper branch state.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ResearchCase'
-        '404':
-          $ref: '#/components/responses/Problem'
-  /analysis/market-runs:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /configuration/providers/{profileId}/probe:
     post:
-      operationId: startMarketAnalysis
+      operationId: postConfigurationProvidersProfileIdProbe
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/CsrfToken'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/MarketAnalysisCommand'
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /configuration/settings/{settingKey}:
+    put:
+      operationId: putConfigurationSettingsSettingKey
       responses:
-        '202':
-          $ref: '#/components/responses/JsonObject'
-  /analysis/market-runs/{runId}/forecast:
-    get:
-      operationId: getResearchForecast
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
       parameters:
-        - $ref: '#/components/parameters/RunIdPath'
-      responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-        '404':
-          $ref: '#/components/responses/Problem'
-  /analysis/forecasts:
+        - name: settingKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /evidence/documents:
     get:
-      operationId: listResearchForecasts
-      parameters:
-        - name: limit
-          in: query
-          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      operationId: getEvidenceDocuments
       responses:
-        '200':
-          $ref: '#/components/responses/JsonArray'
-  /products/catalog-sync-runs:
-    get:
-      operationId: listProductCatalogSyncRuns
-      responses:
-        '200':
-          $ref: '#/components/responses/JsonArray'
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
   /exchanges/capabilities:
     get:
       operationId: listExchangeCapabilities
       description: Exact market-data and paper-order environments supported by each venue market type.
       responses:
-        '200':
+        "200":
           description: Exchange capability matrix. LIVE never appears in orderExecutionEnvironments.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/ExchangeCapability'
-  /products/catalog-sync/{exchange}/{marketType}:
-    post:
-      operationId: synchronizeProductCatalog
-      parameters:
-        - name: exchange
-          in: path
-          required: true
-          schema: { type: string, enum: [GATE, BYBIT] }
-        - name: marketType
-          in: path
-          required: true
-          schema: { type: string, enum: [SPOT, LINEAR_PERPETUAL] }
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/CsrfToken'
-      responses:
-        '202':
-          $ref: '#/components/responses/JsonObject'
-  /quant/previews:
-    post:
-      operationId: previewTradeRisk
-      description: Deterministic and side-effect-free. It never creates an OMS order or exchange request.
-      parameters:
-        - $ref: '#/components/parameters/CsrfToken'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TradeRiskPreviewCommand'
-      responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-  /trading/activity:
+                  $ref: "#/components/schemas/ExchangeCapability"
+  /ingestion/workspace:
     get:
-      operationId: getTradingActivity
-      parameters:
-        - name: accountId
-          in: query
-          schema: { type: string }
-        - name: source
-          in: query
-          schema: { type: string, enum: [LOCAL_OMS, EXCHANGE] }
-        - name: activityType
-          in: query
-          schema: { type: string }
-        - name: status
-          in: query
-          schema: { type: string }
-        - name: symbol
-          in: query
-          schema: { type: string }
-        - name: from
-          in: query
-          schema: { type: string, format: date-time }
-        - name: to
-          in: query
-          schema: { type: string, format: date-time }
-        - name: beforeOccurredAt
-          in: query
-          schema: { type: string, format: date-time }
-        - name: beforeActivityId
-          in: query
-          schema: { type: string }
-        - name: limit
-          in: query
-          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      operationId: getIngestionWorkspace
       responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-  /sources/{sourceId}/status:
-    put:
-      operationId: setInformationSourceStatus
-      parameters:
-        - name: sourceId
-          in: path
-          required: true
-          schema: { type: string, pattern: '^source_[a-z0-9_-]{4,72}$' }
-        - $ref: '#/components/parameters/CsrfToken'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VersionedEnabledCommand'
-      responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-        '409':
-          $ref: '#/components/responses/Problem'
-  /reports:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /network:
     get:
-      operationId: getOperationsReport
-      parameters:
-        - name: from
-          in: query
-          schema: { type: string, format: date-time }
-        - name: to
-          in: query
-          schema: { type: string, format: date-time }
+      operationId: getNetwork
       responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-  /workflow-definitions/{definitionId}/versions:
-    get:
-      operationId: listWorkflowVersions
-      parameters:
-        - name: definitionId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          $ref: '#/components/responses/JsonArray'
-  /workflow-definitions/{definitionId}/rollback/{targetVersionId}:
-    post:
-      operationId: rollbackWorkflow
-      parameters:
-        - name: definitionId
-          in: path
-          required: true
-          schema: { type: string }
-        - name: targetVersionId
-          in: path
-          required: true
-          schema: { type: string }
-        - $ref: '#/components/parameters/CsrfToken'
-      responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-  /workflow-versions/{versionId}/estimate:
-    get:
-      operationId: estimateWorkflow
-      parameters:
-        - $ref: '#/components/parameters/WorkflowVersionPath'
-      responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-  /workflow-versions/{versionId}/plan:
-    get:
-      operationId: planWorkflowExecution
-      parameters:
-        - $ref: '#/components/parameters/WorkflowVersionPath'
-      responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-  /workflow-versions/{versionId}/nodes/{nodeId}/test:
-    post:
-      operationId: testWorkflowNode
-      parameters:
-        - $ref: '#/components/parameters/WorkflowVersionPath'
-        - name: nodeId
-          in: path
-          required: true
-          schema: { type: string }
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/CsrfToken'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [input]
-              properties:
-                input: { type: string, minLength: 1, maxLength: 20000 }
-      responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
   /network/diagnostics:
     get:
       operationId: listNetworkDiagnostics
       responses:
-        '200':
-          $ref: '#/components/responses/JsonArray'
+        "200":
+          $ref: "#/components/responses/JsonArray"
     post:
       operationId: startNetworkDiagnostics
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: false
         content:
@@ -335,10 +318,289 @@ paths:
                   uniqueItems: true
                   items:
                     type: string
-                    enum: [FIRECRAWL, EXCHANGE_GATE, EXCHANGE_BYBIT, PUBLIC_DATA]
+                    enum:
+                      - FIRECRAWL
+                      - EXCHANGE_GATE
+                      - EXCHANGE_BYBIT
+                      - PUBLIC_DATA
       responses:
-        '202':
-          $ref: '#/components/responses/JsonArray'
+        "202":
+          $ref: "#/components/responses/JsonArray"
+  /operations:
+    get:
+      operationId: getOperations
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /operations/events:
+    get:
+      operationId: streamOperationsSnapshots
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          schema:
+            type: string
+            pattern: ^[0-9]+$
+      responses:
+        "200":
+          description: Recoverable operations snapshot stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /operations/schedules/{scheduleId}:
+    put:
+      operationId: putOperationsSchedulesScheduleId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /operations/tasks:
+    get:
+      operationId: getOperationsTasks
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /operations/tasks/{taskId}:
+    get:
+      operationId: getOperationsTasksTaskId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+  /products:
+    get:
+      operationId: getProducts
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /products/{productId}:
+    get:
+      operationId: getProductsProductId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+  /products/catalog-sync-runs:
+    get:
+      operationId: listProductCatalogSyncRuns
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonArray"
+  /products/catalog-sync/{exchange}/{marketType}:
+    post:
+      operationId: synchronizeProductCatalog
+      parameters:
+        - name: exchange
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - GATE
+              - BYBIT
+        - name: marketType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - SPOT
+              - LINEAR_PERPETUAL
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "202":
+          $ref: "#/components/responses/JsonObject"
+  /quant/previews:
+    post:
+      operationId: previewTradeRisk
+      description: Deterministic and side-effect-free. It never creates an OMS order or exchange request.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeRiskPreviewCommand"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /quant/runs:
+    get:
+      operationId: getQuantRuns
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /readiness:
+    get:
+      operationId: getPlatformReadiness
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /reports:
+    get:
+      operationId: getOperationsReport
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /research/cases/by-run/{runId}:
+    get:
+      operationId: getResearchCaseByRunId
+      parameters:
+        - $ref: "#/components/parameters/RunIdPath"
+      responses:
+        "200":
+          description: Shared evidence and live/paper branch state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchCase"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /research/history:
+    get:
+      operationId: getResearchHistory
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /research/history/{runId}:
+    get:
+      operationId: getResearchHistoryRunId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+  /research/history/{runId}/replay:
+    post:
+      operationId: postResearchHistoryRunIdReplay
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /research/history/{runId}/resume:
+    post:
+      operationId: postResearchHistoryRunIdResume
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /research/instant:
+    post:
+      operationId: postResearchInstant
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+  /research/review/{runId}/feedback:
+    put:
+      operationId: putResearchReviewRunIdFeedback
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /research/review/compare:
+    get:
+      operationId: getResearchReviewCompare
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /research/review/feedback:
+    get:
+      operationId: getResearchReviewFeedback
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /setup-profiles:
+    get:
+      operationId: getSetupProfiles
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
   /setup-profiles/{profileId}/apply:
     post:
       operationId: applySetupProfile
@@ -346,38 +608,527 @@ paths:
         - name: profileId
           in: path
           required: true
-          schema: { type: string, enum: [RECOMMENDED, ECONOMY, DEEP_RESEARCH] }
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/CsrfToken'
+          schema:
+            type: string
+            enum:
+              - RECOMMENDED
+              - ECONOMY
+              - DEEP_RESEARCH
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       responses:
-        '200':
-          $ref: '#/components/responses/JsonObject'
-  /ai-experiments:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /setup-profiles/{profileId}/preview:
     get:
-      operationId: listAiExperiments
+      operationId: getSetupProfilesProfileIdPreview
       responses:
-        '200':
-          $ref: '#/components/responses/JsonArray'
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+  /setup-profiles/history:
+    get:
+      operationId: getSetupProfilesHistory
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /sources:
+    get:
+      operationId: getSources
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /sources/{sourceId}/collect:
     post:
-      operationId: createAiExperiment
-      parameters:
-        - $ref: '#/components/parameters/CsrfToken'
+      operationId: postSourcesSourceIdCollect
       responses:
-        '201':
-          $ref: '#/components/responses/JsonObject'
-  /operations/events:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /sources/{sourceId}/status:
+    put:
+      operationId: setInformationSourceStatus
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^source_[a-z0-9_-]{4,72}$
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedEnabledCommand"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "409":
+          $ref: "#/components/responses/Problem"
+  /trading/accounts:
     get:
-      operationId: streamOperationsSnapshots
-      parameters:
-        - name: Last-Event-ID
-          in: header
-          schema: { type: string, pattern: '^[0-9]+$' }
+      operationId: getTradingAccounts
       responses:
-        '200':
-          description: Recoverable operations snapshot stream.
-          content:
-            text/event-stream:
-              schema: { type: string }
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /trading/accounts/{accountId}/configuration:
+    put:
+      operationId: putTradingAccountsAccountIdConfiguration
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /trading/accounts/{accountId}/positions:
+    get:
+      operationId: getTradingAccountsAccountIdPositions
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+  /trading/activity:
+    get:
+      operationId: getTradingActivity
+      parameters:
+        - name: accountId
+          in: query
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum:
+              - LOCAL_OMS
+              - EXCHANGE
+        - name: activityType
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: symbol
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeOccurredAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeActivityId
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /trading/automation-configuration:
+    get:
+      operationId: getTradingAutomationConfiguration
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /trading/automation-configuration/ai-stages/{stage}:
+    put:
+      operationId: putTradingAutomationConfigurationAiStagesStage
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: stage
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /trading/automation-configuration/risk-policies:
+    post:
+      operationId: postTradingAutomationConfigurationRiskPolicies
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+  /trading/automations:
+    get:
+      operationId: getTradingAutomations
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /trading/automations/{workflowRunId}:
+    get:
+      operationId: getTradingAutomationsWorkflowRunId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: workflowRunId
+          in: path
+          required: true
+          schema:
+            type: string
+  /watchlists:
+    get:
+      operationId: getWatchlists
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: postWatchlists
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+  /watchlists/{watchlistId}:
+    delete:
+      operationId: deleteWatchlistsWatchlistId
+      responses:
+        "204":
+          description: Operation completed without a response body.
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: watchlistId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+    get:
+      operationId: getWatchlistsWatchlistId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: watchlistId
+          in: path
+          required: true
+          schema:
+            type: string
+    put:
+      operationId: putWatchlistsWatchlistId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: watchlistId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /watchlists/{watchlistId}/items/{productId}:
+    delete:
+      operationId: deleteWatchlistsWatchlistIdItemsProductId
+      responses:
+        "204":
+          description: Operation completed without a response body.
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: watchlistId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+    put:
+      operationId: putWatchlistsWatchlistIdItemsProductId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: watchlistId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /workflow-definitions:
+    get:
+      operationId: getWorkflowDefinitions
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /workflow-definitions/{definitionId}/activation:
+    put:
+      operationId: putWorkflowDefinitionsDefinitionIdActivation
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /workflow-definitions/{definitionId}/rollback/{targetVersionId}:
+    post:
+      operationId: rollbackWorkflow
+      parameters:
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: targetVersionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /workflow-definitions/{definitionId}/versions:
+    get:
+      operationId: listWorkflowVersions
+      parameters:
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonArray"
+  /workflow-drafts:
+    put:
+      operationId: putWorkflowDrafts
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+  /workflow-schema:
+    get:
+      operationId: getWorkflowSchema
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+  /workflow-versions/{versionId}:
+    get:
+      operationId: getWorkflowVersionsVersionId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+  /workflow-versions/{versionId}/estimate:
+    get:
+      operationId: estimateWorkflow
+      parameters:
+        - $ref: "#/components/parameters/WorkflowVersionPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /workflow-versions/{versionId}/learning:
+    get:
+      operationId: getWorkflowVersionsVersionIdLearning
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+  /workflow-versions/{versionId}/nodes/{nodeId}/test:
+    post:
+      operationId: testWorkflowNode
+      parameters:
+        - $ref: "#/components/parameters/WorkflowVersionPath"
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - input
+              properties:
+                input:
+                  type: string
+                  minLength: 1
+                  maxLength: 20000
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /workflow-versions/{versionId}/plan:
+    get:
+      operationId: planWorkflowExecution
+      parameters:
+        - $ref: "#/components/parameters/WorkflowVersionPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /workflow-versions/{versionId}/publish:
+    post:
+      operationId: postWorkflowVersionsVersionIdPublish
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CsrfToken"
+  /workflows:
+    post:
+      operationId: postWorkflows
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+  /workflows/{runId}:
+    get:
+      operationId: getWorkflowsRunId
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+  /workflows/{runId}/events:
+    get:
+      operationId: getWorkflowsRunIdEvents
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
 components:
   securitySchemes:
     adminSession:
@@ -389,150 +1140,396 @@ components:
       name: Idempotency-Key
       in: header
       required: true
-      schema: { type: string, minLength: 1, maxLength: 200 }
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
     CsrfToken:
       name: X-XSRF-TOKEN
       in: header
       required: true
-      schema: { type: string, minLength: 1 }
+      schema:
+        type: string
+        minLength: 1
     RunIdPath:
       name: runId
       in: path
       required: true
-      schema: { $ref: '#/components/schemas/RunId' }
+      schema:
+        $ref: "#/components/schemas/RunId"
     WorkflowVersionPath:
       name: versionId
       in: path
       required: true
-      schema: { type: string, pattern: '^workflowversion_[a-z0-9_-]{4,60}$' }
+      schema:
+        type: string
+        pattern: ^workflowversion_[a-z0-9_-]{4,60}$
   responses:
     JsonObject:
       description: Successful structured response.
       content:
         application/json:
-          schema: { type: object, additionalProperties: true }
+          schema:
+            type: object
+            additionalProperties: true
     JsonArray:
       description: Successful structured collection.
       content:
         application/json:
           schema:
             type: array
-            items: { type: object, additionalProperties: true }
+            items:
+              type: object
+              additionalProperties: true
     Problem:
       description: RFC 9457 problem with a stable FinBot business code.
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
   schemas:
     ExchangeCapability:
       type: object
       additionalProperties: false
-      required: [exchange, marketType, marketDataEnvironments, orderExecutionEnvironments]
+      required:
+        - exchange
+        - marketType
+        - marketDataEnvironments
+        - orderExecutionEnvironments
       properties:
-        exchange: { type: string, enum: [GATE, BYBIT] }
-        marketType: { type: string, enum: [SPOT, LINEAR_PERPETUAL, INVERSE_PERPETUAL, FUTURE] }
+        exchange:
+          type: string
+          enum:
+            - GATE
+            - BYBIT
+        marketType:
+          type: string
+          enum:
+            - SPOT
+            - LINEAR_PERPETUAL
+            - INVERSE_PERPETUAL
+            - FUTURE
         marketDataEnvironments:
           type: array
           uniqueItems: true
-          items: { type: string, enum: [LIVE, TESTNET, DEMO] }
+          items:
+            type: string
+            enum:
+              - LIVE
+              - TESTNET
+              - DEMO
         orderExecutionEnvironments:
           type: array
           uniqueItems: true
-          items: { type: string, enum: [TESTNET, DEMO] }
+          items:
+            type: string
+            enum:
+              - TESTNET
+              - DEMO
     ResearchCase:
       type: object
       additionalProperties: false
-      required: [caseId, status, requestSummary, evidenceArtifactId, segments, createdAt, completedAt, updatedAt]
+      required:
+        - caseId
+        - status
+        - requestSummary
+        - evidenceArtifactId
+        - segments
+        - createdAt
+        - completedAt
+        - updatedAt
       properties:
-        caseId: { type: string, pattern: '^case_[a-z0-9_-]{4,70}$' }
-        status: { type: string, enum: [PENDING, RUNNING, PARTIAL, COMPLETED, FAILED] }
-        requestSummary: { type: string }
-        evidenceArtifactId: { type: [string, 'null'] }
+        caseId:
+          type: string
+          pattern: ^case_[a-z0-9_-]{4,70}$
+        status:
+          type: string
+          enum:
+            - PENDING
+            - RUNNING
+            - PARTIAL
+            - COMPLETED
+            - FAILED
+        requestSummary:
+          type: string
+        evidenceArtifactId:
+          type:
+            - string
+            - "null"
         segments:
           type: array
           minItems: 2
           maxItems: 3
           items:
-            $ref: '#/components/schemas/ResearchSegment'
-        createdAt: { type: string, format: date-time }
-        completedAt: { type: [string, 'null'], format: date-time }
-        updatedAt: { type: string, format: date-time }
+            $ref: "#/components/schemas/ResearchSegment"
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     ResearchSegment:
       type: object
       additionalProperties: false
-      required: [segmentId, segmentType, dataPlane, workflowRunId, evidenceArtifactId, status, errorCode, errorMessage, startedAt, completedAt]
+      required:
+        - segmentId
+        - segmentType
+        - dataPlane
+        - workflowRunId
+        - evidenceArtifactId
+        - status
+        - errorCode
+        - errorMessage
+        - startedAt
+        - completedAt
       properties:
-        segmentId: { type: string, pattern: '^segment_[a-z0-9_-]{4,67}$' }
-        segmentType: { type: string, enum: [EVIDENCE, LIVE_RESEARCH, DEMO_AUTOTRADE] }
-        dataPlane: { type: [string, 'null'], enum: [LIVE, PAPER, null] }
-        workflowRunId: { type: [string, 'null'] }
-        evidenceArtifactId: { type: [string, 'null'] }
-        status: { type: string, enum: [PENDING, RUNNING, COMPLETED, FAILED, SKIPPED] }
-        errorCode: { type: [string, 'null'] }
-        errorMessage: { type: [string, 'null'] }
-        startedAt: { type: [string, 'null'], format: date-time }
-        completedAt: { type: [string, 'null'], format: date-time }
+        segmentId:
+          type: string
+          pattern: ^segment_[a-z0-9_-]{4,67}$
+        segmentType:
+          type: string
+          enum:
+            - EVIDENCE
+            - LIVE_RESEARCH
+            - DEMO_AUTOTRADE
+        dataPlane:
+          type:
+            - string
+            - "null"
+          enum:
+            - LIVE
+            - PAPER
+            - null
+        workflowRunId:
+          type:
+            - string
+            - "null"
+        evidenceArtifactId:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+          enum:
+            - PENDING
+            - RUNNING
+            - COMPLETED
+            - FAILED
+            - SKIPPED
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        startedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        completedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
     RunId:
       type: string
-      pattern: '^run_[a-z0-9_-]{4,75}$'
+      pattern: ^run_[a-z0-9_-]{4,75}$
     VersionedEnabledCommand:
       type: object
       additionalProperties: false
-      required: [enabled, expectedVersion]
+      required:
+        - enabled
+        - expectedVersion
       properties:
-        enabled: { type: boolean }
-        expectedVersion: { type: integer, format: int64, minimum: 0 }
+        enabled:
+          type: boolean
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
     ResearchFeedbackCommand:
       type: object
       additionalProperties: false
-      required: [rating, effectiveness, note]
+      required:
+        - rating
+        - effectiveness
+        - note
       properties:
-        rating: { type: string, enum: [HELPFUL, NEUTRAL, NOT_HELPFUL] }
-        effectiveness: { type: string, enum: [UNKNOWN, PENDING, WIN, LOSS, NO_TRADE] }
-        note: { type: string, maxLength: 2000 }
-        expectedVersion: { type: [integer, 'null'], format: int64, minimum: 0 }
+        rating:
+          type: string
+          enum:
+            - HELPFUL
+            - NEUTRAL
+            - NOT_HELPFUL
+        effectiveness:
+          type: string
+          enum:
+            - UNKNOWN
+            - PENDING
+            - WIN
+            - LOSS
+            - NO_TRADE
+        note:
+          type: string
+          maxLength: 2000
+        expectedVersion:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 0
     MarketAnalysisCommand:
       type: object
       additionalProperties: false
-      required: [instrumentId, symbol, exchange, intervalSeconds, forecastHorizonSeconds, question]
+      required:
+        - instrumentId
+        - symbol
+        - exchange
+        - intervalSeconds
+        - forecastHorizonSeconds
+        - question
       properties:
-        instrumentId: { type: string, maxLength: 80 }
-        symbol: { type: string, pattern: '^[A-Za-z0-9_-]{2,48}$' }
-        exchange: { type: string, enum: [GATE, BYBIT] }
-        intervalSeconds: { type: integer, minimum: 60, maximum: 604800 }
-        forecastHorizonSeconds: { type: integer, minimum: 60, maximum: 31536000 }
-        question: { type: string, minLength: 1, maxLength: 1500 }
-        workflowVersionId: { type: [string, 'null'], maxLength: 80 }
-        demoWorkflowVersionId: { type: [string, 'null'], maxLength: 80 }
+        instrumentId:
+          type: string
+          maxLength: 80
+        symbol:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,48}$
+        exchange:
+          type: string
+          enum:
+            - GATE
+            - BYBIT
+        intervalSeconds:
+          type: integer
+          minimum: 60
+          maximum: 604800
+        forecastHorizonSeconds:
+          type: integer
+          minimum: 60
+          maximum: 31536000
+        question:
+          type: string
+          minLength: 1
+          maxLength: 1500
+        workflowVersionId:
+          type:
+            - string
+            - "null"
+          maxLength: 80
+        demoWorkflowVersionId:
+          type:
+            - string
+            - "null"
+          maxLength: 80
     TradeRiskPreviewCommand:
       type: object
       additionalProperties: false
-      required: [instrumentId, exchange, environment, symbol, action, confidence, entryPrice, targetPrice, stopPrice, currentPrice, contractSize, quantityStep, minimumQuantity, venueMaximumLeverage, openPositionCount, executionEnabled]
+      required:
+        - instrumentId
+        - exchange
+        - environment
+        - symbol
+        - action
+        - confidence
+        - entryPrice
+        - targetPrice
+        - stopPrice
+        - currentPrice
+        - contractSize
+        - quantityStep
+        - minimumQuantity
+        - venueMaximumLeverage
+        - openPositionCount
+        - executionEnabled
       properties:
-        instrumentId: { type: string, maxLength: 80 }
-        accountId: { type: [string, 'null'], maxLength: 80 }
-        exchange: { type: string, enum: [GATE, BYBIT] }
-        environment: { type: string, enum: [TESTNET, DEMO] }
-        symbol: { type: string }
-        action: { type: string, enum: [BUY, SELL] }
-        confidence: { type: number, minimum: 0, maximum: 1 }
-        entryPrice: { type: number, exclusiveMinimum: 0 }
-        targetPrice: { type: number, exclusiveMinimum: 0 }
-        stopPrice: { type: number, exclusiveMinimum: 0 }
-        currentPrice: { type: number, exclusiveMinimum: 0 }
-        contractSize: { type: number, exclusiveMinimum: 0 }
-        quantityStep: { type: number, exclusiveMinimum: 0 }
-        minimumQuantity: { type: number, exclusiveMinimum: 0 }
-        venueMaximumLeverage: { type: number, minimum: 1 }
-        openPositionCount: { type: integer, minimum: 0, maximum: 10000 }
-        executionEnabled: { type: boolean }
+        instrumentId:
+          type: string
+          maxLength: 80
+        accountId:
+          type:
+            - string
+            - "null"
+          maxLength: 80
+        exchange:
+          type: string
+          enum:
+            - GATE
+            - BYBIT
+        environment:
+          type: string
+          enum:
+            - TESTNET
+            - DEMO
+        symbol:
+          type: string
+        action:
+          type: string
+          enum:
+            - BUY
+            - SELL
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        entryPrice:
+          type: number
+          exclusiveMinimum: 0
+        targetPrice:
+          type: number
+          exclusiveMinimum: 0
+        stopPrice:
+          type: number
+          exclusiveMinimum: 0
+        currentPrice:
+          type: number
+          exclusiveMinimum: 0
+        contractSize:
+          type: number
+          exclusiveMinimum: 0
+        quantityStep:
+          type: number
+          exclusiveMinimum: 0
+        minimumQuantity:
+          type: number
+          exclusiveMinimum: 0
+        venueMaximumLeverage:
+          type: number
+          minimum: 1
+        openPositionCount:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        executionEnabled:
+          type: boolean
     ProblemDetail:
       type: object
       additionalProperties: true
-      required: [title, status, detail, code]
+      required:
+        - title
+        - status
+        - detail
+        - code
       properties:
-        type: { type: string, format: uri-reference }
-        title: { type: string }
-        status: { type: integer, minimum: 400, maximum: 599 }
-        detail: { type: string }
-        code: { type: string, pattern: '^[A-Z0-9_]+$' }
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        code:
+          type: string
+          pattern: ^[A-Z0-9_]+$

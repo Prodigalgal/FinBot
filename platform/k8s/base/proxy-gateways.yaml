@@ -47,6 +47,8 @@ spec:
               value: "32"
             - name: PROXY_SUBSCRIPTION_REFRESH_SECONDS
               value: "1800"
+            - name: PROXY_ALLOW_INSECURE_TLS
+              value: "false"
           ports:
             - name: proxy
               containerPort: 8080
@@ -146,6 +148,8 @@ spec:
               value: "16"
             - name: PROXY_SUBSCRIPTION_REFRESH_SECONDS
               value: "1800"
+            - name: PROXY_ALLOW_INSECURE_TLS
+              value: "false"
           ports:
             - name: proxy
               containerPort: 8080

@@ -25,6 +25,13 @@ final class JdkExchangeMarketDataGatewayTest {
             "USDT");
     private static final URI ENDPOINT = URI.create(
             "https://api.gateio.ws/api/v4/futures/usdt/candlesticks");
+    private static final ResearchInstrument BYBIT_INSTRUMENT = new ResearchInstrument(
+            new InstrumentId("instrument_bybit_btc_usdt"),
+            ExchangeVenue.BYBIT,
+            MarketType.LINEAR_PERPETUAL,
+            "BTCUSDT",
+            "USDT");
+    private static final URI BYBIT_ENDPOINT = URI.create("https://api.bybit.com/v5/market/kline");
     private static final Instant OBSERVED_AT = Instant.parse("2026-07-14T07:31:00Z");
 
     @Test
@@ -98,5 +105,89 @@ final class JdkExchangeMarketDataGatewayTest {
         assertEquals(new BigDecimal("62233.9"), candles.getFirst().close());
         assertEquals(new BigDecimal("2261.3913"), candles.getFirst().volume());
         assertEquals(new BigDecimal("140949113.96436"), candles.getFirst().turnover());
+    }
+
+    @Test
+    void parsesBybitRowsAndOrdersTheReverseChronologicalResponse() throws Exception {
+        var rows = OBJECT_MAPPER.readTree("""
+                [
+                  ["1782219600000", "62233.9", "62510", "61916.3", "62450", "718.7", "44700123.45"],
+                  ["1782216000000", "62476.6", "62530.4", "62130", "62233.9", "226.1", "14094911.39"]
+                ]
+                """);
+
+        var candles = JdkExchangeMarketDataGateway.parseBybitCandles(
+                rows,
+                BYBIT_INSTRUMENT,
+                ExchangeEnvironment.LIVE,
+                3_600,
+                BYBIT_ENDPOINT,
+                OBSERVED_AT);
+
+        assertEquals(2, candles.size());
+        assertEquals(Instant.ofEpochMilli(1_782_216_000_000L), candles.getFirst().openTime());
+        assertEquals(new BigDecimal("62476.6"), candles.getFirst().open());
+        assertEquals(new BigDecimal("14094911.39"), candles.getFirst().turnover());
+    }
+
+    @Test
+    void rejectsMalformedBybitRows() throws Exception {
+        var rows = OBJECT_MAPPER.readTree("[[\"1782216000000\", \"62476.6\"]]");
+
+        var failure = assertThrows(
+                MarketDataFetchException.class,
+                () -> JdkExchangeMarketDataGateway.parseBybitCandles(
+                        rows,
+                        BYBIT_INSTRUMENT,
+                        ExchangeEnvironment.LIVE,
+                        3_600,
+                        BYBIT_ENDPOINT,
+                        OBSERVED_AT));
+
+        assertEquals("BYBIT_CANDLE_ROW_INVALID", failure.errorCode());
+    }
+
+    @Test
+    void rejectsDuplicateBybitTimestamps() throws Exception {
+        var rows = OBJECT_MAPPER.readTree("""
+                [
+                  ["1782216000000", "62476.6", "62530.4", "62130", "62233.9", "226.1"],
+                  ["1782216000000", "62476.6", "62530.4", "62130", "62233.9", "226.1"]
+                ]
+                """);
+
+        var failure = assertThrows(
+                MarketDataFetchException.class,
+                () -> JdkExchangeMarketDataGateway.parseBybitCandles(
+                        rows,
+                        BYBIT_INSTRUMENT,
+                        ExchangeEnvironment.LIVE,
+                        3_600,
+                        BYBIT_ENDPOINT,
+                        OBSERVED_AT));
+
+        assertEquals("MARKET_CANDLE_DUPLICATE_TIMESTAMP", failure.errorCode());
+    }
+
+    @Test
+    void rejectsBybitTimeSeriesGaps() throws Exception {
+        var rows = OBJECT_MAPPER.readTree("""
+                [
+                  ["1782223200000", "62233.9", "62510", "61916.3", "62450", "718.7"],
+                  ["1782216000000", "62476.6", "62530.4", "62130", "62233.9", "226.1"]
+                ]
+                """);
+
+        var failure = assertThrows(
+                MarketDataFetchException.class,
+                () -> JdkExchangeMarketDataGateway.parseBybitCandles(
+                        rows,
+                        BYBIT_INSTRUMENT,
+                        ExchangeEnvironment.LIVE,
+                        3_600,
+                        BYBIT_ENDPOINT,
+                        OBSERVED_AT));
+
+        assertEquals("MARKET_CANDLE_TIME_GAP", failure.errorCode());
     }
 }

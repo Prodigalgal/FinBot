@@ -10,3 +10,5 @@ python -m pytest -q
 ```
 
 真实订阅 token、节点 UUID、密码和 URL 只允许通过环境变量或 K8S Secret 注入。代理服务不持有 AI 或交易所凭据，也不解析业务请求。
+
+`PROXY_ALLOW_INSECURE_TLS` 默认且生产固定为 `false`。订阅中的 `insecure` / `allowInsecure` 只描述节点，不会自行授权降低 TLS 校验；不安全节点会被拒绝。只有受控故障排查才可临时显式设为 `true`，并应通过 `/health` 的 `insecureNodeCount`、`rejectedInsecureNodeCount`、`enabledInsecureNodeCount` 和 `allowInsecureTls` 核对实际状态。

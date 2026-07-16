@@ -153,7 +153,7 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
                     endpoint.toString(),
                     observedAt));
         });
-        return ordered(candles);
+        return orderedAndValidated(candles, intervalSeconds);
     }
 
     static List<MarketCandle> parseGateCandles(
@@ -196,7 +196,7 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
                     endpoint.toString(),
                     observedAt));
         });
-        return ordered(candles);
+        return orderedAndValidated(candles, intervalSeconds);
     }
 
     private List<MarketCandle> bybit(
@@ -235,30 +235,13 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
                             "BYBIT_CANDLE_RESPONSE_INVALID",
                             "Bybit candle response did not contain a result list");
                 }
-                var observedAt = clock.instant();
-                var candles = new ArrayList<MarketCandle>();
-                rows.forEach(row -> {
-                    if (!row.isArray() || row.size() < 6) {
-                        return;
-                    }
-                    candles.add(new MarketCandle(
-                            instrument.instrumentId(),
-                            ExchangeVenue.BYBIT,
-                            environment,
-                            instrument.symbol(),
-                            intervalSeconds,
-                            Instant.ofEpochMilli(row.get(0).asLong()),
-                            decimal(row.get(1)),
-                            decimal(row.get(2)),
-                            decimal(row.get(3)),
-                            decimal(row.get(4)),
-                            decimal(row.get(5)),
-                            row.size() > 6 ? decimal(row.get(6)) : null,
-                            BigDecimal.ZERO,
-                            endpoint.toString(),
-                            observedAt));
-                });
-                return ordered(candles);
+                return parseBybitCandles(
+                        rows,
+                        instrument,
+                        environment,
+                        intervalSeconds,
+                        endpoint,
+                        clock.instant());
             } catch (MarketDataFetchException exception) {
                 lastFailure = exception;
             }
@@ -266,6 +249,50 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
         throw Objects.requireNonNullElseGet(lastFailure, () -> new MarketDataFetchException(
                 "BYBIT_CANDLE_FETCH_FAILED",
                 "Bybit public candle request failed on every configured host"));
+    }
+
+    static List<MarketCandle> parseBybitCandles(
+            JsonNode rows,
+            ResearchInstrument instrument,
+            ExchangeEnvironment environment,
+            int intervalSeconds,
+            URI endpoint,
+            Instant observedAt) {
+        Objects.requireNonNull(rows, "rows");
+        Objects.requireNonNull(instrument, "instrument");
+        Objects.requireNonNull(environment, "environment");
+        Objects.requireNonNull(endpoint, "endpoint");
+        Objects.requireNonNull(observedAt, "observedAt");
+        if (!rows.isArray()) {
+            throw new MarketDataFetchException(
+                    "BYBIT_CANDLE_RESPONSE_INVALID",
+                    "Bybit candle response did not contain an array");
+        }
+        var candles = new ArrayList<MarketCandle>();
+        rows.forEach(row -> {
+            if (!row.isArray() || row.size() < 6) {
+                throw new MarketDataFetchException(
+                        "BYBIT_CANDLE_ROW_INVALID",
+                        "Bybit candle response contained an invalid row");
+            }
+            candles.add(new MarketCandle(
+                    instrument.instrumentId(),
+                    ExchangeVenue.BYBIT,
+                    environment,
+                    instrument.symbol(),
+                    intervalSeconds,
+                    bybitOpenTime(row.get(0)),
+                    decimal(row.get(1)),
+                    decimal(row.get(2)),
+                    decimal(row.get(3)),
+                    decimal(row.get(4)),
+                    decimal(row.get(5)),
+                    row.size() > 6 ? decimal(row.get(6)) : null,
+                    BigDecimal.ZERO,
+                    endpoint.toString(),
+                    observedAt));
+        });
+        return orderedAndValidated(candles, intervalSeconds);
     }
 
     private static MarketDataFetchException unsupported(
@@ -321,11 +348,26 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
         }
     }
 
-    private static List<MarketCandle> ordered(List<MarketCandle> candles) {
-        return candles.stream()
+    private static List<MarketCandle> orderedAndValidated(List<MarketCandle> candles, int intervalSeconds) {
+        var ordered = candles.stream()
                 .sorted(Comparator.comparing(MarketCandle::openTime))
-                .distinct()
                 .toList();
+        for (var index = 1; index < ordered.size(); index++) {
+            var previous = ordered.get(index - 1).openTime();
+            var current = ordered.get(index).openTime();
+            var difference = Duration.between(previous, current).getSeconds();
+            if (difference == 0) {
+                throw new MarketDataFetchException(
+                        "MARKET_CANDLE_DUPLICATE_TIMESTAMP",
+                        "Exchange candle response contained a duplicate timestamp");
+            }
+            if (difference != intervalSeconds) {
+                throw new MarketDataFetchException(
+                        "MARKET_CANDLE_TIME_GAP",
+                        "Exchange candle response contained a non-contiguous interval");
+            }
+        }
+        return ordered;
     }
 
     private static BigDecimal decimal(JsonNode value) {
@@ -359,6 +401,25 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
             throw new MarketDataFetchException(
                     "GATE_CANDLE_TIME_INVALID",
                     "Gate candle contained an invalid timestamp");
+        }
+    }
+
+    private static Instant bybitOpenTime(JsonNode value) {
+        if (value == null || (!value.isNumber() && !value.isTextual())) {
+            throw new MarketDataFetchException(
+                    "BYBIT_CANDLE_TIME_INVALID",
+                    "Bybit candle contained a non-numeric timestamp");
+        }
+        try {
+            var epochMilliseconds = Long.parseLong(value.asText());
+            if (epochMilliseconds <= 0) {
+                throw new NumberFormatException("Timestamp must be positive");
+            }
+            return Instant.ofEpochMilli(epochMilliseconds);
+        } catch (NumberFormatException exception) {
+            throw new MarketDataFetchException(
+                    "BYBIT_CANDLE_TIME_INVALID",
+                    "Bybit candle contained an invalid timestamp");
         }
     }
 

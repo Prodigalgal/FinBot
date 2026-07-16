@@ -16,6 +16,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -97,11 +98,19 @@ public class JdbcBackgroundTaskStore implements BackgroundTaskStore {
     }
 
     @Override
-    public Optional<BackgroundTask> claimNext(WorkerId workerId, Instant now, Duration leaseDuration) {
+    public Optional<BackgroundTask> claimNext(
+            WorkerId workerId,
+            Instant now,
+            Duration leaseDuration,
+            Set<BackgroundTaskType> allowedTaskTypes) {
+        if (allowedTaskTypes.isEmpty()) {
+            return Optional.empty();
+        }
         return jdbcClient.sql("""
                 with candidate as (
                   select id from background_task
                   where status = 'PENDING' and available_at <= :now
+                    and task_type in (:allowedTaskTypes)
                   order by priority desc, available_at, id
                   for update skip locked
                   limit 1
@@ -123,8 +132,18 @@ public class JdbcBackgroundTaskStore implements BackgroundTaskStore {
                 .param("now", timestamp(now))
                 .param("leaseExpiresAt", timestamp(now.plus(leaseDuration)))
                 .param("workerId", workerId.value())
+                .param("allowedTaskTypes", allowedTaskTypes.stream().map(Enum::name).toList())
                 .query((resultSet, rowNumber) -> task(resultSet))
                 .optional();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long count(BackgroundTaskStatus status) {
+        return jdbcClient.sql("select count(*) from background_task where status = :status")
+                .param("status", status.name())
+                .query(Long.class)
+                .single();
     }
 
     @Override
