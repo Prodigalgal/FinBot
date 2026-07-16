@@ -228,6 +228,126 @@ def test_unchanged_ready_configuration_does_not_force_early_refresh(
     assert result["reloadRequired"] is False
 
 
+def test_unchanged_degraded_configuration_waits_for_normal_refresh(
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "sing-box"
+    executable.write_text("test", encoding="utf-8")
+    configuration = RuntimeConfiguration(
+        subscription_url="https://bootstrap.example/sub",
+        inline_nodes=None,
+        preferred_names=("JP",),
+        maximum_nodes=16,
+        refresh_seconds=1800,
+        fetch_timeout_seconds=20,
+        proxy_port=8080,
+        node_port_start=10000,
+        health_port=8081,
+        sing_box_path=executable,
+        runtime_directory=tmp_path,
+        allow_insecure_tls=False,
+        target_probe=None,
+    )
+    state = GatewayState()
+    state.successful_refresh(
+        node_count=1,
+        invalid_node_count=0,
+        insecure_node_count=0,
+        rejected_insecure_node_count=0,
+        enabled_insecure_node_count=0,
+        allow_insecure_tls=False,
+        healthy_node_indices=(),
+        probe_failure_counts={"HTTP_429": 1},
+        validation_target="api.example.com",
+    )
+    gateway = ProxyGateway(configuration, state)
+
+    result = gateway.reconfigure(
+        {
+            "subscriptionUrl": "https://bootstrap.example/sub",
+            "inlineNodes": None,
+            "preferredNames": ["JP"],
+            "maximumNodes": 16,
+            "refreshSeconds": 1800,
+            "allowInsecureTls": False,
+        }
+    )
+
+    assert result["status"] == "configuration-unchanged"
+    assert result["reloadRequired"] is False
+    assert state.snapshot()["refreshAttempt"] == 1
+
+
+def test_http_reconciliation_reports_degraded_egress_without_forcing_probe(
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "sing-box"
+    executable.write_text("test", encoding="utf-8")
+    configuration = RuntimeConfiguration(
+        subscription_url="https://bootstrap.example/sub",
+        inline_nodes=None,
+        preferred_names=(),
+        maximum_nodes=4,
+        refresh_seconds=1800,
+        fetch_timeout_seconds=20,
+        proxy_port=8080,
+        node_port_start=10000,
+        health_port=8081,
+        sing_box_path=executable,
+        runtime_directory=tmp_path,
+        allow_insecure_tls=False,
+        target_probe=None,
+    )
+    state = GatewayState()
+    state.successful_refresh(
+        node_count=4,
+        invalid_node_count=0,
+        insecure_node_count=0,
+        rejected_insecure_node_count=0,
+        enabled_insecure_node_count=0,
+        allow_insecure_tls=False,
+        healthy_node_indices=(),
+        probe_failure_counts={"CONNECTION_ERROR": 4},
+        validation_target="api.example.com",
+    )
+    server = serve_health(
+        state,
+        ProxyGateway(configuration, state),
+        0,
+        "control-token",
+    )
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{server.server_port}/control/config",
+        data=json.dumps(
+            {
+                "subscriptionUrl": "https://bootstrap.example/sub",
+                "inlineNodes": None,
+                "preferredNames": [],
+                "maximumNodes": 4,
+                "refreshSeconds": 1800,
+                "allowInsecureTls": False,
+            }
+        ).encode(),
+        headers={
+            "Authorization": "Bearer control-token",
+            "Content-Type": "application/json",
+        },
+        method="PUT",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.load(response)
+        assert response.status == 200
+        assert payload["status"] == "configuration-unchanged"
+        assert payload["reloadRequired"] is False
+        assert payload["egressReady"] is False
+        assert payload["generation"] == 1
+        assert state.snapshot()["refreshAttempt"] == 1
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_explicit_reload_forces_target_revalidation(tmp_path: Path) -> None:
     executable = tmp_path / "sing-box"
     executable.write_text("test", encoding="utf-8")

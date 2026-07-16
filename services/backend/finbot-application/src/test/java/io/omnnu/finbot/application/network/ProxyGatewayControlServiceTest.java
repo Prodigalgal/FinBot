@@ -49,6 +49,7 @@ class ProxyGatewayControlServiceTest {
         assertEquals("https://hot.example/subscription", gateway.configuration.subscriptionUrl());
         assertEquals("hysteria2://fallback-node.example:443", gateway.configuration.inlineNodes());
         assertEquals(List.of("JP", "SG"), gateway.configuration.preferredNames());
+        assertEquals(ProxyGatewayApplyMode.FORCE_RELOAD, gateway.mode);
     }
 
     @Test
@@ -91,16 +92,39 @@ class ProxyGatewayControlServiceTest {
     }
 
     @Test
-    void reloadAllContainsMisconfiguredGatewayFailure() {
+    void reconcileAllContainsMisconfiguredGatewayFailure() {
         var service = service(
                 new FakeRepository(profile(true, 3), true),
                 new EmptyMutatingStore(),
                 new CapturingGateway());
 
-        var reloads = service.reloadAll();
+        var reloads = service.reconcileAll();
 
         assertEquals(1, reloads.size());
         assertTrue(reloads.getFirst().toCompletableFuture().isCompletedExceptionally());
+    }
+
+    @Test
+    void periodicReconciliationDoesNotForceTargetRevalidation() {
+        var profile = profile(true, 3);
+        var gateway = new CapturingGateway();
+        RuntimeSecretStore secrets = new EmptyMutatingStore() {
+            @Override
+            public Optional<String> resolve(
+                    RuntimeSecretScope scope,
+                    String targetId,
+                    String secretName,
+                    String fallbackEnvironmentVariable) {
+                return "INLINE_NODES".equals(secretName)
+                        ? Optional.of("hysteria2://fallback-node.example:443")
+                        : Optional.empty();
+            }
+        };
+        var service = service(new FakeRepository(profile, true), secrets, gateway);
+
+        service.reconcileAll().getFirst().toCompletableFuture().join();
+
+        assertEquals(ProxyGatewayApplyMode.RECONCILE, gateway.mode);
     }
 
     @Test
@@ -199,12 +223,15 @@ class ProxyGatewayControlServiceTest {
 
     private static class CapturingGateway implements ProxyGatewayControlGateway {
         private ProxyGatewayRuntimeConfiguration configuration;
+        private ProxyGatewayApplyMode mode;
 
         @Override
         public java.util.concurrent.CompletionStage<Void> apply(
                 ProxyGatewayProfile profile,
-                ProxyGatewayRuntimeConfiguration configuration) {
+                ProxyGatewayRuntimeConfiguration configuration,
+                ProxyGatewayApplyMode mode) {
             this.configuration = configuration;
+            this.mode = mode;
             return CompletableFuture.completedFuture(null);
         }
 

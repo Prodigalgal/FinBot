@@ -192,10 +192,6 @@ class GatewayState:
         with self._lock:
             return self._snapshot()
 
-    def requires_refresh(self) -> bool:
-        with self._lock:
-            return not self._ready or self._last_error is not None
-
     def wait_for_refresh(
         self, previous_attempt: int, timeout_seconds: float
     ) -> dict[str, Any]:
@@ -283,7 +279,6 @@ class ProxyGateway:
                 reload_required = (
                     force_refresh
                     or configuration != self._configuration
-                    or self._state.requires_refresh()
                 )
                 previous_refresh_attempt = int(
                     self._state.snapshot()["refreshAttempt"]
@@ -502,7 +497,9 @@ def serve_health(
                     return
             else:
                 snapshot = state.snapshot()
-            if not snapshot["ready"] or snapshot["lastError"] is not None:
+            if response["reloadRequired"] and (
+                not snapshot["ready"] or snapshot["lastError"] is not None
+            ):
                 self._reply(
                     HTTPStatus.BAD_GATEWAY,
                     {
@@ -515,7 +512,7 @@ def serve_health(
                 HTTPStatus.OK,
                 {
                     **response,
-                    "status": "ready",
+                    "egressReady": snapshot["ready"],
                     "generation": snapshot["generation"],
                     "nodeCount": snapshot["nodeCount"],
                 },

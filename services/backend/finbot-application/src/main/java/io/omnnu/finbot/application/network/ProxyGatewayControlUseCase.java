@@ -10,5 +10,5 @@ public interface ProxyGatewayControlUseCase {
 
     ProxyGatewayProfile update(UpdateProxyGatewayProfileCommand command);
 
-    List<CompletionStage<ProxyGatewayReloadResult>> reloadAll();
+    List<CompletionStage<Void>> reconcileAll();
 }

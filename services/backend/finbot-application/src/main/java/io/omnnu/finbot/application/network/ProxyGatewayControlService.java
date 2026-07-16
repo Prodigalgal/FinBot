@@ -5,6 +5,7 @@ import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
 import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -28,41 +29,33 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
 
     @Override
     public CompletionStage<ProxyGatewayReloadResult> reload(String gatewayId) {
-        var profile = profiles.find(Objects.requireNonNull(gatewayId, "gatewayId").strip())
-                .filter(ProxyGatewayProfile::enabled)
-                .orElseThrow(() -> new IllegalArgumentException("Proxy gateway does not exist or is disabled"));
-        var configuration = new ProxyGatewayRuntimeConfiguration(
-                secret(profile, "SUBSCRIPTION_URL", profile.subscriptionUrlEnvironment()),
-                secret(profile, "INLINE_NODES", profile.inlineNodesEnvironment()),
-                profile.preferredNames(),
-                profile.maximumNodes(),
-                profile.refreshSeconds(),
-                profile.allowInsecureTls());
+        var profile = enabledProfile(gatewayId);
         var requestedAt = clock.instant();
-        return gateway.apply(profile, configuration)
+        return gateway.apply(profile, configuration(profile), ProxyGatewayApplyMode.FORCE_RELOAD)
                 .thenApply(ignored -> new ProxyGatewayReloadResult(
                         profile.gatewayId(), "RELOAD_ACCEPTED", requestedAt));
     }
 
     @Override
     public CompletionStage<ProxyGatewayRuntimeStatus> status(String gatewayId) {
-        var profile = profiles.find(Objects.requireNonNull(gatewayId, "gatewayId").strip())
-                .filter(ProxyGatewayProfile::enabled)
-                .orElseThrow(() -> new IllegalArgumentException("Proxy gateway does not exist or is disabled"));
+        var profile = enabledProfile(gatewayId);
         return gateway.status(profile).exceptionally(exception -> unavailableStatus(profile, exception));
     }
 
     @Override
-    public List<CompletionStage<ProxyGatewayReloadResult>> reloadAll() {
+    public List<CompletionStage<Void>> reconcileAll() {
         return profiles.list().stream()
                 .filter(ProxyGatewayProfile::enabled)
-                .map(profile -> reloadSafely(profile.gatewayId()))
+                .map(this::reconcileSafely)
                 .toList();
     }
 
-    private CompletionStage<ProxyGatewayReloadResult> reloadSafely(String gatewayId) {
+    private CompletionStage<Void> reconcileSafely(ProxyGatewayProfile profile) {
         try {
-            return reload(gatewayId);
+            return gateway.apply(
+                    profile,
+                    configuration(profile),
+                    ProxyGatewayApplyMode.RECONCILE);
         } catch (RuntimeException exception) {
             return CompletableFuture.failedStage(exception);
         }
@@ -113,6 +106,23 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
                 .orElse(null);
     }
 
+    private ProxyGatewayProfile enabledProfile(String gatewayId) {
+        return profiles.find(Objects.requireNonNull(gatewayId, "gatewayId").strip())
+                .filter(ProxyGatewayProfile::enabled)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Proxy gateway does not exist or is disabled"));
+    }
+
+    private ProxyGatewayRuntimeConfiguration configuration(ProxyGatewayProfile profile) {
+        return new ProxyGatewayRuntimeConfiguration(
+                secret(profile, "SUBSCRIPTION_URL", profile.subscriptionUrlEnvironment()),
+                secret(profile, "INLINE_NODES", profile.inlineNodesEnvironment()),
+                profile.preferredNames(),
+                profile.maximumNodes(),
+                profile.refreshSeconds(),
+                profile.allowInsecureTls());
+    }
+
     private static ProxyGatewayRuntimeStatus unavailableStatus(
             ProxyGatewayProfile profile,
             Throwable exception) {
@@ -128,7 +138,7 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
                 0,
                 0,
                 List.of(),
-                java.util.Map.of(),
+                Map.of(),
                 false,
                 null,
                 0,

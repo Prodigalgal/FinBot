@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
+import io.omnnu.finbot.application.network.ProxyGatewayApplyMode;
 import io.omnnu.finbot.application.network.ProxyGatewayControlGateway;
 import io.omnnu.finbot.application.network.ProxyGatewayProfile;
 import io.omnnu.finbot.application.network.ProxyGatewayRuntimeConfiguration;
@@ -41,10 +42,11 @@ public final class JdkProxyGatewayControlGateway implements ProxyGatewayControlG
     @Override
     public CompletionStage<Void> apply(
             ProxyGatewayProfile profile,
-            ProxyGatewayRuntimeConfiguration configuration) {
+            ProxyGatewayRuntimeConfiguration configuration,
+            ProxyGatewayApplyMode mode) {
         var token = environment.resolve(TOKEN_ENV)
                 .orElseThrow(() -> new IllegalStateException("Proxy control token is not configured"));
-        var request = HttpRequest.newBuilder(controlUri(profile.controlUrl()))
+        var request = HttpRequest.newBuilder(controlUri(profile.controlUrl(), mode))
                 .timeout(Duration.ofSeconds(60))
                 .header("Authorization", "Bearer " + token)
                 .header("Content-Type", "application/json")
@@ -115,9 +117,12 @@ public final class JdkProxyGatewayControlGateway implements ProxyGatewayControlG
         }
     }
 
-    private static URI controlUri(URI baseUrl) {
+    private static URI controlUri(URI baseUrl, ProxyGatewayApplyMode mode) {
         var base = baseUrl.toString().endsWith("/") ? baseUrl.toString() : baseUrl + "/";
-        return URI.create(base).resolve("control/config?force=true");
+        var path = mode == ProxyGatewayApplyMode.FORCE_RELOAD
+                ? "control/config?force=true"
+                : "control/config";
+        return URI.create(base).resolve(path);
     }
 
     private static URI statusUri(URI baseUrl) {

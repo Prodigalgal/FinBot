@@ -19,8 +19,8 @@ public final class ProxyGatewayConfigurationReconciler {
 
     @Scheduled(initialDelayString = "PT15S", fixedDelayString = "PT30S")
     public void reconcile() {
-        for (var reload : useCase.reloadAll()) {
-            reload.exceptionally(exception -> {
+        for (var reconciliation : useCase.reconcileAll()) {
+            reconciliation.exceptionally(exception -> {
                 LOGGER.warn("Proxy gateway configuration reconciliation failed: {}",
                         exception.getClass().getSimpleName());
                 return null;

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
+import io.omnnu.finbot.application.network.ProxyGatewayApplyMode;
 import io.omnnu.finbot.application.network.ProxyGatewayProfile;
 import io.omnnu.finbot.application.network.ProxyGatewayRuntimeConfiguration;
 import java.net.InetSocketAddress;
@@ -17,6 +18,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +26,7 @@ class JdkProxyGatewayControlGatewayTest {
     @Test
     void readsAuthenticatedTargetAwareRuntimeStatus() throws Exception {
         var authorization = new AtomicReference<String>();
-        var reloadQuery = new AtomicReference<String>();
+        var reloadQueries = new CopyOnWriteArrayList<String>();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/control/status", exchange -> {
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
@@ -51,7 +53,8 @@ class JdkProxyGatewayControlGatewayTest {
             exchange.close();
         });
         server.createContext("/control/config", exchange -> {
-            reloadQuery.set(exchange.getRequestURI().getRawQuery());
+            reloadQueries.add(Optional.ofNullable(exchange.getRequestURI().getRawQuery())
+                    .orElse("<none>"));
             exchange.getRequestBody().readAllBytes();
             exchange.sendResponseHeaders(200, -1);
             exchange.close();
@@ -76,18 +79,22 @@ class JdkProxyGatewayControlGatewayTest {
                     Instant.parse("2026-07-17T00:00:00Z"));
 
             var status = gateway.status(profile).toCompletableFuture().join();
-            gateway.apply(profile, new ProxyGatewayRuntimeConfiguration(
-                            "https://subscription.example/proxies",
-                            null,
-                            List.of("JP"),
-                            16,
-                            1800,
-                            false))
+            var configuration = new ProxyGatewayRuntimeConfiguration(
+                    "https://subscription.example/proxies",
+                    null,
+                    List.of("JP"),
+                    16,
+                    1800,
+                    false);
+            gateway.apply(profile, configuration, ProxyGatewayApplyMode.FORCE_RELOAD)
+                    .toCompletableFuture()
+                    .join();
+            gateway.apply(profile, configuration, ProxyGatewayApplyMode.RECONCILE)
                     .toCompletableFuture()
                     .join();
 
             assertEquals("Bearer control-token", authorization.get());
-            assertEquals("force=true", reloadQuery.get());
+            assertEquals(List.of("force=true", "<none>"), reloadQueries);
             assertTrue(status.serviceReady());
             assertFalse(status.egressReady());
             assertEquals(4, status.nodeCount());

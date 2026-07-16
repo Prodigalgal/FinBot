@@ -11,9 +11,12 @@
 3. 健康状态分别暴露 `serviceReady` 与 `ready`（出口可用）。Kubernetes `/health/ready` 使用 `serviceReady`，确保坏池仍能接收热配置；`/health/egress` 和 Java 控制面使用出口状态。
 4. 状态只暴露节点总数、健康数量、原索引、失败分类、目标主机和时间，不暴露订阅、节点地址或凭据。
 5. Firecrawl 使用真实 keyless scrape 响应验证 IP 风控；Exchange 使用 Bybit Demo 公共时间接口验证目标可达性。订阅刷新或 UI 重新加载时重新探测。
+6. 后端每 30 秒执行的配置对账使用 `RECONCILE` 模式：配置未变化时不得触发目标探测，即使当前出口不可用。管理员显式点击重新探测时使用 `FORCE_RELOAD`；无可用出口的自然恢复由网关自身 `refreshSeconds` 周期负责。
+7. 对账请求在配置未变化时返回成功并同时携带 `egressReady=false`，避免把“配置已一致”和“出口不可用”混成控制调用失败；显式重载或配置变更后的探测失败仍返回失败。
 
 ## 影响
 
 - Firecrawl 不再靠随机三次重试碰撞少量可用 IP，失败节点在进入业务流量前即被隔离。
 - Exchange 节点全部失效时，Pod 保持可管理但 UI 明确显示无可用出口，Bybit 调用继续 fail closed。
 - 目标探测会产生有限外部请求；沿用网关刷新周期，避免持续高频扫描。
+- 周期对账可恢复代理 Pod 重启后丢失的数据库热配置，但不会形成 30 秒一次的 Firecrawl 探测风暴或消耗可用出口的 keyless 限额。

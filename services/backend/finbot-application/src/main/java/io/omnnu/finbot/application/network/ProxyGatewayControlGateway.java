@@ -5,7 +5,8 @@ import java.util.concurrent.CompletionStage;
 public interface ProxyGatewayControlGateway {
     CompletionStage<Void> apply(
             ProxyGatewayProfile profile,
-            ProxyGatewayRuntimeConfiguration configuration);
+            ProxyGatewayRuntimeConfiguration configuration,
+            ProxyGatewayApplyMode mode);
 
     CompletionStage<ProxyGatewayRuntimeStatus> status(ProxyGatewayProfile profile);
 }
