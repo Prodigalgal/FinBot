@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import io.omnnu.finbot.application.ai.AiBudgetReservationStore;
 import io.omnnu.finbot.application.ai.AiCompletionGateway;
 import io.omnnu.finbot.application.ai.AiInvocationAuditStore;
-import io.omnnu.finbot.application.ai.AiProviderProtocolResolver;
+import io.omnnu.finbot.application.ai.AiRuntimeBindingResolver;
 import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
 import io.omnnu.finbot.application.exchange.PaperOrderExecutionUseCase;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
@@ -142,7 +142,7 @@ class TradeAutomationApplicationServiceTest {
         });
         var aiInvoker = new WorkflowAiInvoker(
                 unused(AiCompletionGateway.class),
-                unused(AiProviderProtocolResolver.class),
+                unused(AiRuntimeBindingResolver.class),
                 unused(AiInvocationAuditStore.class),
                 unused(AiBudgetReservationStore.class),
                 unused(WorkflowEventPublisher.class),

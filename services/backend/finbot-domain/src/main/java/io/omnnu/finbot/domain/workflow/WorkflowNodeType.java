@@ -6,7 +6,9 @@ public enum WorkflowNodeType {
     DETERMINISTIC,
     COLLECTOR,
     CLEANER,
+    AI_CLEANER,
     COMPRESSOR,
+    COMPRESSION_VALIDATOR,
     AGENT,
     GATE,
     QUANT,
@@ -20,7 +22,8 @@ public enum WorkflowNodeType {
 
     public boolean llmBacked() {
         return switch (this) {
-            case COMPRESSOR, AGENT, AGGREGATOR, CHAIR, EXECUTION_REVIEW -> true;
+            case AI_CLEANER, COMPRESSOR, COMPRESSION_VALIDATOR,
+                    AGENT, AGGREGATOR, CHAIR, EXECUTION_REVIEW -> true;
             case INPUT, ROUTER, DETERMINISTIC, COLLECTOR, CLEANER, GATE, QUANT,
                     RISK, SUBFLOW, HUMAN_REVIEW, OUTPUT -> false;
         };

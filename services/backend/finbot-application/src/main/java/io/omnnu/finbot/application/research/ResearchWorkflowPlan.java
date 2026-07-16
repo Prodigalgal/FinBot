@@ -22,7 +22,7 @@ public record ResearchWorkflowPlan(
         var positions = positions(ordered);
         requireAtMostOne(ordered, WorkflowNodeType.COLLECTOR);
         requireAtMostOne(ordered, WorkflowNodeType.CLEANER);
-        requireAtMostOne(ordered, WorkflowNodeType.COMPRESSOR);
+        requireAtMostOne(ordered, WorkflowNodeType.COMPRESSION_VALIDATOR);
         requireAtMostOne(ordered, WorkflowNodeType.QUANT);
 
         var collector = positions.containsKey(WorkflowNodeType.COLLECTOR);
@@ -32,15 +32,33 @@ public record ResearchWorkflowPlan(
                     "COLLECTOR and CLEANER must be enabled or disabled together because collection persists normalized evidence atomically");
         }
         requireBefore(positions, WorkflowNodeType.COLLECTOR, WorkflowNodeType.CLEANER);
+        if (contains(ordered, WorkflowNodeType.AI_CLEANER)) {
+            if (!cleaner) {
+                throw new IllegalStateException("AI_CLEANER requires enabled COLLECTOR and CLEANER nodes");
+            }
+            requireAllBefore(ordered, WorkflowNodeType.CLEANER, WorkflowNodeType.AI_CLEANER);
+        }
         if (positions.containsKey(WorkflowNodeType.COMPRESSOR)) {
             if (!cleaner) {
                 throw new IllegalStateException("COMPRESSOR requires enabled COLLECTOR and CLEANER nodes");
             }
-            requireBefore(positions, WorkflowNodeType.CLEANER, WorkflowNodeType.COMPRESSOR);
+            requireAllBefore(ordered, WorkflowNodeType.CLEANER, WorkflowNodeType.COMPRESSOR);
+            requireAllBefore(ordered, WorkflowNodeType.AI_CLEANER, WorkflowNodeType.COMPRESSOR);
         }
-        if (positions.containsKey(WorkflowNodeType.QUANT)
-                && positions.containsKey(WorkflowNodeType.COMPRESSOR)) {
-            requireBefore(positions, WorkflowNodeType.COMPRESSOR, WorkflowNodeType.QUANT);
+        if (contains(ordered, WorkflowNodeType.COMPRESSION_VALIDATOR)) {
+            if (!contains(ordered, WorkflowNodeType.COMPRESSOR)) {
+                throw new IllegalStateException("COMPRESSION_VALIDATOR requires at least one enabled COMPRESSOR node");
+            }
+            requireMinimum(ordered, WorkflowNodeType.AI_CLEANER, 2);
+            requireMinimum(ordered, WorkflowNodeType.COMPRESSOR, 2);
+            requireAllBefore(ordered, WorkflowNodeType.COMPRESSOR, WorkflowNodeType.COMPRESSION_VALIDATOR);
+        }
+        if (contains(ordered, WorkflowNodeType.QUANT)) {
+            if (contains(ordered, WorkflowNodeType.COMPRESSION_VALIDATOR)) {
+                requireAllBefore(ordered, WorkflowNodeType.COMPRESSION_VALIDATOR, WorkflowNodeType.QUANT);
+            } else {
+                requireAllBefore(ordered, WorkflowNodeType.COMPRESSOR, WorkflowNodeType.QUANT);
+            }
         }
         var firstDebateNode = ordered.stream()
                 .filter(node -> node.nodeType() == WorkflowNodeType.AGENT
@@ -80,6 +98,17 @@ public record ResearchWorkflowPlan(
         }
     }
 
+    private static void requireMinimum(
+            List<WorkflowNodeDefinition> nodes,
+            WorkflowNodeType nodeType,
+            int minimum) {
+        var count = nodes.stream().filter(node -> node.nodeType() == nodeType).count();
+        if (count < minimum) {
+            throw new IllegalStateException(
+                    "Workflow requires at least " + minimum + " enabled " + nodeType + " nodes");
+        }
+    }
+
     private static void requireBefore(
             Map<WorkflowNodeType, Integer> positions,
             WorkflowNodeType first,
@@ -91,10 +120,36 @@ public record ResearchWorkflowPlan(
         }
     }
 
+    private static boolean contains(List<WorkflowNodeDefinition> nodes, WorkflowNodeType type) {
+        return nodes.stream().anyMatch(node -> node.nodeType() == type);
+    }
+
+    private static void requireAllBefore(
+            List<WorkflowNodeDefinition> nodes,
+            WorkflowNodeType first,
+            WorkflowNodeType second) {
+        var firstPositions = java.util.stream.IntStream.range(0, nodes.size())
+                .filter(index -> nodes.get(index).nodeType() == first)
+                .boxed()
+                .toList();
+        var secondPositions = java.util.stream.IntStream.range(0, nodes.size())
+                .filter(index -> nodes.get(index).nodeType() == second)
+                .boxed()
+                .toList();
+        if (firstPositions.isEmpty() || secondPositions.isEmpty()) {
+            return;
+        }
+        if (firstPositions.getLast() >= secondPositions.getFirst()) {
+            throw new IllegalStateException(first + " nodes must precede " + second + " nodes");
+        }
+    }
+
     private static boolean isPreparationNode(WorkflowNodeType nodeType) {
         return nodeType == WorkflowNodeType.COLLECTOR
                 || nodeType == WorkflowNodeType.CLEANER
+                || nodeType == WorkflowNodeType.AI_CLEANER
                 || nodeType == WorkflowNodeType.COMPRESSOR
+                || nodeType == WorkflowNodeType.COMPRESSION_VALIDATOR
                 || nodeType == WorkflowNodeType.QUANT;
     }
 }

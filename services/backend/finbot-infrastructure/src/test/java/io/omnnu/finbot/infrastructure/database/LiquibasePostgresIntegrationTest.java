@@ -2,16 +2,23 @@ package io.omnnu.finbot.infrastructure.database;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.domain.operations.WorkerId;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
+import io.omnnu.finbot.domain.configuration.AiProtocol;
+import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
+import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.application.ai.AiProviderUnavailableException;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.infrastructure.exchange.JdbcExchangeAccountControlRepository;
 import io.omnnu.finbot.infrastructure.catalog.JdbcProductCatalogSyncStore;
 import io.omnnu.finbot.infrastructure.ingestion.JdbcIngestionRepository;
+import io.omnnu.finbot.infrastructure.ai.JdbcAiRuntimeProfileResolver;
 import io.omnnu.finbot.infrastructure.network.JdbcNetworkDiagnosticStore;
 import io.omnnu.finbot.infrastructure.setup.JdbcSetupProfileRepository;
 import io.omnnu.finbot.infrastructure.operations.JdbcBackgroundTaskStore;
@@ -63,6 +70,26 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers(disabledWithoutDocker = true)
 class LiquibasePostgresIntegrationTest {
     private static final String CHANGELOG = "db/changelog/db.changelog-master.yaml";
+
+    @Test
+    void resolvesProviderAndModelCapabilitiesWithoutVendorSpecificApplicationBranches() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var resolver = new JdbcAiRuntimeProfileResolver(JdbcClient.create(dataSource));
+
+        var resolved = resolver.resolve(new AiModelBinding(
+                new AiProviderProfileId("provider_grok_sub2api"),
+                "grok-4.5",
+                ReasoningEffort.XHIGH));
+
+        assertEquals(AiProtocol.RESPONSES, resolved.protocol());
+        assertEquals(ReasoningEffort.XHIGH, resolved.maximumReasoningEffort());
+        assertThrows(AiProviderUnavailableException.class, () -> resolver.resolve(new AiModelBinding(
+                new AiProviderProfileId("provider_grok_sub2api"),
+                "grok-4.5",
+                ReasoningEffort.MAX)));
+    }
 
     @Container
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.5-alpine")
@@ -150,7 +177,8 @@ class LiquibasePostgresIntegrationTest {
                             'agent_message_reply', 'ai_invocation', 'ai_stream_chunk',
                             'ai_budget_reservation', 'network_proxy_route',
                             'information_source', 'source_collection_run', 'raw_evidence',
-                            'normalized_document', 'research_artifact', 'ai_compression'
+                            'normalized_document', 'research_artifact', 'ai_compression',
+                            'evidence_ai_review'
                             , 'market_candle_fact', 'market_data_artifact',
                             'quant_research_run', 'quant_research_event', 'quant_metric_fact'
                             , 'trade_automation_run', 'trade_execution_ai_stage',
@@ -167,7 +195,7 @@ class LiquibasePostgresIntegrationTest {
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
-                assertEquals(76, result.getInt(1));
+                assertEquals(77, result.getInt(1));
             }
         }
 
@@ -191,7 +219,7 @@ class LiquibasePostgresIntegrationTest {
                           (select version_id from workflow_definition_version
                            where status = 'PUBLISHED') as published_version_id,
                           (select operation from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v5'
+                           where version_id = 'workflowversion_standard_v6'
                              and node_type = 'QUANT') as published_quant_operation,
                           (select count(*) from information_source) as source_count,
                           (select count(*) from network_proxy_route) as proxy_route_count,
@@ -206,19 +234,70 @@ class LiquibasePostgresIntegrationTest {
                            where route_type = 'EXCHANGE_BYBIT') as bybit_direct_allowed,
                           (select default_reasoning_effort from ai_model_profile
                            where model_name = 'gpt-5.6-sol') as sol_effort,
+                          (select default_reasoning_effort from ai_model_profile
+                           where model_name = 'mimo-v2.5-pro') as mimo_effort,
+                          (select default_reasoning_effort from ai_model_profile
+                           where model_name = 'gemini-3.5-flash') as gemini_effort,
+                          (select default_reasoning_effort from ai_model_profile
+                           where model_name = 'grok-4.5') as grok_effort,
+                          (select count(*) from ai_provider_profile
+                           where profile_id in ('provider_gemini_default', 'provider_grok_sub2api')
+                             and enabled = true) as new_ai_provider_count,
                           (select enabled from ai_provider_profile
                            where profile_id = 'provider_deepseek_default') as deepseek_enabled,
                           (select base_url from ai_provider_profile
                            where profile_id = 'provider_mimo_default') as mimo_base_url,
                           (select provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v5'
+                           where version_id = 'workflowversion_standard_v6'
                              and node_id = 'node_bull_analyst') as bull_provider,
                           (select fallback_provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v5'
+                           where version_id = 'workflowversion_standard_v6'
                              and node_id = 'node_bull_analyst') as bull_fallback_provider,
                           (select fallback_model_name from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v5'
+                           where version_id = 'workflowversion_standard_v6'
                              and node_id = 'node_chair_arbiter') as chair_fallback_model,
+                          (select count(*) from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v6'
+                             and node_type = 'AI_CLEANER') as ai_cleaner_count,
+                          (select count(*) from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v6'
+                             and node_type = 'COMPRESSOR') as compressor_count,
+                          (select count(*) from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v6'
+                             and node_type = 'COMPRESSION_VALIDATOR') as compression_validator_count,
+                          (select count(*) from (
+                             select role_template_id
+                             from workflow_node_definition
+                             where version_id = 'workflowversion_standard_v6'
+                               and node_type = 'AGENT'
+                             group by role_template_id
+                             having count(*) = 2
+                           ) grouped_roles) as two_seat_role_count,
+                          (select count(*) from (
+                             select role_template_id
+                             from workflow_node_definition
+                             where version_id = 'workflowversion_standard_v6'
+                               and node_type = 'AI_CLEANER'
+                             group by role_template_id
+                             having count(*) = 2 and count(distinct provider_profile_id) = 2
+                           ) grouped_roles) as cleaner_two_seat_role_count,
+                          (select count(*) from (
+                             select role_template_id
+                             from workflow_node_definition
+                             where version_id = 'workflowversion_standard_v6'
+                               and node_type = 'COMPRESSOR'
+                             group by role_template_id
+                             having count(*) = 2 and count(distinct provider_profile_id) = 2
+                           ) grouped_roles) as compressor_two_seat_role_count,
+                          (select count(*) from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v6'
+                             and node_type = 'COMPRESSION_VALIDATOR'
+                             and role_template_id = 'role_compression_validator')
+                            as validator_role_count,
+                          (select count(*) from information_schema.columns
+                           where table_schema = 'public'
+                             and table_name = 'ai_model_profile'
+                             and column_name = 'maximum_reasoning_effort') as model_capability_column_count,
                           (select preferred_leverage from risk_policy where active = true)
                             as preferred_leverage,
                           (select maximum_leverage from risk_policy where active = true)
@@ -275,11 +354,11 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(10, result.getInt("product_count"));
                 assertEquals(2, result.getInt("account_count"));
                 assertEquals(10, result.getInt("schedule_count"));
-                assertEquals(6, result.getInt("role_count"));
-                assertEquals(64, result.getInt("node_count"));
-                assertEquals(14, result.getInt("published_node_count"));
-                assertEquals(5, result.getInt("workflow_version_count"));
-                assertEquals("workflowversion_standard_v5", result.getString("published_version_id"));
+                assertEquals(9, result.getInt("role_count"));
+                assertEquals(87, result.getInt("node_count"));
+                assertEquals(23, result.getInt("published_node_count"));
+                assertEquals(6, result.getInt("workflow_version_count"));
+                assertEquals("workflowversion_standard_v6", result.getString("published_version_id"));
                 assertEquals("multi_strategy_ensemble", result.getString("published_quant_operation"));
                 assertEquals(11, result.getInt("source_count"));
                 assertEquals(4, result.getInt("proxy_route_count"));
@@ -289,13 +368,25 @@ class LiquibasePostgresIntegrationTest {
                 assertFalse(result.getBoolean("bybit_proxy_required"));
                 assertTrue(result.getBoolean("bybit_direct_allowed"));
                 assertEquals("MAX", result.getString("sol_effort"));
+                assertEquals("MAX", result.getString("mimo_effort"));
+                assertEquals("MAX", result.getString("gemini_effort"));
+                assertEquals("XHIGH", result.getString("grok_effort"));
+                assertEquals(2, result.getInt("new_ai_provider_count"));
                 assertFalse(result.getBoolean("deepseek_enabled"));
                 assertEquals(
                         "http://mimo2api.mimo2api.svc.cluster.local:8080/v1",
                         result.getString("mimo_base_url"));
-                assertEquals("provider_sub2api_default", result.getString("bull_provider"));
-                assertEquals("provider_mimo_default", result.getString("bull_fallback_provider"));
+                assertEquals("provider_grok_sub2api", result.getString("bull_provider"));
+                assertEquals("provider_sub2api_default", result.getString("bull_fallback_provider"));
                 assertEquals("gpt-5.6-terra", result.getString("chair_fallback_model"));
+                assertEquals(2, result.getInt("ai_cleaner_count"));
+                assertEquals(2, result.getInt("compressor_count"));
+                assertEquals(1, result.getInt("compression_validator_count"));
+                assertEquals(5, result.getInt("two_seat_role_count"));
+                assertEquals(1, result.getInt("cleaner_two_seat_role_count"));
+                assertEquals(1, result.getInt("compressor_two_seat_role_count"));
+                assertEquals(1, result.getInt("validator_role_count"));
+                assertEquals(1, result.getInt("model_capability_column_count"));
                 assertEquals(0, new java.math.BigDecimal("20")
                         .compareTo(result.getBigDecimal("preferred_leverage")));
                 assertEquals(0, new java.math.BigDecimal("20")

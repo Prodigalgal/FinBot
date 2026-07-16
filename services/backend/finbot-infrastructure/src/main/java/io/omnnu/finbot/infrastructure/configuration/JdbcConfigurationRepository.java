@@ -60,6 +60,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
     public List<AiModelProfile> listModels() {
         return jdbcClient.sql("""
                 select model_profile_id, provider_profile_id, model_name, default_reasoning_effort,
+                       maximum_reasoning_effort,
                        input_usd_per_million, output_usd_per_million, enabled, version, updated_at
                 from ai_model_profile
                 order by provider_profile_id, model_name
@@ -137,6 +138,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
         var changed = jdbcClient.sql("""
                 update ai_model_profile
                 set default_reasoning_effort = :reasoningEffort,
+                    maximum_reasoning_effort = :maximumReasoningEffort,
                     input_usd_per_million = :inputRate,
                     output_usd_per_million = :outputRate,
                     enabled = :enabled,
@@ -146,6 +148,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 """)
                 .param("modelProfileId", profile.modelProfileId())
                 .param("reasoningEffort", profile.defaultReasoningEffort().name())
+                .param("maximumReasoningEffort", profile.maximumReasoningEffort().name())
                 .param("inputRate", profile.inputUsdPerMillion())
                 .param("outputRate", profile.outputUsdPerMillion())
                 .param("enabled", profile.enabled())
@@ -180,6 +183,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
     private Optional<AiModelProfile> findModel(String modelProfileId) {
         return jdbcClient.sql("""
                 select model_profile_id, provider_profile_id, model_name, default_reasoning_effort,
+                       maximum_reasoning_effort,
                        input_usd_per_million, output_usd_per_million, enabled, version, updated_at
                 from ai_model_profile where model_profile_id = :modelProfileId
                 """)
@@ -222,6 +226,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 resultSet.getString("provider_profile_id"),
                 resultSet.getString("model_name"),
                 ReasoningEffort.valueOf(resultSet.getString("default_reasoning_effort")),
+                ReasoningEffort.valueOf(resultSet.getString("maximum_reasoning_effort")),
                 resultSet.getBigDecimal("input_usd_per_million"),
                 resultSet.getBigDecimal("output_usd_per_million"),
                 resultSet.getBoolean("enabled"),

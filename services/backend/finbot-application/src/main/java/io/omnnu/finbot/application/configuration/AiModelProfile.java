@@ -11,6 +11,7 @@ public record AiModelProfile(
         String providerProfileId,
         String modelName,
         ReasoningEffort defaultReasoningEffort,
+        ReasoningEffort maximumReasoningEffort,
         BigDecimal inputUsdPerMillion,
         BigDecimal outputUsdPerMillion,
         boolean enabled,
@@ -21,6 +22,10 @@ public record AiModelProfile(
         providerProfileId = requireText(providerProfileId, "providerProfileId", 80);
         modelName = requireText(modelName, "modelName", 160);
         Objects.requireNonNull(defaultReasoningEffort, "defaultReasoningEffort");
+        Objects.requireNonNull(maximumReasoningEffort, "maximumReasoningEffort");
+        if (!maximumReasoningEffort.supports(defaultReasoningEffort)) {
+            throw new IllegalArgumentException("defaultReasoningEffort exceeds model capability");
+        }
         inputUsdPerMillion = DecimalValue.nonNegative(inputUsdPerMillion, "inputUsdPerMillion");
         outputUsdPerMillion = DecimalValue.nonNegative(outputUsdPerMillion, "outputUsdPerMillion");
         if (version < 0) {

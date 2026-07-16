@@ -26,7 +26,7 @@ final class WorkflowPromptComposer {
 """;
     private static final String CHAIR_SCHEMA = """
 
-只返回一个 JSON 对象，不要使用 Markdown 代码块，也不要输出隐藏思维链。结构必须为：
+同一 role 的多个 node 是同一逻辑角色的异构席位；必须按证据质量综合，不得把席位数量直接当作票数或置信度。只返回一个 JSON 对象，不要使用 Markdown 代码块，也不要输出隐藏思维链。结构必须为：
 {"debate_summary":["..."],"major_disagreements":["..."],"missing_evidence":["..."],"verdicts":[{"summary":"...","evidence_refs":["..."]}],"confidence":0.0,"evidence_refs":["..."],"forecast":null}
 """;
 
@@ -76,7 +76,7 @@ final class WorkflowPromptComposer {
         var scope = execution.marketScope();
         return """
 
-本次是单产品定时域预测，必须依据实盘公开行情输出 forecast。预测标的是 %s %s，K 线周期 %d 秒，预测期限 %d 秒，系统记录的实盘参考价为 %s。预测期限由系统确定，不得改写；非 UNCERTAIN 时 reference_price 必须使用系统参考价。只返回一个 JSON 对象，不要使用 Markdown 代码块，也不要输出隐藏思维链。结构必须为：
+本次是单产品定时域预测，必须依据实盘公开行情输出 forecast。预测标的是 %s %s，K 线周期 %d 秒，预测期限 %d 秒，系统记录的实盘参考价为 %s。预测期限由系统确定，不得改写；非 UNCERTAIN 时 reference_price 必须使用系统参考价。同一 role 的多个 node 是异构席位，必须按证据质量综合，不得按席位数量投票。只返回一个 JSON 对象，不要使用 Markdown 代码块，也不要输出隐藏思维链。结构必须为：
 {"debate_summary":["..."],"major_disagreements":["..."],"missing_evidence":["..."],"verdicts":[{"summary":"...","evidence_refs":["..."]}],"confidence":0.0,"evidence_refs":["..."],"forecast":{"direction":"UP|DOWN|SIDEWAYS|UNCERTAIN","reference_price":0.0,"expected_low":0.0,"expected_high":0.0,"invalidation_price":0.0,"confidence":0.0,"thesis":"...","evidence_refs":["..."]}}
 direction 为 UNCERTAIN 时四个价格字段必须为 null；其他方向必须给出正数 reference_price、expected_low、expected_high，invalidation_price 可为 null。expected_low 不得高于 expected_high。证据不足时使用 UNCERTAIN，不得猜测价格。
 """.formatted(
@@ -221,6 +221,7 @@ direction 为 UNCERTAIN 时四个价格字段必须为 null；其他方向必须
         var content = message.content();
         var result = new StringBuilder()
                 .append("\n[message_id=").append(message.messageId().value())
+                .append(", node_id=").append(message.nodeId().value())
                 .append(", role=").append(message.roleName())
                 .append(", round=").append(message.roundIndex())
                 .append(", status=").append(message.status()).append("]\n")

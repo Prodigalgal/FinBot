@@ -91,6 +91,16 @@ spec:
                 secretKeyRef:
                   name: finbot-secrets
                   key: SUB2API_API_KEY
+            - name: FINBOT_GROK_SUB2API_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: GROK_SUB2API_API_KEY
+            - name: FINBOT_GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: GEMINI_API_KEY
             - name: FINBOT_GATE_API_KEY
               valueFrom:
                 secretKeyRef:

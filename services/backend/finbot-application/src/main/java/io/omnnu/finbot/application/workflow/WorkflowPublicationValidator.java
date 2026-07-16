@@ -19,7 +19,9 @@ final class WorkflowPublicationValidator {
             WorkflowNodeType.INPUT,
             WorkflowNodeType.COLLECTOR,
             WorkflowNodeType.CLEANER,
+            WorkflowNodeType.AI_CLEANER,
             WorkflowNodeType.COMPRESSOR,
+            WorkflowNodeType.COMPRESSION_VALIDATOR,
             WorkflowNodeType.QUANT,
             WorkflowNodeType.AGENT,
             WorkflowNodeType.AGGREGATOR,
@@ -68,7 +70,8 @@ final class WorkflowPublicationValidator {
             case CLEANER -> requireOperation(node, "normalize_and_deduplicate");
             case QUANT -> requireOperation(node, QUANT_OPERATIONS);
             case OUTPUT -> requireOperation(node, "research_output");
-            case COMPRESSOR -> requireContract(node, WorkflowOutputContract.RESEARCH_FINDINGS);
+            case AI_CLEANER, COMPRESSOR, COMPRESSION_VALIDATOR ->
+                    requireContract(node, WorkflowOutputContract.RESEARCH_FINDINGS);
             case CHAIR -> requireContract(node, WorkflowOutputContract.CHAIR_VERDICT);
             case EXECUTION_REVIEW -> executionStage(node);
             case AGENT, AGGREGATOR -> {

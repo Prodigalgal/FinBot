@@ -107,6 +107,12 @@ spec:
         - port: 8181
           protocol: TCP
     - to:
+        - ipBlock:
+            cidr: 168.138.40.52/32
+      ports:
+        - port: 8181
+          protocol: TCP
+    - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system

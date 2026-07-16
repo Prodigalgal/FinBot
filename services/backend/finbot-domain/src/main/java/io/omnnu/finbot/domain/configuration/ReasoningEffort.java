@@ -8,5 +8,12 @@ public enum ReasoningEffort {
     MEDIUM,
     HIGH,
     XHIGH,
-    MAX
+    MAX;
+
+    public boolean supports(ReasoningEffort requested) {
+        if (requested == PROVIDER_DEFAULT) {
+            return true;
+        }
+        return this != PROVIDER_DEFAULT && requested.ordinal() <= ordinal();
+    }
 }

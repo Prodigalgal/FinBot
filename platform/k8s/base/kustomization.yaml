@@ -21,6 +21,7 @@ configMapGenerator:
       - FINBOT_INTERNAL_BASE_URL=http://finbot-backend:8080
       - FINBOT_QUANT_SERVICE_URL=http://finbot-quant-service:8081
       - FINBOT_SUB2API_BASE_URL=http://100.64.0.2:8181/v1
+      - FINBOT_GEMINI_BASE_URL=http://168.138.40.52:8181/v1
       - FINBOT_ALLOW_INSECURE_AI_HTTP=true
       - FINBOT_AUTH_SECURE_COOKIE=true
       - FINBOT_AUTH_CHALLENGE_TTL=PT5M

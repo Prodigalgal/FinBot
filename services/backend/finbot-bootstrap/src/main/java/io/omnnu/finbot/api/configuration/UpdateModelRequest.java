@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 
 public record UpdateModelRequest(
         @NotNull ReasoningEffort defaultReasoningEffort,
+        @NotNull ReasoningEffort maximumReasoningEffort,
         @NotNull @DecimalMin("0") BigDecimal inputUsdPerMillion,
         @NotNull @DecimalMin("0") BigDecimal outputUsdPerMillion,
         boolean enabled,

@@ -3,7 +3,7 @@ package io.omnnu.finbot.configuration;
 import io.omnnu.finbot.application.ai.AiBudgetReservationStore;
 import io.omnnu.finbot.application.ai.AiCompletionGateway;
 import io.omnnu.finbot.application.ai.AiInvocationAuditStore;
-import io.omnnu.finbot.application.ai.AiProviderProtocolResolver;
+import io.omnnu.finbot.application.ai.AiRuntimeBindingResolver;
 import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
 import io.omnnu.finbot.application.autonomous.AutonomousResearchService;
 import io.omnnu.finbot.application.autonomous.AutonomousResearchUseCase;
@@ -403,7 +403,7 @@ public class RuntimeConfiguration {
     @Bean
     WorkflowAiInvoker workflowAiInvoker(
             AiCompletionGateway completionGateway,
-            AiProviderProtocolResolver protocolResolver,
+            AiRuntimeBindingResolver bindingResolver,
             AiInvocationAuditStore auditStore,
             AiBudgetReservationStore budgetStore,
             WorkflowEventPublisher eventPublisher,
@@ -411,7 +411,7 @@ public class RuntimeConfiguration {
             Clock clock) {
         return new WorkflowAiInvoker(
                 completionGateway,
-                protocolResolver,
+                bindingResolver,
                 auditStore,
                 budgetStore,
                 eventPublisher,

@@ -83,12 +83,14 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
         var totals = jdbcClient.sql("""
                 select (select count(*) from raw_evidence) as raw_count,
                        (select count(*) from normalized_document) as document_count,
-                       (select count(*) from ai_compression) as compression_count
+                       (select count(*) from ai_compression) as compression_count,
+                       (select count(*) from evidence_ai_review) as ai_review_count
                 """)
                 .query((resultSet, rowNumber) -> new IngestionTotals(
                         resultSet.getLong("raw_count"),
                         resultSet.getLong("document_count"),
-                        resultSet.getLong("compression_count")))
+                        resultSet.getLong("compression_count"),
+                        resultSet.getLong("ai_review_count")))
                 .single();
         var sources = jdbcClient.sql("""
                 select source.source_id, source.display_name, source.source_mode, source.source_tier,
@@ -155,8 +157,29 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                         instant(resultSet, "started_at"),
                         nullableInstant(resultSet, "completed_at")))
                 .list();
+        var reviews = jdbcClient.sql("""
+                select review_id, workflow_run_id, document_id, node_id, stage, status,
+                       content->>'summary' as summary, error_code, error_message, created_at
+                from evidence_ai_review
+                order by created_at desc, id desc
+                limit :limit
+                """)
+                .param("limit", limit)
+                .query((resultSet, rowNumber) -> new IngestionWorkspace.EvidenceAiReviewSummary(
+                        resultSet.getString("review_id"),
+                        resultSet.getString("workflow_run_id"),
+                        resultSet.getString("document_id"),
+                        resultSet.getString("node_id"),
+                        resultSet.getString("stage"),
+                        resultSet.getString("status"),
+                        safe(resultSet.getString("summary")),
+                        resultSet.getString("error_code"),
+                        safe(resultSet.getString("error_message")),
+                        instant(resultSet, "created_at")))
+                .list();
         return new IngestionWorkspace(
-                totals.rawEvidence(), totals.documents(), totals.compressions(), sources, runs, generatedAt);
+                totals.rawEvidence(), totals.documents(), totals.compressions(), totals.aiReviews(),
+                sources, runs, reviews, generatedAt);
     }
 
     @Override
@@ -879,7 +902,7 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
     private record TaskCounts(long pending, long failed) {
     }
 
-    private record IngestionTotals(long rawEvidence, long documents, long compressions) {
+    private record IngestionTotals(long rawEvidence, long documents, long compressions, long aiReviews) {
     }
 
     private record DependencyStatus(String status, String error, Instant occurredAt) {

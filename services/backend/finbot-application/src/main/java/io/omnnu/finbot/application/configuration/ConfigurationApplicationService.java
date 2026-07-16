@@ -80,6 +80,7 @@ public final class ConfigurationApplicationService implements ConfigurationUseCa
                 current.providerProfileId(),
                 current.modelName(),
                 command.defaultReasoningEffort(),
+                command.maximumReasoningEffort(),
                 command.inputUsdPerMillion(),
                 command.outputUsdPerMillion(),
                 command.enabled(),

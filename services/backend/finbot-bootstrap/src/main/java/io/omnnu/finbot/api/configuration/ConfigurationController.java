@@ -66,6 +66,7 @@ public final class ConfigurationController {
         return configurationUseCase.updateModel(new UpdateModelCommand(
                 modelProfileId,
                 request.defaultReasoningEffort(),
+                request.maximumReasoningEffort(),
                 request.inputUsdPerMillion(),
                 request.outputUsdPerMillion(),
                 request.enabled(),

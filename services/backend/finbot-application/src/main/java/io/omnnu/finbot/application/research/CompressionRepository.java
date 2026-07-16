@@ -9,5 +9,7 @@ public interface CompressionRepository {
 
     void saveCompression(AiCompressionRecord compression);
 
+    void saveEvidenceReview(EvidenceAiReview review);
+
     void saveCompressionPackage(CompressionPackage compressionPackage, String contentHash);
 }

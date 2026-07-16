@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 public record UpdateModelCommand(
         String modelProfileId,
         ReasoningEffort defaultReasoningEffort,
+        ReasoningEffort maximumReasoningEffort,
         BigDecimal inputUsdPerMillion,
         BigDecimal outputUsdPerMillion,
         boolean enabled,

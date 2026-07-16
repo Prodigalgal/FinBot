@@ -305,8 +305,11 @@ public final class WorkflowDiagnosticsService implements WorkflowDiagnosticsUseC
             io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition node,
             Map<ModelKey, ModelRates> rates,
             List<String> warnings) {
-        var calls = node.nodeType() == WorkflowNodeType.AGENT
-                || node.nodeType() == WorkflowNodeType.AGGREGATOR ? debateRounds : 1L;
+        var calls = switch (node.nodeType()) {
+            case AGENT, AGGREGATOR -> debateRounds;
+            case AI_CLEANER, COMPRESSOR, COMPRESSION_VALIDATOR -> 12L;
+            default -> 1L;
+        };
         var promptCharacters = (node.systemPrompt() == null ? 0 : node.systemPrompt().length())
                 + (node.userPromptTemplate() == null ? 0 : node.userPromptTemplate().length());
         var inputPerCall = Math.max(
@@ -363,7 +366,7 @@ public final class WorkflowDiagnosticsService implements WorkflowDiagnosticsUseC
         return switch (nodeType) {
             case INPUT, OUTPUT -> "WORKFLOW_STATE";
             case COLLECTOR, CLEANER -> "INGESTION_PIPELINE";
-            case COMPRESSOR -> "AI_COMPRESSION";
+            case AI_CLEANER, COMPRESSOR, COMPRESSION_VALIDATOR -> "AI_EVIDENCE_CONSENSUS";
             case QUANT -> "PYTHON_QUANT_HTTP";
             case AGENT, AGGREGATOR, CHAIR -> "MULTI_ROUND_DEBATE";
             case EXECUTION_REVIEW -> "TRADE_EXECUTION_AI";
@@ -373,7 +376,8 @@ public final class WorkflowDiagnosticsService implements WorkflowDiagnosticsUseC
 
     private static String invocationPolicy(WorkflowNodeType nodeType, int debateRounds) {
         return switch (nodeType) {
-            case COMPRESSOR -> "EACH_COLLECTED_DOCUMENT";
+            case AI_CLEANER, COMPRESSOR -> "EACH_COLLECTED_DOCUMENT";
+            case COMPRESSION_VALIDATOR -> "ONCE_PER_DOCUMENT_AFTER_CANDIDATES";
             case AGENT, AGGREGATOR -> "EACH_DEBATE_ROUND:" + debateRounds;
             case CHAIR -> "ONCE_AFTER_DEBATE";
             case EXECUTION_REVIEW -> "ONCE_AFTER_CHAIR";

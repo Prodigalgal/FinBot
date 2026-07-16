@@ -415,7 +415,7 @@ export interface AiProvider {
 }
 export interface AiModel {
   modelProfileId: string; providerProfileId: string; modelName: string;
-  defaultReasoningEffort: ReasoningEffort; inputUsdPerMillion: number;
+  defaultReasoningEffort: ReasoningEffort; maximumReasoningEffort: ReasoningEffort; inputUsdPerMillion: number;
   outputUsdPerMillion: number; enabled: boolean; version: number; updatedAt: string;
 }
 export interface ConfigurationSnapshot { settings: SystemSetting[]; providers: AiProvider[]; models: AiModel[] }
@@ -499,6 +499,7 @@ export interface IngestionWorkspace {
   rawEvidenceCount: number;
   normalizedDocumentCount: number;
   compressionCount: number;
+  aiReviewCount: number;
   sources: Array<{
     sourceId: string; displayName: string; mode: string; tier: string; category: string;
     outboundRoute: string | null; credentialEnvironment: string | null; credentialConfigured: boolean;
@@ -511,6 +512,11 @@ export interface IngestionWorkspace {
     query: string | null; status: string; fetchedCount: number; insertedCount: number;
     duplicateCount: number; errorCode: string | null; errorMessage: string | null;
     startedAt: string; completedAt: string | null;
+  }>;
+  recentAiReviews: Array<{
+    reviewId: string; workflowRunId: string; documentId: string; nodeId: string;
+    stage: string; status: string; summary: string | null; errorCode: string | null;
+    errorMessage: string | null; createdAt: string;
   }>;
   generatedAt: string;
 }

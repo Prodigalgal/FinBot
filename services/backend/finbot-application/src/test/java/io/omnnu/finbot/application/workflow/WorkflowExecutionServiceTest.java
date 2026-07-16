@@ -15,6 +15,7 @@ import io.omnnu.finbot.application.ai.AiInvocationAuditStore;
 import io.omnnu.finbot.application.ai.AiInvocationCompletion;
 import io.omnnu.finbot.application.ai.AiInvocationFailure;
 import io.omnnu.finbot.application.ai.AiInvocationStart;
+import io.omnnu.finbot.application.ai.AiRuntimeBinding;
 import io.omnnu.finbot.application.ai.AiStreamStarted;
 import io.omnnu.finbot.application.ai.AiTextDelta;
 import io.omnnu.finbot.application.ai.AiUsageReported;
@@ -93,7 +94,7 @@ class WorkflowExecutionServiceTest {
         SortableIdGenerator ids = prefix -> prefix + "test0000" + idSequence.incrementAndGet();
         var invoker = new WorkflowAiInvoker(
                 gateway,
-                ignored -> AiProtocol.CHAT,
+                ignored -> new AiRuntimeBinding(AiProtocol.CHAT, ReasoningEffort.MAX),
                 new NoOpAuditStore(),
                 new NoOpBudgetStore(),
                 events,
@@ -155,7 +156,7 @@ class WorkflowExecutionServiceTest {
         SortableIdGenerator ids = prefix -> prefix + "test0000" + idSequence.incrementAndGet();
         var invoker = new WorkflowAiInvoker(
                 gateway,
-                ignored -> AiProtocol.CHAT,
+                ignored -> new AiRuntimeBinding(AiProtocol.CHAT, ReasoningEffort.MAX),
                 new NoOpAuditStore(),
                 new NoOpBudgetStore(),
                 events,
@@ -208,7 +209,7 @@ class WorkflowExecutionServiceTest {
         SortableIdGenerator ids = prefix -> prefix + "fallback" + idSequence.incrementAndGet();
         var invoker = new WorkflowAiInvoker(
                 gateway,
-                ignored -> AiProtocol.CHAT,
+                ignored -> new AiRuntimeBinding(AiProtocol.CHAT, ReasoningEffort.MAX),
                 new NoOpAuditStore(),
                 new NoOpBudgetStore(),
                 events,

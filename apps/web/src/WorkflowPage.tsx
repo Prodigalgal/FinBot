@@ -1,5 +1,6 @@
 import AddIcon from '@mui/icons-material/Add';
 import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PublishIcon from '@mui/icons-material/Publish';
 import RestoreIcon from '@mui/icons-material/Restore';
@@ -123,6 +124,28 @@ export function WorkflowPage() {
     setSelectedId(null);
   };
 
+  const duplicateSelectedSeat = () => {
+    if (!selected || !config || !isLlmBacked(selected.data.workflowNode.nodeType)) return;
+    const source = selected.data.workflowNode;
+    const sourceProviderId = source.primaryAiBinding ? providerId(source.primaryAiBinding) : '';
+    const alternative = config.models.find((model) => model.enabled && model.providerProfileId !== sourceProviderId)
+      || config.models.find((model) => model.enabled && model.modelName !== source.primaryAiBinding?.modelName);
+    if (!alternative) { setError(new Error('没有可用于新增异构席位的其他模型')); return; }
+    const nodeId = `node_${source.nodeType.toLowerCase()}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const primaryAiBinding: AiModelBinding = { providerProfileId: alternative.providerProfileId, modelName: alternative.modelName, reasoningEffort: alternative.defaultReasoningEffort };
+    const fallbackAiBinding = source.primaryAiBinding && providerId(source.primaryAiBinding) !== alternative.providerProfileId ? source.primaryAiBinding : source.fallbackAiBinding;
+    const workflowNode: WorkflowNode = { ...source, nodeId, displayName: `${source.roleName || source.displayName} / ${alternative.modelName} 席位`, primaryAiBinding, fallbackAiBinding, positionX: selected.position.x + 30, positionY: selected.position.y + 100 };
+    const clonedEdges = edges.filter((edge) => edge.source === source.nodeId || edge.target === source.nodeId).map((edge) => {
+      const stored = edge.data?.workflowEdge as WorkflowEdge;
+      const workflowEdge: WorkflowEdge = { ...stored, edgeId: `edge_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`, sourceNodeId: edge.source === source.nodeId ? nodeId : edge.source, targetNodeId: edge.target === source.nodeId ? nodeId : edge.target };
+      return { id: workflowEdge.edgeId, source: workflowEdge.sourceNodeId, target: workflowEdge.targetNodeId, data: { workflowEdge } } as Edge;
+    });
+    setNodes((current) => [...current, { id: nodeId, position: { x: workflowNode.positionX, y: workflowNode.positionY }, data: { label: `${workflowNode.displayName}\n${alternative.modelName}`, workflowNode } }]);
+    setEdges((current) => [...current, ...clonedEdges]);
+    setSelectedId(nodeId);
+    setSelectedEdgeId(null);
+  };
+
   const updateSelectedEdge = (patch: Partial<WorkflowEdge>) => {
     if (!selectedEdgeId) return;
     setEdges((current) => current.map((edge) => {
@@ -229,13 +252,13 @@ export function WorkflowPage() {
     <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.5} alignItems="stretch">
       <Paper variant="outlined" sx={{ height: { xs: 560, xl: 'calc(100vh - 235px)' }, minHeight: 560, flex: 1, overflow: 'hidden' }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_event, node) => { setSelectedId(node.id); setSelectedEdgeId(null); }} onEdgeClick={(_event, edge) => { setSelectedEdgeId(edge.id); setSelectedId(null); }} onPaneClick={() => { setSelectedId(null); setSelectedEdgeId(null); }} fitView minZoom={0.2} maxZoom={1.5} snapToGrid snapGrid={[20, 20]}><Background gap={20} size={1} /><Controls /></ReactFlow></Paper>
       <Paper variant="outlined" sx={{ width: { xs: '100%', xl: 390 }, p: 2, overflow: 'auto', maxHeight: { xl: 'calc(100vh - 235px)' } }}>
-        {selected ? <NodeEditor node={selected.data.workflowNode} schema={schema} providers={config.providers} models={config.models} roles={roles} update={updateSelected} remove={removeSelected} /> : selectedEdge ? <EdgeEditor edge={selectedEdge.data?.workflowEdge as WorkflowEdge} schema={schema} update={updateSelectedEdge} remove={removeSelectedEdge} /> : <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}><Typography>选择节点或连线后在这里配置</Typography></Box>}
+        {selected ? <NodeEditor node={selected.data.workflowNode} schema={schema} providers={config.providers} models={config.models} roles={roles} update={updateSelected} duplicateSeat={duplicateSelectedSeat} remove={removeSelected} /> : selectedEdge ? <EdgeEditor edge={selectedEdge.data?.workflowEdge as WorkflowEdge} schema={schema} update={updateSelectedEdge} remove={removeSelectedEdge} /> : <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}><Typography>选择节点或连线后在这里配置</Typography></Box>}
       </Paper>
     </Stack>
   </Stack>;
 }
 
-function NodeEditor({ node, schema, providers, models, roles, update, remove }: { node: WorkflowNode; schema: WorkflowSchema; providers: AiProvider[]; models: AiModel[]; roles: AgentRole[]; update: (patch: Partial<WorkflowNode>) => void; remove: () => void }) {
+function NodeEditor({ node, schema, providers, models, roles, update, duplicateSeat, remove }: { node: WorkflowNode; schema: WorkflowSchema; providers: AiProvider[]; models: AiModel[]; roles: AgentRole[]; update: (patch: Partial<WorkflowNode>) => void; duplicateSeat: () => void; remove: () => void }) {
   const llmBacked = isLlmBacked(node.nodeType);
   const changeNodeType = (nodeType: string) => {
     if (!isLlmBacked(nodeType)) {
@@ -253,7 +276,7 @@ function NodeEditor({ node, schema, providers, models, roles, update, remove }: 
       operation: defaultOperation(nodeType),
     });
   };
-  return <Stack spacing={1.5}><SectionTitle title="节点配置" action={<Button color="error" size="small" startIcon={<DeleteOutlineIcon />} onClick={remove}>删除</Button>} /><TextField label="节点 ID" value={node.nodeId} disabled /><TextField label="标题" value={node.displayName} onChange={(event) => update({ displayName: event.target.value })} /><TextField select label="节点类型" value={node.nodeType} onChange={(event) => changeNodeType(event.target.value)}>{schema.nodeTypes.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField><FormControlLabel control={<Switch checked={node.enabled} onChange={(event) => update({ enabled: event.target.checked })} />} label="启用节点" />
+  return <Stack spacing={1.5}><SectionTitle title="节点配置" action={<Stack direction="row" spacing={.5}>{llmBacked && <Button size="small" startIcon={<ContentCopyIcon />} onClick={duplicateSeat}>新增异构席位</Button>}<Button color="error" size="small" startIcon={<DeleteOutlineIcon />} onClick={remove}>删除</Button></Stack>} /><TextField label="节点 ID" value={node.nodeId} disabled /><TextField label="标题" value={node.displayName} onChange={(event) => update({ displayName: event.target.value })} /><TextField select label="节点类型" value={node.nodeType} onChange={(event) => changeNodeType(event.target.value)}>{schema.nodeTypes.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField><FormControlLabel control={<Switch checked={node.enabled} onChange={(event) => update({ enabled: event.target.checked })} />} label="启用节点" />
     {node.nodeType === 'QUANT'
       ? <TextField select label="量化方案" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="每种策略都会附带 MACD、均线交叉、RSI、布林带、ATR、支撑与压力指标供后续 AI 参考">{QUANT_OPERATIONS.map((operation) => <MenuItem key={operation.id} value={operation.id}>{operation.label}</MenuItem>)}</TextField>
       : <TextField label="受控操作" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="填写后端登记的 operation ID，不执行任意脚本或 URL" />}
@@ -311,22 +334,29 @@ function ConditionOperandEditor({ operand, update }: { operand: NonNullable<Work
 function AiBindingEditor({ title, binding, providers, models, efforts, update }: { title: string; binding: AiModelBinding; providers: AiProvider[]; models: AiModel[]; efforts: ReasoningEffort[]; update: (binding: AiModelBinding) => void }) {
   const selectedProviderId = providerId(binding);
   const providerModels = models.filter((model) => model.providerProfileId === selectedProviderId);
+  const selectedModel = providerModels.find((model) => model.modelName === binding.modelName);
+  const supportedEfforts = selectedModel ? reasoningEffortsForModel(efforts, selectedModel) : efforts;
   return <Stack spacing={1.25} sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 1.5 }}><Typography variant="subtitle2">{title}</Typography><TextField select label="AI 厂商" value={selectedProviderId} onChange={(event) => {
     const nextModel = models.find((model) => model.enabled && model.providerProfileId === event.target.value) || models.find((model) => model.providerProfileId === event.target.value);
     update({ providerProfileId: event.target.value, modelName: nextModel?.modelName || binding.modelName, reasoningEffort: nextModel?.defaultReasoningEffort || binding.reasoningEffort });
-  }}>{providers.map((provider) => <MenuItem key={provider.profileId} value={provider.profileId}>{provider.displayName}</MenuItem>)}</TextField><TextField select label="模型" value={binding.modelName} onChange={(event) => update({ ...binding, modelName: event.target.value })}>{providerModels.map((model) => <MenuItem key={model.modelProfileId} value={model.modelName}>{model.modelName}</MenuItem>)}{!providerModels.some((model) => model.modelName === binding.modelName) && <MenuItem value={binding.modelName}>{binding.modelName}</MenuItem>}</TextField><TextField select label="思考强度" value={binding.reasoningEffort} onChange={(event) => update({ ...binding, reasoningEffort: event.target.value as ReasoningEffort })}>{efforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField></Stack>;
+  }}>{providers.map((provider) => <MenuItem key={provider.profileId} value={provider.profileId}>{provider.displayName}</MenuItem>)}</TextField><TextField select label="模型" value={binding.modelName} onChange={(event) => { const model = providerModels.find((item) => item.modelName === event.target.value); update({ ...binding, modelName: event.target.value, reasoningEffort: model?.defaultReasoningEffort || binding.reasoningEffort }); }}>{providerModels.map((model) => <MenuItem key={model.modelProfileId} value={model.modelName}>{model.modelName}</MenuItem>)}{!providerModels.some((model) => model.modelName === binding.modelName) && <MenuItem value={binding.modelName}>{binding.modelName}</MenuItem>}</TextField><TextField select label="思考强度" value={binding.reasoningEffort} onChange={(event) => update({ ...binding, reasoningEffort: event.target.value as ReasoningEffort })}>{supportedEfforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField></Stack>;
 }
 
 function providerId(binding: AiModelBinding): string {
   return typeof binding.providerProfileId === 'string' ? binding.providerProfileId : binding.providerProfileId.value;
 }
 
+function reasoningEffortsForModel(efforts: ReasoningEffort[], model: AiModel): ReasoningEffort[] {
+  const maximumIndex = efforts.indexOf(model.maximumReasoningEffort);
+  return efforts.filter((effort, index) => effort === 'PROVIDER_DEFAULT' || (maximumIndex > 0 && index <= maximumIndex));
+}
+
 function isLlmBacked(nodeType: string): boolean {
-  return ['COMPRESSOR', 'AGENT', 'AGGREGATOR', 'CHAIR', 'EXECUTION_REVIEW'].includes(nodeType);
+  return ['AI_CLEANER', 'COMPRESSOR', 'COMPRESSION_VALIDATOR', 'AGENT', 'AGGREGATOR', 'CHAIR', 'EXECUTION_REVIEW'].includes(nodeType);
 }
 
 const NODE_LABELS: Record<string, string> = {
-  INPUT: '研究输入', ROUTER: '条件路由', DETERMINISTIC: '确定性处理', COLLECTOR: '信息采集', CLEANER: '证据清洗', COMPRESSOR: 'AI 信息压缩', AGENT: 'AI 分析角色', GATE: '条件门禁', QUANT: '量化研究', RISK: '确定性风控', SUBFLOW: '子工作流', HUMAN_REVIEW: '人工复核', AGGREGATOR: 'AI 聚合', CHAIR: '主席仲裁', EXECUTION_REVIEW: '执行机器人', OUTPUT: '研究输出',
+  INPUT: '研究输入', ROUTER: '条件路由', DETERMINISTIC: '确定性处理', COLLECTOR: '信息采集', CLEANER: '确定性证据清洗', AI_CLEANER: 'AI 清洗审查', COMPRESSOR: 'AI 信息压缩', COMPRESSION_VALIDATOR: '压缩独立验证', AGENT: 'AI 分析角色', GATE: '条件门禁', QUANT: '量化研究', RISK: '确定性风控', SUBFLOW: '子工作流', HUMAN_REVIEW: '人工复核', AGGREGATOR: 'AI 聚合', CHAIR: '主席仲裁', EXECUTION_REVIEW: '执行机器人', OUTPUT: '研究输出',
 };
 
 const QUANT_OPERATIONS = [
@@ -352,20 +382,24 @@ function defaultOperation(nodeType: string): string | null {
 }
 
 function defaultOutputContract(nodeType: string): string {
-  return ({ COMPRESSOR: 'RESEARCH_FINDINGS', AGGREGATOR: 'RESEARCH_FINDINGS', CHAIR: 'CHAIR_VERDICT', EXECUTION_REVIEW: 'TRADE_DECISIONS' } as Record<string, string>)[nodeType] || 'DEBATE_ARGUMENT';
+  return ({ AI_CLEANER: 'RESEARCH_FINDINGS', COMPRESSOR: 'RESEARCH_FINDINGS', COMPRESSION_VALIDATOR: 'RESEARCH_FINDINGS', AGGREGATOR: 'RESEARCH_FINDINGS', CHAIR: 'CHAIR_VERDICT', EXECUTION_REVIEW: 'TRADE_DECISIONS' } as Record<string, string>)[nodeType] || 'DEBATE_ARGUMENT';
 }
 
 function defaultSystemPrompt(nodeType: string): string {
   if (nodeType === 'EXECUTION_REVIEW') return '你是模拟交易执行机器人。只依据主席裁决与可追溯证据生成严格 JSON；证据不足时必须 WATCH。不得输出隐藏思维链。';
   if (nodeType === 'CHAIR') return '你是独立主席。综合全部可审计观点、反例和修订，输出严格 JSON 裁决，不得输出隐藏思维链。';
+  if (nodeType === 'AI_CLEANER') return '你是证据清洗审查员。识别广告、导航、重复、无关和疑似污染内容；不得改写事实，输出严格 JSON 并保留引用。';
   if (nodeType === 'COMPRESSOR') return '你是研究信息压缩器。只能压缩输入证据，不得新增事实，输出严格 JSON 并保留引用。';
+  if (nodeType === 'COMPRESSION_VALIDATOR') return '你是独立压缩验证员。对照原文审查全部候选，修复遗漏和事实漂移，只输出经过验证的严格 JSON。';
   return '你是专业市场研究角色。基于上游证据进行独立分析，只输出工作流要求的严格 JSON。';
 }
 
 function defaultUserPrompt(nodeType: string): string {
   if (nodeType === 'EXECUTION_REVIEW') return '审查主席裁决并生成可执行或观察决策，输出工作流指定的交易 JSON。';
   if (nodeType === 'CHAIR') return '独立综合完整多轮辩论，保留主要分歧、缺失证据和最终裁决。';
+  if (nodeType === 'AI_CLEANER') return '审查单个证据文档的噪声、重复、相关性和事实边界，输出清洗建议、关键点、风险、缺口和引用。';
   if (nodeType === 'COMPRESSOR') return '压缩单个证据文档，输出摘要、关键点、风险、缺口和引用。';
+  if (nodeType === 'COMPRESSION_VALIDATOR') return '对照原文验证所有清洗与压缩候选，输出无遗漏、无事实漂移的最终摘要。';
   return '分析上游研究证据和其他角色观点，给出可验证结论、挑战与修订。';
 }
 

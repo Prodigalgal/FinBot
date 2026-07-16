@@ -13,6 +13,7 @@ import io.omnnu.finbot.application.ingestion.SourceCollectionRun;
 import io.omnnu.finbot.application.research.AiCompressionRecord;
 import io.omnnu.finbot.application.research.CompressionPackage;
 import io.omnnu.finbot.application.research.CompressionRepository;
+import io.omnnu.finbot.application.research.EvidenceAiReview;
 import io.omnnu.finbot.domain.ingestion.CollectionRunId;
 import io.omnnu.finbot.domain.ingestion.CollectionStatus;
 import io.omnnu.finbot.domain.ingestion.DocumentId;
@@ -300,6 +301,36 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("errorCode", safe(compression.errorCode(), 80))
                 .param("errorMessage", safe(compression.errorMessage(), 2_000))
                 .param("createdAt", timestamp(compression.createdAt()))
+                .update();
+    }
+
+    @Override
+    public void saveEvidenceReview(EvidenceAiReview review) {
+        jdbcClient.sql("""
+                insert into evidence_ai_review (
+                  review_id, workflow_run_id, workflow_version_id, document_id, node_id, invocation_id,
+                  stage, status, content, prompt_hash, error_code, error_message, created_at
+                ) values (
+                  :reviewId, :workflowRunId, :workflowVersionId, :documentId, :nodeId, :invocationId,
+                  :stage, :status, cast(:content as jsonb), :promptHash,
+                  :errorCode, :errorMessage, :createdAt
+                ) on conflict (workflow_run_id, document_id, node_id, prompt_hash) do nothing
+                """)
+                .param("reviewId", review.reviewId())
+                .param("workflowRunId", review.workflowRunId().value())
+                .param("workflowVersionId", review.workflowVersionId().value())
+                .param("documentId", review.documentId().value())
+                .param("nodeId", review.nodeId().value())
+                .param("invocationId", review.invocationId() == null
+                        ? null
+                        : review.invocationId().value())
+                .param("stage", review.stage().name())
+                .param("status", review.status().name())
+                .param("content", json(review.content()))
+                .param("promptHash", review.promptHash())
+                .param("errorCode", safe(review.errorCode(), 80))
+                .param("errorMessage", safe(review.errorMessage(), 2_000))
+                .param("createdAt", timestamp(review.createdAt()))
                 .update();
     }
 

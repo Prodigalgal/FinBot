@@ -23,7 +23,7 @@ public final class WorkflowAiInvoker {
     private static final long STREAM_GRACE_MILLISECONDS = 10_000;
 
     private final AiCompletionGateway completionGateway;
-    private final AiProviderProtocolResolver protocolResolver;
+    private final AiRuntimeBindingResolver bindingResolver;
     private final AiInvocationAuditStore auditStore;
     private final AiBudgetReservationStore budgetStore;
     private final WorkflowEventPublisher eventPublisher;
@@ -32,14 +32,14 @@ public final class WorkflowAiInvoker {
 
     public WorkflowAiInvoker(
             AiCompletionGateway completionGateway,
-            AiProviderProtocolResolver protocolResolver,
+            AiRuntimeBindingResolver bindingResolver,
             AiInvocationAuditStore auditStore,
             AiBudgetReservationStore budgetStore,
             WorkflowEventPublisher eventPublisher,
             SortableIdGenerator idGenerator,
             Clock clock) {
         this.completionGateway = Objects.requireNonNull(completionGateway, "completionGateway");
-        this.protocolResolver = Objects.requireNonNull(protocolResolver, "protocolResolver");
+        this.bindingResolver = Objects.requireNonNull(bindingResolver, "bindingResolver");
         this.auditStore = Objects.requireNonNull(auditStore, "auditStore");
         this.budgetStore = Objects.requireNonNull(budgetStore, "budgetStore");
         this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
@@ -80,7 +80,7 @@ public final class WorkflowAiInvoker {
         Objects.requireNonNull(deadline, "deadline");
         var invocationId = new AiInvocationId(idGenerator.next("invocation_"));
         var timeout = requestTimeout(node, deadline);
-        var protocol = resolveProtocol(binding);
+        var protocol = resolveBinding(binding).protocol();
         var request = new AiCompletionRequest(
                 invocationId,
                 runId,
@@ -159,10 +159,10 @@ public final class WorkflowAiInvoker {
         }
     }
 
-    private io.omnnu.finbot.domain.configuration.AiProtocol resolveProtocol(
+    private AiRuntimeBinding resolveBinding(
             AiModelBinding binding) {
         try {
-            return protocolResolver.protocolFor(binding.providerProfileId());
+            return bindingResolver.resolve(binding);
         } catch (AiProviderUnavailableException exception) {
             throw new AiInvocationRejectedException(
                     "AI_PROVIDER_CONFIGURATION_INVALID",

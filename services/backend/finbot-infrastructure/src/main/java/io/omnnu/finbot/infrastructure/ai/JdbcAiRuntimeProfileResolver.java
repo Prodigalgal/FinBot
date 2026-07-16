@@ -1,6 +1,8 @@
 package io.omnnu.finbot.infrastructure.ai;
 
-import io.omnnu.finbot.application.ai.AiProviderProtocolResolver;
+import io.omnnu.finbot.application.ai.AiRuntimeBinding;
+import io.omnnu.finbot.application.ai.AiRuntimeBindingResolver;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
@@ -10,7 +12,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 @Component
-public final class JdbcAiRuntimeProfileResolver implements AiProviderProtocolResolver {
+public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResolver {
     private final JdbcClient jdbcClient;
 
     public JdbcAiRuntimeProfileResolver(JdbcClient jdbcClient) {
@@ -52,17 +54,31 @@ public final class JdbcAiRuntimeProfileResolver implements AiProviderProtocolRes
     }
 
     @Override
-    public AiProtocol protocolFor(AiProviderProfileId profileId) {
-        return jdbcClient.sql("""
-                select protocol from ai_provider_profile
-                where profile_id = :profileId and enabled = true
+    public AiRuntimeBinding resolve(AiModelBinding binding) {
+        var resolved = jdbcClient.sql("""
+                select provider.protocol, model.maximum_reasoning_effort
+                from ai_provider_profile provider
+                join ai_model_profile model
+                  on model.provider_profile_id = provider.profile_id
+                where provider.profile_id = :profileId
+                  and model.model_name = :modelName
+                  and provider.enabled = true
+                  and model.enabled = true
                 """)
-                .param("profileId", profileId.value())
-                .query(String.class)
+                .param("profileId", binding.providerProfileId().value())
+                .param("modelName", binding.modelName())
+                .query((resultSet, rowNumber) -> new AiRuntimeBinding(
+                        AiProtocol.valueOf(resultSet.getString("protocol")),
+                        io.omnnu.finbot.domain.configuration.ReasoningEffort.valueOf(
+                                resultSet.getString("maximum_reasoning_effort"))))
                 .optional()
-                .map(AiProtocol::valueOf)
                 .orElseThrow(() -> new AiProviderConfigurationException(
-                        "AI provider profile does not exist or is disabled"));
+                        "AI provider or model profile does not exist or is disabled"));
+        if (!resolved.maximumReasoningEffort().supports(binding.reasoningEffort())) {
+            throw new AiProviderConfigurationException(
+                    "Requested reasoning effort exceeds the configured model capability");
+        }
+        return resolved;
     }
 
     private static String environment(String name, String label) {

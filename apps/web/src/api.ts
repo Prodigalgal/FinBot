@@ -199,7 +199,7 @@ export const api = {
       expectedVersion: provider.version,
     }),
   }),
-  updateModel: (model: AiModel) => request<AiModel>(`/api/v2/configuration/models/${encodeURIComponent(model.modelProfileId)}`, { method: 'PUT', body: JSON.stringify({ defaultReasoningEffort: model.defaultReasoningEffort, inputUsdPerMillion: model.inputUsdPerMillion, outputUsdPerMillion: model.outputUsdPerMillion, enabled: model.enabled, expectedVersion: model.version }) }),
+  updateModel: (model: AiModel) => request<AiModel>(`/api/v2/configuration/models/${encodeURIComponent(model.modelProfileId)}`, { method: 'PUT', body: JSON.stringify({ defaultReasoningEffort: model.defaultReasoningEffort, maximumReasoningEffort: model.maximumReasoningEffort, inputUsdPerMillion: model.inputUsdPerMillion, outputUsdPerMillion: model.outputUsdPerMillion, enabled: model.enabled, expectedVersion: model.version }) }),
   probeProvider: (profileId: string) => request<ProviderModelCatalog>(`/api/v2/configuration/providers/${encodeURIComponent(profileId)}/probe`, { method: 'POST', body: '{}' }),
   setupProfiles: () => request<SetupProfileDefinition[]>('/api/v2/setup-profiles'),
   previewSetupProfile: (profileId: SetupProfileDefinition['profileId']) => request<SetupProfilePreview>(`/api/v2/setup-profiles/${profileId}/preview`),
