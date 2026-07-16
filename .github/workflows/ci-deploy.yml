@@ -74,15 +74,29 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - name: Frontend build and dependency audit
+      - name: Install frontend dependencies
         working-directory: apps/web
         run: |
-          npm ci
+          for attempt in 1 2 3; do
+            npm ci --prefer-offline --no-audit && break
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            sleep $((attempt * 5))
+          done
+      - name: Frontend contracts, tests and build
+        working-directory: apps/web
+        run: |
           npx tsc -b --clean
           npm run contract:check
           npm test
           npm run build
-          npm audit --audit-level=high --registry=https://registry.npmjs.org
+      - name: Frontend dependency audit
+        working-directory: apps/web
+        run: |
+          for attempt in 1 2 3; do
+            npm audit --audit-level=high --registry=https://registry.npmjs.org && break
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            sleep $((attempt * 5))
+          done
 
       - name: Repository secret scan
         run: python scripts/secret_scan.py
