@@ -12,6 +12,7 @@ public record WorkerProperties(
         Duration pollDelay,
         Duration leaseDuration,
         Duration heartbeatInterval,
+        Duration leaseRecoveryInterval,
         Duration retryDelay,
         Duration schedulerPollDelay,
         int maximumDueSchedules,
@@ -21,6 +22,7 @@ public record WorkerProperties(
         requirePositive(pollDelay, "pollDelay");
         requirePositive(leaseDuration, "leaseDuration");
         requirePositive(heartbeatInterval, "heartbeatInterval");
+        requirePositive(leaseRecoveryInterval, "leaseRecoveryInterval");
         requirePositive(retryDelay, "retryDelay");
         requirePositive(schedulerPollDelay, "schedulerPollDelay");
         if (heartbeatInterval.compareTo(leaseDuration) >= 0) {

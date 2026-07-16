@@ -16,6 +16,7 @@
 - Liquibase 032、K8S 主密钥、契约和线上验证。
 - Liquibase 033 信息源归档契约、代理出口轮换和 Firecrawl 线上成功率验证。
 - 定时任务重叠抑制：同一 schedule 存在 `PENDING`/`CLAIMED` 实例时只推进调度游标，不重复入队。
+- Worker 周期恢复过期租约，覆盖滚动发布时旧 Pod 在新 Pod 启动后才停止形成的孤儿任务。
 
 ## 非目标
 

@@ -52,6 +52,7 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
     private final Counter capacityDeferredCounter;
     private final Counter rejectedExecutionCounter;
     private final Counter lostLeaseCounter;
+    private final Counter recoveredLeaseCounter;
     private final WorkerId workerId;
     private final String instanceName;
 
@@ -78,6 +79,9 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
         this.lostLeaseCounter = Counter.builder("finbot.worker.lease.lost")
                 .description("Running tasks cancelled after lease renewal failed")
                 .register(registry);
+        this.recoveredLeaseCounter = Counter.builder("finbot.worker.lease.recovered")
+                .description("Expired task leases recovered for retry or terminal failure")
+                .register(registry);
         Gauge.builder("finbot.worker.tasks.running", runningTasks, Map::size)
                 .description("Tasks currently executing in this worker")
                 .register(registry);
@@ -99,6 +103,7 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
     public void afterPropertiesSet() {
         coordinator.registerWorker(workerId, instanceName);
         var recovered = coordinator.recoverExpiredLeases();
+        recoveredLeaseCounter.increment(recovered);
         LOGGER.info("FinBot worker {} started; recovered {} expired leases", workerId.value(), recovered);
     }
 
@@ -139,6 +144,18 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
                 LOGGER.error("Lost lease for task {}; local execution cancelled", running.task().taskId().value());
             }
         });
+    }
+
+    @Scheduled(fixedDelayString = "${finbot.worker.lease-recovery-interval:PT10S}")
+    public void recoverExpiredLeases() {
+        if (!active.get()) {
+            return;
+        }
+        var recovered = coordinator.recoverExpiredLeases();
+        if (recovered > 0) {
+            recoveredLeaseCounter.increment(recovered);
+            LOGGER.warn("Recovered {} expired task leases during worker runtime", recovered);
+        }
     }
 
     private void submit(BackgroundTask task) {

@@ -1,5 +1,6 @@
 package io.omnnu.finbot.operations;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -96,6 +97,30 @@ class BackgroundWorkerRuntimeTest {
         }
     }
 
+    @Test
+    void periodicallyRecoversExpiredLeases() {
+        var coordinator = mock(BackgroundTaskCoordinator.class);
+        when(coordinator.recoverExpiredLeases()).thenReturn(2);
+        var registry = new SimpleMeterRegistry();
+        var executor = Executors.newSingleThreadExecutor();
+        var runtime = new BackgroundWorkerRuntime(
+                coordinator,
+                properties(1, 1),
+                executor,
+                java.util.List.of(),
+                prefix -> prefix + "runtime_test",
+                registry);
+        try {
+            runtime.recoverExpiredLeases();
+
+            verify(coordinator, times(1)).recoverExpiredLeases();
+            assertEquals(2.0, registry.get("finbot.worker.lease.recovered").counter().count());
+        } finally {
+            runtime.destroy();
+            executor.shutdownNow();
+        }
+    }
+
     private static BackgroundTask task(String id, BackgroundTaskType type) {
         var task = mock(BackgroundTask.class);
         when(task.taskId()).thenReturn(new BackgroundTaskId(id));
@@ -128,6 +153,7 @@ class BackgroundWorkerRuntimeTest {
                 Duration.ofSeconds(2),
                 Duration.ofSeconds(30),
                 Duration.ofSeconds(5),
+                Duration.ofSeconds(10),
                 Duration.ofSeconds(10),
                 Duration.ofSeconds(5),
                 10,

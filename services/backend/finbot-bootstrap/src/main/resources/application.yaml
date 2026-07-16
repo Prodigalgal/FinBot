@@ -65,6 +65,7 @@ finbot:
     poll-delay: ${FINBOT_WORKER_POLL_DELAY:PT2S}
     lease-duration: ${FINBOT_WORKER_LEASE_DURATION:PT30S}
     heartbeat-interval: ${FINBOT_WORKER_HEARTBEAT_INTERVAL:PT5S}
+    lease-recovery-interval: ${FINBOT_WORKER_LEASE_RECOVERY_INTERVAL:PT10S}
     retry-delay: ${FINBOT_WORKER_RETRY_DELAY:PT10S}
     scheduler-poll-delay: ${FINBOT_SCHEDULER_POLL_DELAY:PT5S}
     maximum-due-schedules: ${FINBOT_MAXIMUM_DUE_SCHEDULES:10}
