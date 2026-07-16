@@ -55,3 +55,20 @@ it('shows target-aware proxy node health separately from saved configuration', a
   expect(screen.getByText('节点索引 4, 16, 18, 20, 23')).toBeInTheDocument();
   expect(screen.getByText('上游风控 403 × 27')).toBeInTheDocument();
 });
+
+it('renders known proxy runtime failures as operator-friendly Chinese', async () => {
+  apiMock.proxyGatewayStatus.mockResolvedValue({
+    ...runtimeStatus,
+    egressReady: false,
+    healthyNodeCount: 0,
+    unhealthyNodeCount: 32,
+    healthyNodeIndices: [],
+    error: 'Proxy target validation found no healthy nodes',
+  });
+
+  render(<NetworkPage />);
+
+  expect(await screen.findByText('无可用出口')).toBeInTheDocument();
+  expect(screen.getByText('目标探测未发现可用节点')).toBeInTheDocument();
+  expect(screen.queryByText('Proxy target validation found no healthy nodes')).not.toBeInTheDocument();
+});

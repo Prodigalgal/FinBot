@@ -114,7 +114,7 @@ export function NetworkPage() {
           {runtime.healthyNodeIndices.length > 0 && <Typography variant="body2">节点索引 {runtime.healthyNodeIndices.join(', ')}</Typography>}
         </Stack>}
         {gateway.enabled && runtime && Object.keys(runtime.probeFailureCounts).length > 0 && <Typography variant="caption" color={runtime.egressReady ? 'text.secondary' : 'error'}>{Object.entries(runtime.probeFailureCounts).map(([code, count]) => `${probeFailureLabel(code)} × ${count}`).join('；')}</Typography>}
-        {gateway.enabled && runtime?.error && <Typography variant="caption" color="error">{runtime.error}</Typography>}
+        {gateway.enabled && runtime?.error && <Typography variant="caption" color="error">{proxyRuntimeError(runtime.error)}</Typography>}
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} alignItems={{ lg: 'center' }}>
           <TextField size="small" label="优选标签" value={draft.preferredNames} onChange={(event) => updateGatewayDraft(gateway, { preferredNames: event.target.value })} sx={{ minWidth: 240 }} />
           <TextField size="small" label="最大节点数" type="number" value={draft.maximumNodes} inputProps={{ min: 1, max: 128 }} onChange={(event) => updateGatewayDraft(gateway, { maximumNodes: Number(event.target.value) })} sx={{ width: 140 }} />
@@ -188,6 +188,13 @@ function gatewayRuntimeColor(gateway: Gateway, runtime: ProxyGatewayRuntimeStatu
 
 function probeFailureLabel(code: string): string {
   return ({ HTTP_403: '上游风控 403', HTTP_429: '上游限流 429', TLS_ERROR: 'TLS 失败', CONNECTION_ERROR: '连接失败', TIMEOUT: '连接超时', BODY_MISMATCH: '响应校验失败' } as Record<string, string>)[code] || code;
+}
+
+function proxyRuntimeError(error: string): string {
+  return ({
+    'Proxy target validation found no healthy nodes': '目标探测未发现可用节点',
+    'Proxy subscription contains no secure supported nodes': '订阅中没有安全且受支持的节点',
+  } as Record<string, string>)[error] || error;
 }
 
 function runtimeSourceLabel(source: string): string { return ({ DATABASE_OVERRIDE: '后台热配置', ENVIRONMENT_FALLBACK: '启动备用配置', UNCONFIGURED: '未配置', NOT_SUPPORTED: '不支持' } as Record<string, string>)[source] || source; }
