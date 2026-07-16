@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import type { AccountsOverview } from './types';
 
@@ -62,7 +62,10 @@ beforeEach(() => {
   apiMock.setExchangeAccountEnabled.mockResolvedValue({
     accountId: 'account_bybit_demo_default', enabled: false, version: 8,
   });
+  apiMock.testExchangeAccount.mockResolvedValue(undefined);
 });
+
+afterEach(cleanup);
 
 it('submits the account optimistic version when disabling an exchange', async () => {
   const user = userEvent.setup();
@@ -75,5 +78,21 @@ it('submits the account optimistic version when disabling an exchange', async ()
     'account_bybit_demo_default',
     false,
     7,
+  ));
+});
+
+it('shows resource-level credential sources and allows an online account test', async () => {
+  const user = userEvent.setup();
+  render(<TradingAccountOverview initialAccounts={accounts} onAccountsChanged={vi.fn()} />);
+
+  expect(await screen.findByLabelText('API Key · 启动备用配置')).toBeInTheDocument();
+  expect(screen.getByLabelText('API Secret · 启动备用配置')).toBeInTheDocument();
+  const testButton = screen.getByRole('button', { name: '在线同步测试' });
+  expect(testButton).toBeEnabled();
+
+  await user.click(testButton);
+
+  await waitFor(() => expect(apiMock.testExchangeAccount).toHaveBeenCalledWith(
+    'account_bybit_demo_default',
   ));
 });

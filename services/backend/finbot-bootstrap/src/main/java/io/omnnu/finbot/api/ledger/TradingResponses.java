@@ -1,5 +1,6 @@
 package io.omnnu.finbot.api.ledger;
 
+import io.omnnu.finbot.application.configuration.RuntimeSecretSource;
 import io.omnnu.finbot.application.ledger.AccountOverviewItem;
 import io.omnnu.finbot.application.ledger.PositionView;
 import io.omnnu.finbot.application.ledger.TradingAccountsOverview;
@@ -60,6 +61,12 @@ public final class TradingResponses {
             boolean enabled,
             long version,
             boolean credentialConfigured,
+            RuntimeSecretSource apiKeySource,
+            String apiKeyFingerprint,
+            long apiKeyVersion,
+            RuntimeSecretSource apiSecretSource,
+            String apiSecretFingerprint,
+            long apiSecretVersion,
             String dataStatus,
             String currency,
             BigDecimal equity,
@@ -79,6 +86,12 @@ public final class TradingResponses {
                     account.enabled(),
                     account.version(),
                     account.credentialConfigured(),
+                    account.apiKeySource(),
+                    account.apiKeyFingerprint(),
+                    account.apiKeyVersion(),
+                    account.apiSecretSource(),
+                    account.apiSecretFingerprint(),
+                    account.apiSecretVersion(),
                     account.dataStatus().name(),
                     account.currency(),
                     account.equity(),
