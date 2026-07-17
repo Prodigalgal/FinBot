@@ -2,7 +2,10 @@ package io.omnnu.finbot.api.configuration;
 
 import io.omnnu.finbot.application.configuration.ProviderModelCatalog;
 import io.omnnu.finbot.application.configuration.ProviderModelCatalogUseCase;
+import io.omnnu.finbot.application.configuration.ProbeProviderCommand;
+import jakarta.validation.Valid;
 import java.util.Objects;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,5 +23,13 @@ public final class ProviderModelCatalogController {
     @PostMapping("/{profileId}/probe")
     public ProviderModelCatalog probe(@PathVariable String profileId) {
         return useCase.probe(profileId);
+    }
+
+    @PostMapping("/probe")
+    public ProviderModelCatalog probe(@Valid @RequestBody ProbeProviderRequest request) {
+        return useCase.probe(new ProbeProviderCommand(
+                request.baseUrl(),
+                request.apiKey(),
+                request.requestTimeoutSeconds()));
     }
 }

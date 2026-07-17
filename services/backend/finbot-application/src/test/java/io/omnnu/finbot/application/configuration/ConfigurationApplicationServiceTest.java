@@ -5,11 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.omnnu.finbot.domain.configuration.AiProtocol;
-import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
 import io.omnnu.finbot.domain.configuration.SettingSource;
 import io.omnnu.finbot.domain.configuration.SettingType;
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -61,20 +59,13 @@ class ConfigurationApplicationServiceTest {
                 "https://provider.example/v1",
                 true,
                 10,
-                1800,
-                "frontier-model",
-                ReasoningEffort.MAX,
-                ReasoningEffort.MAX,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO));
+                1800));
 
         assertEquals("provider_test_generated_id", created.profileId());
         assertEquals(
                 "FINBOT_AI_PROVIDER_KEYS_JSON",
                 repository.providers.getFirst().apiKeyEnv());
-        assertEquals(
-                created.profileId(),
-                repository.models.getFirst().providerProfileId());
+        assertTrue(repository.models.isEmpty());
     }
 
     @Test
@@ -88,18 +79,62 @@ class ConfigurationApplicationServiceTest {
                 "https://provider.example/v1",
                 true,
                 10,
-                120,
-                "referenced-model",
-                ReasoningEffort.XHIGH,
-                ReasoningEffort.XHIGH,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO));
+                120));
         repository.usages = Map.of(created.profileId(), new AiProviderUsage(1, 0, 0));
 
         assertThrows(ConfigurationConflictException.class, () -> service.deleteProvider(
                 new DeleteProviderCommand(created.profileId(), created.version())));
         assertTrue(repository.providers.stream()
                 .anyMatch(provider -> provider.profileId().equals(created.profileId())));
+    }
+
+    @Test
+    void probesUnsavedProviderAndReturnsDiscoveredModelsWithoutPersistingIt() {
+        var repository = new FakeConfigurationRepository(List.of());
+        var service = new ProviderModelCatalogService(
+                repository,
+                ignored -> Optional.empty(),
+                new EmptyRuntimeSecretStore(),
+                (providerProfileId, baseUri, apiKey, timeout) -> {
+                    assertEquals("draft", providerProfileId);
+                    assertEquals("https://provider.example/v1", baseUri.toString());
+                    assertEquals("test-api-key", apiKey);
+                    assertEquals(1800, timeout.toSeconds());
+                    return new ProviderModelCatalog(
+                            providerProfileId,
+                            "READY",
+                            List.of("model-a", "model-b"),
+                            200,
+                            25L,
+                            null,
+                            null,
+                            NOW);
+                });
+
+        var result = service.probe(new ProbeProviderCommand(
+                "https://provider.example/v1",
+                "test-api-key",
+                1800));
+
+        assertEquals(List.of("model-a", "model-b"), result.models());
+        assertTrue(repository.providers.isEmpty());
+        assertTrue(repository.models.isEmpty());
+    }
+
+    @Test
+    void rejectsUnsafeUnsavedProviderProbeEndpoint() {
+        var repository = new FakeConfigurationRepository(List.of());
+        ProviderModelCatalogGateway gateway = (providerProfileId, baseUri, apiKey, timeout) -> {
+            throw new AssertionError("Unsafe endpoint must not reach the gateway");
+        };
+        var service = new ProviderModelCatalogService(
+                repository,
+                ignored -> Optional.empty(),
+                new EmptyRuntimeSecretStore(),
+                gateway);
+
+        assertThrows(IllegalArgumentException.class, () -> service.probe(
+                new ProbeProviderCommand("file:///tmp/models", "test-api-key", 30)));
     }
 
     private static ConfigurationApplicationService service(ConfigurationRepository repository) {
@@ -149,10 +184,8 @@ class ConfigurationApplicationServiceTest {
         @Override
         public Optional<AiProviderProfile> createProvider(
                 AiProviderProfile provider,
-                AiModelProfile initialModel,
                 Instant createdAt) {
             providers.add(provider);
-            models.add(initialModel);
             return Optional.of(provider);
         }
 

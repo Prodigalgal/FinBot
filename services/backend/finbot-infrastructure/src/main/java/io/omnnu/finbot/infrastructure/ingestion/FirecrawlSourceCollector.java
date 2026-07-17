@@ -205,42 +205,56 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
         }
         try {
             for (var attempt = 1; attempt <= MAXIMUM_ATTEMPTS; attempt++) {
-                var route = httpClients.route(OutboundRoute.FIRECRAWL);
-                var response = httpClients.clientForRequest(route).send(
-                        requestBuilder.build(),
-                        HttpResponse.BodyHandlers.ofInputStream());
-                try (var stream = response.body()) {
-                    var bytes = stream.readNBytes(MAXIMUM_RESPONSE_BYTES + 1);
-                    if (bytes.length > MAXIMUM_RESPONSE_BYTES) {
-                        throw new SourceCollectionException(
-                                "FIRECRAWL_RESPONSE_TOO_LARGE",
-                                "Firecrawl response exceeded the configured safety limit",
-                                false);
-                    }
-                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                        if (retryable(response.statusCode()) && attempt < MAXIMUM_ATTEMPTS) {
-                            Thread.sleep(retryDelay(response, attempt));
-                            continue;
+                try {
+                    var route = httpClients.route(OutboundRoute.FIRECRAWL);
+                    var response = httpClients.clientForRequest(route).send(
+                            requestBuilder.build(),
+                            HttpResponse.BodyHandlers.ofInputStream());
+                    try (var stream = response.body()) {
+                        var bytes = stream.readNBytes(MAXIMUM_RESPONSE_BYTES + 1);
+                        if (bytes.length > MAXIMUM_RESPONSE_BYTES) {
+                            throw new SourceCollectionException(
+                                    "FIRECRAWL_RESPONSE_TOO_LARGE",
+                                    "Firecrawl response exceeded the configured safety limit",
+                                    false);
                         }
-                        throw new SourceCollectionException(
-                                "FIRECRAWL_HTTP_" + response.statusCode(),
-                                failureMessage(response.statusCode(), bytes, attempt),
-                                false);
+                        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                            if (retryable(response.statusCode()) && attempt < MAXIMUM_ATTEMPTS) {
+                                Thread.sleep(retryDelay(response, attempt));
+                                continue;
+                            }
+                            throw new SourceCollectionException(
+                                    "FIRECRAWL_HTTP_" + response.statusCode(),
+                                    failureMessage(response.statusCode(), bytes, attempt),
+                                    false);
+                        }
+                        var payload = objectMapper.readTree(bytes);
+                        if (!payload.isObject()) {
+                            throw new SourceCollectionException(
+                                    "FIRECRAWL_RESPONSE_INVALID",
+                                    "Firecrawl response root was not a JSON object",
+                                    false);
+                        }
+                        return new FirecrawlResponse(
+                                payload,
+                                response.statusCode(),
+                                response.headers().firstValue("content-type")
+                                        .orElse("application/json"),
+                                route.redactedEndpoint(),
+                                clock.instant());
                     }
-                    var payload = objectMapper.readTree(bytes);
-                    if (!payload.isObject()) {
-                        throw new SourceCollectionException(
-                                "FIRECRAWL_RESPONSE_INVALID",
-                                "Firecrawl response root was not a JSON object",
-                                false);
+                } catch (JsonProcessingException exception) {
+                    throw exception;
+                } catch (IOException exception) {
+                    if (attempt < MAXIMUM_ATTEMPTS) {
+                        Thread.sleep(Duration.ofSeconds(attempt));
+                        continue;
                     }
-                    return new FirecrawlResponse(
-                            payload,
-                            response.statusCode(),
-                            response.headers().firstValue("content-type")
-                                    .orElse("application/json"),
-                            route.redactedEndpoint(),
-                            clock.instant());
+                    throw new SourceCollectionException(
+                            "FIRECRAWL_NETWORK_FAILURE",
+                            "Firecrawl request failed after " + attempt + " attempts: "
+                                    + exception.getClass().getSimpleName(),
+                            false);
                 }
             }
             throw new IllegalStateException("Firecrawl retry loop completed without a result");
@@ -254,11 +268,6 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
             throw new SourceCollectionException(
                     "FIRECRAWL_JSON_INVALID",
                     "Firecrawl returned invalid JSON",
-                    false);
-        } catch (IOException exception) {
-            throw new SourceCollectionException(
-                    "FIRECRAWL_NETWORK_FAILURE",
-                    "Firecrawl request failed: " + exception.getClass().getSimpleName(),
                     false);
         }
     }

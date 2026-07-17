@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import signal
 import subprocess
 import threading
@@ -113,6 +114,8 @@ class GatewayState:
         self._ready = False
         self._service_ready = False
         self._node_count = 0
+        self._eligible_node_count = 0
+        self._selection_offset = 0
         self._healthy_node_count = 0
         self._unhealthy_node_count = 0
         self._healthy_node_indices: tuple[int, ...] = ()
@@ -144,11 +147,17 @@ class GatewayState:
         healthy_node_indices: tuple[int, ...],
         probe_failure_counts: dict[str, int],
         validation_target: str | None,
+        eligible_node_count: int | None = None,
+        selection_offset: int = 0,
     ) -> None:
         with self._lock:
             self._service_ready = True
             self._ready = bool(healthy_node_indices)
             self._node_count = node_count
+            self._eligible_node_count = (
+                node_count if eligible_node_count is None else eligible_node_count
+            )
+            self._selection_offset = selection_offset
             self._healthy_node_count = len(healthy_node_indices)
             self._unhealthy_node_count = node_count - len(healthy_node_indices)
             self._healthy_node_indices = healthy_node_indices
@@ -208,6 +217,8 @@ class GatewayState:
             "ready": self._ready,
             "serviceReady": self._service_ready,
             "nodeCount": self._node_count,
+            "eligibleNodeCount": self._eligible_node_count,
+            "selectionOffset": self._selection_offset,
             "healthyNodeCount": self._healthy_node_count,
             "unhealthyNodeCount": self._unhealthy_node_count,
             "healthyNodeIndices": list(self._healthy_node_indices),
@@ -240,6 +251,7 @@ class ProxyGateway:
         self._refresh_lock = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
         self._configuration_hash: str | None = None
+        self._selection_offset = secrets.randbits(31)
         self._round_robin = RoundRobinTcpProxy(
             configuration.proxy_port,
             state.assigned_node,
@@ -309,7 +321,9 @@ class ProxyGateway:
             maximum_nodes=configuration.maximum_nodes,
             preferred_names=configuration.preferred_names,
             allow_insecure_tls=configuration.allow_insecure_tls,
+            selection_offset=self._selection_offset,
         )
+        self._selection_offset += max(len(selection.nodes), 1)
         if not selection.nodes:
             raise RuntimeError("Proxy subscription contains no secure supported nodes")
         generated = build_configuration(
@@ -347,6 +361,8 @@ class ProxyGateway:
             healthy_node_indices=tuple(item.index for item in healthy_assignments),
             probe_failure_counts=probe_failure_counts,
             validation_target=validation_target,
+            eligible_node_count=selection.eligible_node_count,
+            selection_offset=selection.selection_offset,
         )
 
     def _load_nodes(self, configuration: RuntimeConfiguration) -> Subscription:

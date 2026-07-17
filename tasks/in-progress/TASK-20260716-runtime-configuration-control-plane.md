@@ -26,7 +26,22 @@
 
 ## 状态
 
-Blocked by external egress quality. 软件实现、契约、数据库迁移、单副本部署和生产验证已经完成；当前不再存在应用代码或 GitOps 待发布项。
+In progress. 在既有热配置控制面上继续修复 Provider 创建/模型探测和 Firecrawl 完整代理池发现问题；本地实现与门禁完成，等待 CI/GitOps 和生产在线验收。
+
+### 本轮增量（2026-07-17）
+
+- Provider 创建不再要求手填“首个模型”，厂商和模型生命周期解耦。
+- 新增未保存 Provider 参数测活：使用 `Base URL + API Key` 调用模型目录，成功后从探测结果选择并导入模型；创建失败保留表单。
+- 已保存 Provider 的热测试同时返回待导入模型，模型与费率页不再提供自由文本模型名。
+- Liquibase 034 将 `provider_grok_sub2api` 显示为 `sub2api-grok`，将 `provider_gemini_default` 显示为 `sub2api-gemini`，稳定 ID 和工作流引用不变。
+- Proxy Gateway 不再永久截取订阅前 `maximumNodes` 个节点；每次刷新轮换候选窗口，并公开完整可用候选数和本轮偏移。
+- Firecrawl 对网络异常与 403/429/5xx 一样使用新连接有限重试，最终 `FIRECRAWL_NETWORK_FAILURE` 包含真实尝试次数。
+
+### 本地验证
+
+- Java 26：`clean test bootJar` 通过。
+- Web：13 项 Vitest、OpenAPI 88 路径/101 Controller operation contract check、production build 通过。
+- Quant：16 项测试通过；Proxy Gateway：21 项测试通过。
 
 ### 生产证据（2026-07-17）
 

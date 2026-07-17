@@ -65,3 +65,5 @@ databaseChangeLog:
       file: db/changelog/releases/032-runtime-configuration-control-plane.sql
   - include:
       file: db/changelog/releases/033-information-source-management.sql
+  - include:
+      file: db/changelog/releases/034-provider-display-names.sql

@@ -307,6 +307,22 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+  /configuration/providers/probe:
+    post:
+      operationId: postConfigurationProvidersProbe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProbeAiProviderRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        default:
+          $ref: "#/components/responses/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
   /configuration/settings/{settingKey}:
     put:
       operationId: putConfigurationSettingsSettingKey
@@ -1839,11 +1855,6 @@ components:
         - enabled
         - connectTimeoutSeconds
         - requestTimeoutSeconds
-        - initialModelName
-        - defaultReasoningEffort
-        - maximumReasoningEffort
-        - inputUsdPerMillion
-        - outputUsdPerMillion
       properties:
         displayName:
           type: string
@@ -1874,20 +1885,27 @@ components:
           type: integer
           minimum: 5
           maximum: 1800
-        initialModelName:
+    ProbeAiProviderRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - baseUrl
+        - apiKey
+        - requestTimeoutSeconds
+      properties:
+        baseUrl:
           type: string
-          minLength: 1
-          maxLength: 160
-        defaultReasoningEffort:
-          $ref: "#/components/schemas/ReasoningEffort"
-        maximumReasoningEffort:
-          $ref: "#/components/schemas/ReasoningEffort"
-        inputUsdPerMillion:
-          type: number
-          minimum: 0
-        outputUsdPerMillion:
-          type: number
-          minimum: 0
+          format: uri
+          maxLength: 1000
+        apiKey:
+          type: string
+          minLength: 8
+          maxLength: 16384
+          writeOnly: true
+        requestTimeoutSeconds:
+          type: integer
+          minimum: 5
+          maximum: 1800
     CreateAiModelRequest:
       type: object
       additionalProperties: false

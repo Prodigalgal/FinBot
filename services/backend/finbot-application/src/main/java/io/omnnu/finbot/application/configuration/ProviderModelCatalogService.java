@@ -49,4 +49,28 @@ public final class ProviderModelCatalogService implements ProviderModelCatalogUs
                 apiKey,
                 Duration.ofSeconds(provider.requestTimeoutSeconds()));
     }
+
+    @Override
+    public ProviderModelCatalog probe(ProbeProviderCommand command) {
+        Objects.requireNonNull(command, "command");
+        var baseUrl = Objects.requireNonNull(command.baseUrl(), "baseUrl").strip();
+        var apiKey = Objects.requireNonNull(command.apiKey(), "apiKey").strip();
+        if (apiKey.isBlank()) {
+            throw new IllegalArgumentException("AI provider API key is required");
+        }
+        if (command.requestTimeoutSeconds() < 5 || command.requestTimeoutSeconds() > 1800) {
+            throw new IllegalArgumentException("AI provider request timeout is out of range");
+        }
+        var baseUri = URI.create(baseUrl);
+        if (baseUri.getHost() == null || baseUri.getUserInfo() != null || baseUri.getFragment() != null
+                || !("http".equalsIgnoreCase(baseUri.getScheme())
+                        || "https".equalsIgnoreCase(baseUri.getScheme()))) {
+            throw new IllegalArgumentException("AI provider base URL is invalid");
+        }
+        return gateway.probe(
+                "draft",
+                baseUri,
+                apiKey,
+                Duration.ofSeconds(command.requestTimeoutSeconds()));
+    }
 }

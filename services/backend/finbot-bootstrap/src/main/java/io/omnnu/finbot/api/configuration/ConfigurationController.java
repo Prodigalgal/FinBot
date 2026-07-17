@@ -75,12 +75,7 @@ public final class ConfigurationController {
                 request.baseUrl(),
                 request.enabled(),
                 request.connectTimeoutSeconds(),
-                request.requestTimeoutSeconds(),
-                request.initialModelName(),
-                request.defaultReasoningEffort(),
-                request.maximumReasoningEffort(),
-                request.inputUsdPerMillion(),
-                request.outputUsdPerMillion()));
+                request.requestTimeoutSeconds()));
     }
 
     @DeleteMapping("/providers/{profileId}")

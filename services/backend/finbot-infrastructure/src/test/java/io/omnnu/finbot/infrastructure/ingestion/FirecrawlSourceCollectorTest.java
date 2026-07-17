@@ -62,6 +62,46 @@ class FirecrawlSourceCollectorTest {
         }
     }
 
+    @Test
+    void retriesNetworkFailureThroughTheNextProxyConnection() throws IOException {
+        var routeCalls = new AtomicInteger();
+        var requests = new AtomicInteger();
+        var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxy.createContext("/", exchange -> {
+            requests.incrementAndGet();
+            respond(exchange, 2);
+        });
+        proxy.start();
+        try {
+            var workingProxy = URI.create("http://127.0.0.1:" + proxy.getAddress().getPort());
+            var unavailableProxy = URI.create("http://127.0.0.1:1");
+            ProxyRouteResolver resolver = route -> {
+                var invocation = routeCalls.incrementAndGet();
+                var endpoint = invocation == 2 ? unavailableProxy : workingProxy;
+                return new ProxyRouteDecision(
+                        route,
+                        true,
+                        false,
+                        endpoint,
+                        "IPV4",
+                        endpoint.toString());
+            };
+            var collector = new FirecrawlSourceCollector(
+                    new RoutedHttpClientFactory(resolver, Runnable::run),
+                    new ObjectMapper(),
+                    Clock.fixed(Instant.parse("2026-07-16T14:00:00Z"), ZoneOffset.UTC),
+                    new EmptyRuntimeSecretStore());
+
+            var payloads = collector.collect(source(), "market update");
+
+            assertEquals(3, routeCalls.get());
+            assertEquals(1, requests.get());
+            assertEquals("# verified", payloads.getFirst().rawContent());
+        } finally {
+            proxy.stop(0);
+        }
+    }
+
     private static void respond(HttpExchange exchange, int requestNumber) throws IOException {
         try (exchange) {
             if (requestNumber == 1) {

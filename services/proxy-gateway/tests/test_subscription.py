@@ -61,3 +61,43 @@ def test_allows_insecure_tls_nodes_only_when_explicitly_enabled() -> None:
     assert len(selection.nodes) == 1
     assert selection.rejected_insecure_node_count == 0
     assert selection.enabled_insecure_node_count == 1
+
+
+def test_rotates_selection_window_across_the_full_eligible_pool() -> None:
+    subscription = parse_subscription("\n".join(
+        f"hysteria2://password@node-{index}.example.com:443#node-{index}"
+        for index in range(5)
+    ))
+
+    first = select_nodes(
+        subscription,
+        maximum_nodes=2,
+        preferred_names=(),
+        selection_offset=0,
+    )
+    rotated = select_nodes(
+        subscription,
+        maximum_nodes=2,
+        preferred_names=(),
+        selection_offset=2,
+    )
+    wrapped = select_nodes(
+        subscription,
+        maximum_nodes=2,
+        preferred_names=(),
+        selection_offset=4,
+    )
+
+    assert first.eligible_node_count == 5
+    assert [node.address for node in first.nodes] == [
+        "node-0.example.com",
+        "node-1.example.com",
+    ]
+    assert [node.address for node in rotated.nodes] == [
+        "node-2.example.com",
+        "node-3.example.com",
+    ]
+    assert [node.address for node in wrapped.nodes] == [
+        "node-4.example.com",
+        "node-0.example.com",
+    ]

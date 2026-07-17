@@ -2,7 +2,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import KeyIcon from '@mui/icons-material/Key';
 import SaveIcon from '@mui/icons-material/Save';
-import { Alert, Box, Button, Chip, FormControlLabel, MenuItem, Paper, Stack, Switch, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, Chip, FormControlLabel, MenuItem, Paper, Stack, Switch, Tab, Tabs, TextField, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 
 import { api } from './api';
@@ -28,6 +28,42 @@ export function SettingsPage() {
   const load = async () => { try { const [system, execution, setupProfiles, agentRoles, aiExperiments, workflows] = await Promise.all([api.configuration(), api.tradeAutomationConfiguration(), api.setupProfiles(), api.agentRoles(), api.aiExperiments(), api.workflowDefinitions()]); setConfig(system); setTrading(execution); setProfiles(setupProfiles); setRoles(agentRoles); setExperiments(aiExperiments); setDefinitions(workflows); } catch (cause) { setError(cause); } };
   useEffect(() => { void load(); }, []);
   const saved = async (work: Promise<unknown>) => { setError(null); setMessage(''); try { await work; setMessage('配置已保存'); await load(); } catch (cause) { setError(cause); } };
+  const createProvider = async (body: Record<string, unknown>, apiKey: string, modelNames: string[], maximumEffort: ReasoningEffort) => {
+    setError(null); setMessage('');
+    let provider: AiProvider;
+    try {
+      provider = await api.createProvider(body);
+    } catch (cause) {
+      setError(cause);
+      return false;
+    }
+    try {
+      await api.putRuntimeSecret('AI_PROVIDER', provider.profileId, 'API_KEY', apiKey, provider.credentialVersion);
+      for (const modelName of modelNames) {
+        await api.createModel({ providerProfileId: provider.profileId, modelName, defaultReasoningEffort: maximumEffort, maximumReasoningEffort: maximumEffort, inputUsdPerMillion: 0, outputUsdPerMillion: 0, enabled: true });
+      }
+      setMessage(`已创建厂商并导入 ${modelNames.length} 个探测模型`);
+    } catch (cause) {
+      setError(new Error(`厂商已创建，但密钥或模型导入未完全完成，请在厂商卡片继续处理：${cause instanceof Error ? cause.message : String(cause)}`));
+    }
+    await load();
+    return true;
+  };
+  const importProviderModels = async (providerProfileId: string, modelNames: string[], maximumEffort: ReasoningEffort) => {
+    setError(null); setMessage('');
+    try {
+      for (const modelName of modelNames) {
+        await api.createModel({ providerProfileId, modelName, defaultReasoningEffort: maximumEffort, maximumReasoningEffort: maximumEffort, inputUsdPerMillion: 0, outputUsdPerMillion: 0, enabled: true });
+      }
+      setMessage(`已导入 ${modelNames.length} 个探测模型`);
+      await load();
+      return true;
+    } catch (cause) {
+      setError(cause);
+      await load();
+      return false;
+    }
+  };
   const changeTab = (next: SettingsTab) => { setTab(next); replaceWorkspaceLocation('settings', next); };
   if (error !== null && (!config || !trading)) return <ErrorBlock error={error} />;
   if (!config || !trading) return <LoadingBlock label="正在读取默认配置与密钥状态" />;
@@ -36,8 +72,8 @@ export function SettingsPage() {
     <Tabs value={tab} onChange={(_event, value: SettingsTab) => changeTab(value)} variant="scrollable" scrollButtons="auto"><Tab value="setup" label="快速启用" /><Tab value="runtime" label="运行基础" /><Tab value="providers" label="模型服务" /><Tab value="models" label="模型与费率" /><Tab value="roles" label="角色与提示词" /><Tab value="execution" label="交易机器人与风险" /><Tab value="experiments" label="A/B 实验" /></Tabs>
     {tab === 'setup' && <SetupProfilesPanel profiles={profiles} onApplied={load} />}
     {tab === 'runtime' && <Box><SectionTitle title="运行参数" /><Stack spacing={1}>{config.settings.map((setting) => <Paper key={setting.key} variant="outlined" sx={{ p: 1.5 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}><Box sx={{ flex: 1 }}><Typography fontWeight={700}>{setting.description}</Typography><Typography variant="caption" color="text.secondary">{setting.key} · {setting.source}</Typography></Box><TextField defaultValue={setting.value} onBlur={(event) => { if (event.target.value !== setting.value) void saved(api.updateSetting(setting, event.target.value)); }} sx={{ width: { md: 260 } }} /></Stack></Paper>)}</Stack></Box>}
-    {tab === 'providers' && <Box><SectionTitle title="AI 厂商" /><Stack spacing={1.25}><ProviderCreatePanel create={(body, apiKey) => saved((async () => { const provider = await api.createProvider(body); if (apiKey.trim()) await api.putRuntimeSecret('AI_PROVIDER', provider.profileId, 'API_KEY', apiKey.trim(), provider.credentialVersion); })())} />{config.providers.map((provider) => <ProviderEditor key={provider.profileId} provider={provider} save={(next) => saved(api.updateProvider(next))} remove={() => saved(api.deleteProvider(provider.profileId, provider.version))} putCredential={(value, version) => saved(api.putRuntimeSecret('AI_PROVIDER', provider.profileId, 'API_KEY', value, version))} clearCredential={(version) => saved(api.clearRuntimeSecret('AI_PROVIDER', provider.profileId, 'API_KEY', version))} />)}</Stack></Box>}
-    {tab === 'models' && <Box><SectionTitle title="模型与默认费率" /><Stack spacing={1.25}><ModelCreatePanel providers={config.providers} create={(body) => saved(api.createModel(body))} />{config.models.map((model) => <ModelEditor key={model.modelProfileId} model={model} providerName={config.providers.find((provider) => provider.profileId === model.providerProfileId)?.displayName || model.providerProfileId} save={(next) => saved(api.updateModel(next))} />)}</Stack></Box>}
+    {tab === 'providers' && <Box><SectionTitle title="AI 厂商" /><Stack spacing={1.25}><ProviderCreatePanel create={createProvider} />{config.providers.map((provider) => <ProviderEditor key={provider.profileId} provider={provider} models={config.models.filter((model) => model.providerProfileId === provider.profileId)} save={(next) => saved(api.updateProvider(next))} remove={() => saved(api.deleteProvider(provider.profileId, provider.version))} putCredential={(value, version) => saved(api.putRuntimeSecret('AI_PROVIDER', provider.profileId, 'API_KEY', value, version))} clearCredential={(version) => saved(api.clearRuntimeSecret('AI_PROVIDER', provider.profileId, 'API_KEY', version))} importModels={(modelNames, effort) => importProviderModels(provider.profileId, modelNames, effort)} />)}</Stack></Box>}
+    {tab === 'models' && <Box><SectionTitle title="模型与默认费率" /><Stack spacing={1.25}><Alert severity="info">模型只能从“模型服务”页通过厂商测活结果导入；此处维护已导入模型的思考能力、默认强度和费率。</Alert>{config.models.map((model) => <ModelEditor key={model.modelProfileId} model={model} providerName={config.providers.find((provider) => provider.profileId === model.providerProfileId)?.displayName || model.providerProfileId} save={(next) => saved(api.updateModel(next))} />)}</Stack></Box>}
     {tab === 'roles' && <AgentRolesPanel roles={roles} providers={config.providers} models={config.models} onChanged={load} />}
     {tab === 'execution' && <><Box><SectionTitle title="最终交易机器人" /><Stack spacing={1.5}>{trading.aiStages.map((stage) => <ExecutionStageEditor key={stage.stage} stage={stage} providers={config.providers} models={config.models} save={(next) => {
       void saved(api.updateExecutionStage(next.stage, { primaryAiBinding: requestBinding(next.primaryAiBinding), fallbackAiBinding: next.fallbackAiBinding ? requestBinding(next.fallbackAiBinding) : null, systemPrompt: next.systemPrompt, userPromptTemplate: next.userPromptTemplate, maximumOutputTokens: next.maximumOutputTokens, timeoutSeconds: next.timeoutSeconds, retryMaximumAttempts: next.retryPolicy.maximumAttempts, retryBackoffSeconds: durationSeconds(next.retryPolicy.backoff), enabled: next.enabled, expectedVersion: next.version }));
@@ -46,53 +82,72 @@ export function SettingsPage() {
   </Stack>;
 }
 
-function ProviderCreatePanel({ create }: { create: (body: Record<string, unknown>, apiKey: string) => Promise<void> }) {
+export function ProviderCreatePanel({ create }: { create: (body: Record<string, unknown>, apiKey: string, modelNames: string[], maximumEffort: ReasoningEffort) => Promise<boolean> }) {
   const [displayName, setDisplayName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
-  const [modelName, setModelName] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [protocol, setProtocol] = useState('RESPONSES');
   const [reasoningStyle, setReasoningStyle] = useState('NESTED');
   const [maximumEffort, setMaximumEffort] = useState<ReasoningEffort>('MAX');
-  const [busy, setBusy] = useState(false);
-  const submit = async () => {
-    setBusy(true);
+  const [probe, setProbe] = useState<ProviderModelCatalog | null>(null);
+  const [probeError, setProbeError] = useState<unknown>(null);
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [probeBusy, setProbeBusy] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const invalidateProbe = () => { setProbe(null); setProbeError(null); setSelectedModels([]); };
+  const runProbe = async () => {
+    setProbeBusy(true); setProbeError(null); setProbe(null); setSelectedModels([]);
     try {
-      await create({ displayName: displayName.trim(), protocol, reasoningParameterStyle: reasoningStyle, baseUrl: baseUrl.trim(), enabled: true, connectTimeoutSeconds: 10, requestTimeoutSeconds: 1800, initialModelName: modelName.trim(), defaultReasoningEffort: maximumEffort, maximumReasoningEffort: maximumEffort, inputUsdPerMillion: 0, outputUsdPerMillion: 0 }, apiKey);
-      setDisplayName(''); setBaseUrl(''); setModelName(''); setApiKey('');
-    } finally { setBusy(false); }
+      const result = await api.probeProviderDraft({ baseUrl: baseUrl.trim(), apiKey: apiKey.trim(), requestTimeoutSeconds: 1800 });
+      setProbe(result);
+    } catch (cause) {
+      setProbeError(cause);
+    } finally {
+      setProbeBusy(false);
+    }
   };
-  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}><Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5}><TextField label="厂商名称" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /><TextField fullWidth label="Base URL" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} /><TextField label="首个模型" value={modelName} onChange={(event) => setModelName(event.target.value)} /><TextField select label="协议" value={protocol} onChange={(event) => setProtocol(event.target.value)} sx={{ minWidth: 130 }}><MenuItem value="CHAT">CHAT</MenuItem><MenuItem value="RESPONSES">RESPONSES</MenuItem></TextField><TextField select label="思考参数" value={reasoningStyle} onChange={(event) => setReasoningStyle(event.target.value)} sx={{ minWidth: 130 }}><MenuItem value="NONE">NONE</MenuItem><MenuItem value="FLAT">FLAT</MenuItem><MenuItem value="NESTED">NESTED</MenuItem></TextField><TextField select label="思考上限" value={maximumEffort} onChange={(event) => setMaximumEffort(event.target.value as ReasoningEffort)} sx={{ minWidth: 130 }}>{efforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField></Stack><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><TextField fullWidth type="password" autoComplete="new-password" label="API Key（可选）" value={apiKey} onChange={(event) => setApiKey(event.target.value)} /><Button variant="contained" startIcon={<AddIcon />} disabled={busy || !displayName.trim() || !baseUrl.trim() || !modelName.trim() || (!!apiKey.trim() && apiKey.trim().length < 8)} onClick={() => void submit()}>{busy ? '正在创建' : '创建厂商'}</Button></Stack></Stack></Paper>;
+  const submit = async () => {
+    setCreateBusy(true);
+    try {
+      const created = await create({ displayName: displayName.trim(), protocol, reasoningParameterStyle: reasoningStyle, baseUrl: baseUrl.trim(), enabled: true, connectTimeoutSeconds: 10, requestTimeoutSeconds: 1800 }, apiKey.trim(), selectedModels, maximumEffort);
+      if (created) {
+        setDisplayName(''); setBaseUrl(''); setApiKey(''); setProbe(null); setSelectedModels([]);
+      }
+    } finally { setCreateBusy(false); }
+  };
+  const probeReady = probe?.status === 'READY' && probe.models.length > 0;
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}>
+    {probeError !== null && <ErrorBlock error={probeError} />}
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5}><TextField label="厂商名称" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /><TextField fullWidth label="Base URL" value={baseUrl} onChange={(event) => { setBaseUrl(event.target.value); invalidateProbe(); }} /><TextField select label="协议" value={protocol} onChange={(event) => { setProtocol(event.target.value); invalidateProbe(); }} sx={{ minWidth: 130 }}><MenuItem value="CHAT">CHAT</MenuItem><MenuItem value="RESPONSES">RESPONSES</MenuItem></TextField><TextField select label="思考参数" value={reasoningStyle} onChange={(event) => setReasoningStyle(event.target.value)} sx={{ minWidth: 130 }}><MenuItem value="NONE">NONE</MenuItem><MenuItem value="FLAT">FLAT</MenuItem><MenuItem value="NESTED">NESTED</MenuItem></TextField></Stack>
+    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'flex-start' }}><TextField fullWidth type="password" autoComplete="new-password" label="API Key" value={apiKey} onChange={(event) => { setApiKey(event.target.value); invalidateProbe(); }} helperText="测活只用于本次请求，创建后加密保存并立即生效" inputProps={{ maxLength: 16384 }} /><Button variant="outlined" disabled={probeBusy || !baseUrl.trim() || apiKey.trim().length < 8} onClick={() => void runProbe()} sx={{ flexShrink: 0 }}>{probeBusy ? '正在测活' : '测活并探测模型'}</Button></Stack>
+    {probe && <Alert severity={probeReady ? 'success' : 'error'}>{probeReady ? `连接正常，探测到 ${probe.models.length} 个模型，耗时 ${probe.latencyMilliseconds ?? '-'} ms。` : probe.status === 'READY' ? '连接正常，但模型目录为空，无法创建可用模型配置。' : `${probe.errorCode}: ${probe.errorMessage}`}</Alert>}
+    {probeReady && <Stack spacing={1.25}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Autocomplete multiple disableCloseOnSelect options={probe.models} value={selectedModels} onChange={(_event, value) => setSelectedModels(value)} renderInput={(params) => <TextField {...params} label="导入模型" helperText="模型名来自厂商 /models 探测结果，不能手工填写" />} sx={{ flex: 1 }} /><TextField select label="模型思考上限" value={maximumEffort} onChange={(event) => setMaximumEffort(event.target.value as ReasoningEffort)} sx={{ minWidth: 170 }}>{efforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField></Stack><Stack direction="row" spacing={1} justifyContent="flex-end"><Button onClick={() => setSelectedModels(selectedModels.length === probe.models.length ? [] : probe.models)}>{selectedModels.length === probe.models.length ? '清空选择' : '选择全部'}</Button><Button variant="contained" startIcon={<AddIcon />} disabled={createBusy || !displayName.trim() || selectedModels.length === 0} onClick={() => void submit()}>{createBusy ? '正在创建' : `创建并导入 ${selectedModels.length} 个模型`}</Button></Stack></Stack>}
+  </Stack></Paper>;
 }
 
-function ProviderEditor({ provider, save, remove, putCredential, clearCredential }: { provider: AiProvider; save: (value: AiProvider) => Promise<void>; remove: () => Promise<void>; putCredential: (value: string, version: number) => Promise<void>; clearCredential: (version: number) => Promise<void> }) {
+function ProviderEditor({ provider, models, save, remove, putCredential, clearCredential, importModels }: { provider: AiProvider; models: AiModel[]; save: (value: AiProvider) => Promise<void>; remove: () => Promise<void>; putCredential: (value: string, version: number) => Promise<void>; clearCredential: (version: number) => Promise<void>; importModels: (modelNames: string[], maximumEffort: ReasoningEffort) => Promise<boolean> }) {
   const [value, setValue] = useState(provider);
   const [credential, setCredential] = useState('');
   const [credentialBusy, setCredentialBusy] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [probe, setProbe] = useState<ProviderModelCatalog | null>(null);
   const [probeError, setProbeError] = useState<unknown>(null);
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [maximumEffort, setMaximumEffort] = useState<ReasoningEffort>('MAX');
+  const [importBusy, setImportBusy] = useState(false);
   useEffect(() => setValue(provider), [provider]);
-  const runProbe = async () => { setActionBusy(true); setProbeError(null); try { setProbe(await api.probeProvider(value.profileId)); } catch (cause) { setProbeError(cause); } finally { setActionBusy(false); } };
+  const runProbe = async () => { setActionBusy(true); setProbeError(null); setSelectedModels([]); try { setProbe(await api.probeProvider(value.profileId)); } catch (cause) { setProbeError(cause); } finally { setActionBusy(false); } };
   const storeCredential = async () => { if (!credential.trim()) return; setCredentialBusy(true); try { await putCredential(credential.trim(), value.credentialVersion); setCredential(''); } finally { setCredentialBusy(false); } };
   const removeCredential = async () => { setCredentialBusy(true); try { await clearCredential(value.credentialVersion); setCredential(''); } finally { setCredentialBusy(false); } };
   const usage = `工作流节点 ${value.workflowNodeUsageCount} · 角色 ${value.roleTemplateUsageCount} · 执行阶段 ${value.executionStageUsageCount}`;
   const saveProvider = async () => { setActionBusy(true); try { await save(value); } finally { setActionBusy(false); } };
   const deleteProvider = async () => { if (!window.confirm(`确认删除“${value.displayName}”？`)) return; setActionBusy(true); try { await remove(); } finally { setActionBusy(false); } };
-  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}>{probeError !== null && <ErrorBlock error={probeError} />}{value.totalUsageCount > 0 && <Alert severity="warning">当前引用：{usage}。修改可能影响后续运行，删除前必须先在工作流、角色和执行阶段中解绑。</Alert>}<Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}><Box sx={{ flex: 1 }}><Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap"><Typography fontWeight={700}>{value.displayName}</Typography><Chip size="small" color={value.apiKeyConfigured ? 'success' : 'warning'} label={credentialSourceLabel(value.credentialSource)} /></Stack><Typography variant="caption" color="text.secondary">{value.protocol} · {value.reasoningParameterStyle}{value.credentialFingerprint ? ` · 指纹 ${value.credentialFingerprint}` : ''}</Typography></Box><TextField label="Base URL" value={value.baseUrl || ''} onChange={(event) => setValue({ ...value, baseUrl: event.target.value || null })} sx={{ minWidth: 280 }} /><FormControlLabel control={<Switch checked={value.enabled} onChange={(event) => setValue({ ...value, enabled: event.target.checked })} />} label="启用" /><Button disabled={actionBusy} onClick={() => void runProbe()}>热测试</Button><Button disabled={actionBusy} startIcon={<SaveIcon />} onClick={() => void saveProvider()}>保存厂商</Button><Button color="error" startIcon={<DeleteIcon />} disabled={actionBusy || value.totalUsageCount > 0} onClick={() => void deleteProvider()}>删除</Button></Stack><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><TextField fullWidth type="password" autoComplete="new-password" label="API Key" value={credential} onChange={(event) => setCredential(event.target.value)} helperText="保存后立即生效；系统不会回显旧值" inputProps={{ maxLength: 16384 }} /><Button variant="contained" startIcon={<KeyIcon />} disabled={credentialBusy || credential.trim().length < 8} onClick={() => void storeCredential()} sx={{ flexShrink: 0 }}>{value.credentialSource === 'DATABASE_OVERRIDE' ? '轮换 Key' : '设置 Key'}</Button><Button color="error" disabled={credentialBusy || value.credentialSource !== 'DATABASE_OVERRIDE'} onClick={() => void removeCredential()} sx={{ flexShrink: 0 }}>清除热配置</Button></Stack>{probe && <Alert severity={probe.status === 'READY' ? 'success' : 'error'}>{probe.status === 'READY' ? `可用模型 ${probe.models.length} 个：${probe.models.slice(0, 12).join('、')}${probe.models.length > 12 ? '…' : ''}` : `${probe.errorCode}: ${probe.errorMessage}`}</Alert>}</Stack></Paper>;
+  const availableModels = probe?.status === 'READY' ? probe.models.filter((modelName) => !models.some((model) => model.modelName === modelName)) : [];
+  const importDetectedModels = async () => { setImportBusy(true); try { if (await importModels(selectedModels, maximumEffort)) setSelectedModels([]); } finally { setImportBusy(false); } };
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}>{probeError !== null && <ErrorBlock error={probeError} />}{value.totalUsageCount > 0 && <Alert severity="warning">当前引用：{usage}。修改可能影响后续运行，删除前必须先在工作流、角色和执行阶段中解绑。</Alert>}<Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}><Box sx={{ flex: 1 }}><Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap"><Typography fontWeight={700}>{value.displayName}</Typography><Chip size="small" color={value.apiKeyConfigured ? 'success' : 'warning'} label={credentialSourceLabel(value.credentialSource)} /></Stack><Typography variant="caption" color="text.secondary">{value.protocol} · {value.reasoningParameterStyle}{value.credentialFingerprint ? ` · 指纹 ${value.credentialFingerprint}` : ''}</Typography></Box><TextField label="Base URL" value={value.baseUrl || ''} onChange={(event) => setValue({ ...value, baseUrl: event.target.value || null })} sx={{ minWidth: 280 }} /><FormControlLabel control={<Switch checked={value.enabled} onChange={(event) => setValue({ ...value, enabled: event.target.checked })} />} label="启用" /><Button disabled={actionBusy || !value.apiKeyConfigured} onClick={() => void runProbe()}>热测试并探测</Button><Button disabled={actionBusy} startIcon={<SaveIcon />} onClick={() => void saveProvider()}>保存厂商</Button><Button color="error" startIcon={<DeleteIcon />} disabled={actionBusy || value.totalUsageCount > 0} onClick={() => void deleteProvider()}>删除</Button></Stack><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><TextField fullWidth type="password" autoComplete="new-password" label="API Key" value={credential} onChange={(event) => setCredential(event.target.value)} helperText="保存后立即生效；系统不会回显旧值" inputProps={{ maxLength: 16384 }} /><Button variant="contained" startIcon={<KeyIcon />} disabled={credentialBusy || credential.trim().length < 8} onClick={() => void storeCredential()} sx={{ flexShrink: 0 }}>{value.credentialSource === 'DATABASE_OVERRIDE' ? '轮换 Key' : '设置 Key'}</Button><Button color="error" disabled={credentialBusy || value.credentialSource !== 'DATABASE_OVERRIDE'} onClick={() => void removeCredential()} sx={{ flexShrink: 0 }}>清除热配置</Button></Stack>{probe && <Alert severity={probe.status === 'READY' ? 'success' : 'error'}>{probe.status === 'READY' ? `探测到 ${probe.models.length} 个模型；已配置 ${models.length} 个，待导入 ${availableModels.length} 个。` : `${probe.errorCode}: ${probe.errorMessage}`}</Alert>}{availableModels.length > 0 && <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}><Autocomplete multiple disableCloseOnSelect options={availableModels} value={selectedModels} onChange={(_event, selected) => setSelectedModels(selected)} renderInput={(params) => <TextField {...params} label="导入新探测模型" />} sx={{ flex: 1 }} /><TextField select label="思考上限" value={maximumEffort} onChange={(event) => setMaximumEffort(event.target.value as ReasoningEffort)} sx={{ minWidth: 150 }}>{efforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField><Button onClick={() => setSelectedModels(selectedModels.length === availableModels.length ? [] : availableModels)}>{selectedModels.length === availableModels.length ? '清空' : '全选'}</Button><Button variant="contained" disabled={importBusy || selectedModels.length === 0} onClick={() => void importDetectedModels()}>{importBusy ? '正在导入' : `导入 ${selectedModels.length} 个`}</Button></Stack>}</Stack></Paper>;
 }
 
 function credentialSourceLabel(source: AiProvider['credentialSource']): string { return ({ DATABASE_OVERRIDE: '后台热配置', ENVIRONMENT_FALLBACK: '启动备用配置', UNCONFIGURED: 'Key 未配置' } as const)[source]; }
-
-function ModelCreatePanel({ providers, create }: { providers: AiProvider[]; create: (body: Record<string, unknown>) => Promise<void> }) {
-  const [providerId, setProviderId] = useState(providers[0]?.profileId || '');
-  const [modelName, setModelName] = useState('');
-  const [maximumEffort, setMaximumEffort] = useState<ReasoningEffort>('MAX');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { if (!providers.some((provider) => provider.profileId === providerId)) setProviderId(providers[0]?.profileId || ''); }, [providers, providerId]);
-  const submit = async () => { setBusy(true); try { await create({ providerProfileId: providerId, modelName: modelName.trim(), defaultReasoningEffort: maximumEffort, maximumReasoningEffort: maximumEffort, inputUsdPerMillion: 0, outputUsdPerMillion: 0, enabled: true }); setModelName(''); } finally { setBusy(false); } };
-  return <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><TextField select label="厂商" value={providerId} onChange={(event) => setProviderId(event.target.value)} sx={{ minWidth: 220 }}>{providers.map((provider) => <MenuItem key={provider.profileId} value={provider.profileId}>{provider.displayName}</MenuItem>)}</TextField><TextField fullWidth label="模型名称" value={modelName} onChange={(event) => setModelName(event.target.value)} /><TextField select label="思考上限" value={maximumEffort} onChange={(event) => setMaximumEffort(event.target.value as ReasoningEffort)} sx={{ minWidth: 150 }}>{efforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField><Button variant="contained" startIcon={<AddIcon />} disabled={busy || !providerId || !modelName.trim()} onClick={() => void submit()}>{busy ? '正在添加' : '添加模型'}</Button></Stack></Paper>;
-}
 
 function ModelEditor({ model, providerName, save }: { model: AiModel; providerName: string; save: (value: AiModel) => void }) {
   const [value, setValue] = useState(model);

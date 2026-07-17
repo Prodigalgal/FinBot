@@ -14,10 +14,7 @@ public interface ConfigurationRepository {
 
     Map<String, AiProviderUsage> providerUsages();
 
-    Optional<AiProviderProfile> createProvider(
-            AiProviderProfile provider,
-            AiModelProfile initialModel,
-            Instant createdAt);
+    Optional<AiProviderProfile> createProvider(AiProviderProfile provider, Instant createdAt);
 
     Optional<AiModelProfile> createModel(AiModelProfile model, Instant createdAt);
 

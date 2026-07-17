@@ -61,21 +61,10 @@ public final class ConfigurationApplicationService implements ConfigurationUseCa
                 command.requestTimeoutSeconds(),
                 0,
                 now);
-        var model = new AiModelProfile(
-                idGenerator.next("model_"),
-                providerId,
-                command.initialModelName(),
-                command.defaultReasoningEffort(),
-                command.maximumReasoningEffort(),
-                command.inputUsdPerMillion(),
-                command.outputUsdPerMillion(),
-                true,
-                0,
-                now);
-        return repository.createProvider(provider, model, now)
+        return repository.createProvider(provider, now)
                 .map(created -> toView(created, AiProviderUsage.NONE))
                 .orElseThrow(() -> new ConfigurationConflictException(
-                        "AI 厂商或初始模型已存在，请刷新后重试"));
+                        "AI 厂商已存在，请刷新后重试"));
     }
 
     @Override

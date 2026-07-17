@@ -2,10 +2,10 @@
 
 ## S3：统一运行时配置控制面
 
-- 状态：软件交付完成，外部出口阻断（2026-07-17）。
-- 已完成：Provider、交易所账户、信息源、代理路由与代理池的加密热配置；目标感知节点健康；请求级轮换；配置对账节流；中文运行态；生产 API/UI/CSRF/SSE 验证。
-- 生产：Core `f118056`、Proxy `167cbf4`，ArgoCD revision `4b104225b256b58488dd151e0ec51d9332b176e8`，`Synced/Healthy`，全部工作负载单副本 Ready。
-- 阻断：Firecrawl IPv4 池 `0/32`（29 个 403、3 个 429），Bybit 池 `0/4`（连接失败）；系统已 fail closed，需要更换可用节点后重新探测。
+- 状态：本轮 Provider 与 Firecrawl 可靠性修复待生产发布验证（2026-07-17）。
+- 已完成：Provider 创建与模型创建解耦；新增未保存参数测活和 `/models` 探测导入；移除手填模型名；默认厂商展示名迁移；Firecrawl 网络异常三次换连接重试；代理候选窗口覆盖完整订阅池。
+- 本地门禁：Java `clean test bootJar`、Quant 16 项、Proxy 21 项、Web 13 项、OpenAPI contract check 与 Web build 全部通过。
+- 待验证：Core/Proxy CI、Liquibase 034、ArgoCD 单副本 rollout、Provider 真实测活、Firecrawl 健康节点与在线信源测试。
 - 详情：[`in-progress/TASK-20260716-runtime-configuration-control-plane.md`](./in-progress/TASK-20260716-runtime-configuration-control-plane.md)。
 
 ## S3：压缩后分裂的双环境研究工作流

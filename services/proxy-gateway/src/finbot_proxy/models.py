@@ -49,6 +49,8 @@ class NodeSelection:
     nodes: tuple[ProxyNode, ...]
     insecure_node_count: int
     rejected_insecure_node_count: int
+    eligible_node_count: int
+    selection_offset: int
 
     @property
     def enabled_insecure_node_count(self) -> int:

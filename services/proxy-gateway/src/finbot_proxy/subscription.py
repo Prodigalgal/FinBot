@@ -72,6 +72,7 @@ def select_nodes(
     maximum_nodes: int,
     preferred_names: Iterable[str],
     allow_insecure_tls: bool = False,
+    selection_offset: int = 0,
 ) -> NodeSelection:
     preferences = tuple(name.strip().casefold() for name in preferred_names if name.strip())
     supported = tuple(node for node in subscription.nodes if _is_supported(node))
@@ -86,10 +87,16 @@ def select_nodes(
         )
         remaining = tuple(node for node in supported if node not in preferred)
         supported = (*preferred, *remaining)
+    eligible_node_count = len(supported)
+    normalized_offset = selection_offset % eligible_node_count if eligible_node_count else 0
+    if normalized_offset:
+        supported = (*supported[normalized_offset:], *supported[:normalized_offset])
     return NodeSelection(
         nodes=supported[:maximum_nodes],
         insecure_node_count=insecure_node_count,
         rejected_insecure_node_count=0 if allow_insecure_tls else insecure_node_count,
+        eligible_node_count=eligible_node_count,
+        selection_offset=normalized_offset,
     )
 
 

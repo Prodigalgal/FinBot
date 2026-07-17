@@ -112,10 +112,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
 
     @Override
     @Transactional
-    public Optional<AiProviderProfile> createProvider(
-            AiProviderProfile provider,
-            AiModelProfile initialModel,
-            Instant createdAt) {
+    public Optional<AiProviderProfile> createProvider(AiProviderProfile provider, Instant createdAt) {
         var changed = jdbcClient.sql("""
                 insert into ai_provider_profile (
                   profile_id, display_name, protocol, reasoning_parameter_style,
@@ -142,9 +139,6 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 .update();
         if (changed != 1) {
             return Optional.empty();
-        }
-        if (insertModel(initialModel, createdAt) != 1) {
-            throw new IllegalStateException("Unable to create initial AI model profile");
         }
         return findProvider(provider.profileId());
     }

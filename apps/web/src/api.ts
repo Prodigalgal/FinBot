@@ -205,6 +205,8 @@ export const api = {
   putRuntimeSecret: (scope: string, targetId: string, secretName: string, value: string, expectedVersion: number) => request<unknown>(`/api/v2/runtime-secrets/${encodeURIComponent(scope)}/${encodeURIComponent(targetId)}/${encodeURIComponent(secretName)}`, { method: 'PUT', body: JSON.stringify({ value, expectedVersion }) }),
   clearRuntimeSecret: (scope: string, targetId: string, secretName: string, expectedVersion: number) => request<unknown>(`/api/v2/runtime-secrets/${encodeURIComponent(scope)}/${encodeURIComponent(targetId)}/${encodeURIComponent(secretName)}`, { method: 'DELETE', body: JSON.stringify({ expectedVersion }) }),
   probeProvider: (profileId: string) => request<ProviderModelCatalog>(`/api/v2/configuration/providers/${encodeURIComponent(profileId)}/probe`, { method: 'POST', body: '{}' }),
+  probeProviderDraft: (body: { baseUrl: string; apiKey: string; requestTimeoutSeconds: number }) =>
+    request<ProviderModelCatalog>('/api/v2/configuration/providers/probe', { method: 'POST', body: JSON.stringify(body) }),
   setupProfiles: () => request<SetupProfileDefinition[]>('/api/v2/setup-profiles'),
   previewSetupProfile: (profileId: SetupProfileDefinition['profileId']) => request<SetupProfilePreview>(`/api/v2/setup-profiles/${profileId}/preview`),
   applySetupProfile: (profileId: SetupProfileDefinition['profileId'], key: string) => request<SetupProfileApplication>(`/api/v2/setup-profiles/${profileId}/apply`, { method: 'POST', headers: idempotency(key), body: '{}' }),

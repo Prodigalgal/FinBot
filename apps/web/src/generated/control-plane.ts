@@ -19,6 +19,7 @@ export type ControlPlanePath =
   | "/api/v2/configuration/providers"
   | "/api/v2/configuration/providers/{profileId}"
   | "/api/v2/configuration/providers/{profileId}/probe"
+  | "/api/v2/configuration/providers/probe"
   | "/api/v2/configuration/settings/{settingKey}"
   | "/api/v2/evidence/documents"
   | "/api/v2/exchanges/capabilities"
@@ -108,6 +109,7 @@ export type ControlPlaneRequestPathBase =
   | `/api/v2/configuration/providers`
   | `/api/v2/configuration/providers/${string}`
   | `/api/v2/configuration/providers/${string}/probe`
+  | `/api/v2/configuration/providers/probe`
   | `/api/v2/configuration/settings/${string}`
   | `/api/v2/evidence/documents`
   | `/api/v2/exchanges/capabilities`
@@ -243,6 +245,7 @@ export type ControlPlanePostRequestPathBase =
   | `/api/v2/configuration/models`
   | `/api/v2/configuration/providers`
   | `/api/v2/configuration/providers/${string}/probe`
+  | `/api/v2/configuration/providers/probe`
   | `/api/v2/network/diagnostics`
   | `/api/v2/network/proxy-gateways/${string}/reload`
   | `/api/v2/products/catalog-sync/${string}/${string}`
@@ -324,6 +327,7 @@ export type ControlPlaneOperation =
   | { method: 'DELETE'; path: "/configuration/providers/{profileId}" }
   | { method: 'PUT'; path: "/configuration/providers/{profileId}" }
   | { method: 'POST'; path: "/configuration/providers/{profileId}/probe" }
+  | { method: 'POST'; path: "/configuration/providers/probe" }
   | { method: 'PUT'; path: "/configuration/settings/{settingKey}" }
   | { method: 'GET'; path: "/evidence/documents" }
   | { method: 'GET'; path: "/exchanges/capabilities" }

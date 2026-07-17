@@ -263,7 +263,8 @@ class LiquibasePostgresIntegrationTest {
                 0,
                 now);
 
-        assertTrue(repository.createProvider(provider, primaryModel, now).isPresent());
+        assertTrue(repository.createProvider(provider, now).isPresent());
+        assertTrue(repository.createModel(primaryModel, now).isPresent());
         assertTrue(repository.createModel(new AiModelProfile(
                 "model_runtime_secondary_" + suffix,
                 providerId,
@@ -462,6 +463,10 @@ class LiquibasePostgresIntegrationTest {
                           (select count(*) from ai_provider_profile
                            where profile_id in ('provider_gemini_default', 'provider_grok_sub2api')
                              and enabled = true) as new_ai_provider_count,
+                          (select display_name from ai_provider_profile
+                           where profile_id = 'provider_grok_sub2api') as grok_provider_name,
+                          (select display_name from ai_provider_profile
+                           where profile_id = 'provider_gemini_default') as gemini_provider_name,
                           (select enabled from ai_provider_profile
                            where profile_id = 'provider_deepseek_default') as deepseek_enabled,
                           (select base_url from ai_provider_profile
@@ -591,6 +596,8 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals("MAX", result.getString("gemini_effort"));
                 assertEquals("XHIGH", result.getString("grok_effort"));
                 assertEquals(2, result.getInt("new_ai_provider_count"));
+                assertEquals("sub2api-grok", result.getString("grok_provider_name"));
+                assertEquals("sub2api-gemini", result.getString("gemini_provider_name"));
                 assertFalse(result.getBoolean("deepseek_enabled"));
                 assertEquals(
                         "http://mimo2api.mimo2api.svc.cluster.local:8080/v1",
@@ -675,7 +682,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(35, result.getInt("changeset_count"));
+                    assertEquals(36, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
