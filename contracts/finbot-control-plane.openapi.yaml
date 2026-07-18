@@ -401,6 +401,7 @@ paths:
                     type: string
                     enum:
                       - FIRECRAWL
+                      - WEB_CRAWL
                       - EXCHANGE_GATE
                       - EXCHANGE_BYBIT
                       - PUBLIC_DATA
@@ -1548,10 +1549,13 @@ components:
           type: string
           enum:
             - RSS
+            - HTML_DOCUMENT
+            - SEARCH_DISCOVERY
             - FIRECRAWL_SCRAPE
             - FIRECRAWL_SEARCH
             - FIRECRAWL_SEARCH_THEN_SCRAPE
-            - STRUCTURED_API
+            - JSON_API
+            - SITEMAP
             - EXCHANGE_PUBLIC_API
         tier:
           type: string
@@ -1617,6 +1621,7 @@ components:
             - "null"
           enum:
             - FIRECRAWL
+            - WEB_CRAWL
             - EXCHANGE_GATE
             - EXCHANGE_BYBIT
             - PUBLIC_DATA

@@ -5,13 +5,10 @@ import io.omnnu.finbot.application.ingestion.SourceCollectionException;
 import io.omnnu.finbot.domain.ingestion.InformationSource;
 import io.omnnu.finbot.domain.ingestion.SourceMode;
 import io.omnnu.finbot.domain.network.OutboundRoute;
-import io.omnnu.finbot.infrastructure.network.RoutedHttpClientFactory;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
@@ -19,7 +16,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import javax.xml.XMLConstants;
@@ -32,14 +28,13 @@ import org.xml.sax.SAXException;
 
 @Component
 final class RssSourceCollector implements SourceCollectorAdapter {
+    private static final int MAXIMUM_RESPONSE_BYTES = 5 * 1024 * 1024;
     private static final String USER_AGENT = "FinBot/2.0 (+https://github.com/omnnu/FinBot)";
 
-    private final RoutedHttpClientFactory httpClients;
-    private final Clock clock;
+    private final CrawlerTransport transport;
 
-    RssSourceCollector(RoutedHttpClientFactory httpClients, Clock clock) {
-        this.httpClients = Objects.requireNonNull(httpClients, "httpClients");
-        this.clock = Objects.requireNonNull(clock, "clock");
+    RssSourceCollector(CrawlerTransport transport) {
+        this.transport = Objects.requireNonNull(transport, "transport");
     }
 
     @Override
@@ -66,41 +61,31 @@ final class RssSourceCollector implements SourceCollectorAdapter {
     }
 
     private List<CollectedPayload> fetchFeed(InformationSource source, URI feedUrl) {
-        var request = HttpRequest.newBuilder(feedUrl)
-                .timeout(java.time.Duration.ofSeconds(30))
-                .header("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml")
-                .header("User-Agent", USER_AGENT)
-                .GET()
-                .build();
-        try {
-            var route = source.outboundRoute() == null ? OutboundRoute.PUBLIC_DATA : source.outboundRoute();
-            var response = httpClients.client(route).send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new SourceCollectionException(
-                        "RSS_HTTP_" + response.statusCode(),
-                        "RSS source returned HTTP " + response.statusCode(),
-                        false);
-            }
-            return parseFeed(
-                    source,
-                    feedUrl,
-                    response.body(),
-                    response.statusCode(),
-                    response.headers().firstValue("content-type").orElse("application/xml"));
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new SourceCollectionException(
-                    "RSS_INTERRUPTED",
-                    "RSS request was interrupted",
-                    false);
-        } catch (java.io.IOException exception) {
-            throw new SourceCollectionException(
-                    "RSS_NETWORK_FAILURE",
-                    "RSS request failed: " + exception.getClass().getSimpleName(),
-                    false);
-        }
+        var route = source.outboundRoute() == null ? OutboundRoute.PUBLIC_DATA : source.outboundRoute();
+        var response = transport.get(new CrawlerTransport.Request(
+                feedUrl,
+                route,
+                Map.of(
+                        "Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml",
+                        "User-Agent", USER_AGENT),
+                Duration.ofSeconds(30),
+                MAXIMUM_RESPONSE_BYTES,
+                3,
+                false,
+                "RSS",
+                "RSS source"));
+        var contentType = "application/octet-stream".equals(response.contentType())
+                ? "application/xml"
+                : response.contentType();
+        return parseFeed(
+                source,
+                feedUrl,
+                new String(response.body(), StandardCharsets.UTF_8),
+                response.statusCode(),
+                contentType,
+                response.fetchedAt(),
+                response.proxyRoute(),
+                response.attempts());
     }
 
     private List<CollectedPayload> parseFeed(
@@ -108,7 +93,10 @@ final class RssSourceCollector implements SourceCollectorAdapter {
             URI feedUrl,
             String xml,
             int statusCode,
-            String contentType) {
+            String contentType,
+            Instant fetchedAt,
+            String proxyRoute,
+            int attempts) {
         try {
             var factory = secureDocumentBuilderFactory();
             var document = factory.newDocumentBuilder().parse(new ByteArrayInputStream(
@@ -117,7 +105,6 @@ final class RssSourceCollector implements SourceCollectorAdapter {
             if (entries.isEmpty()) {
                 entries = elements(document.getElementsByTagNameNS("*", "entry"));
             }
-            var fetchedAt = clock.instant();
             var result = new ArrayList<CollectedPayload>();
             for (var entry : entries) {
                 var title = firstText(entry, "title");
@@ -142,7 +129,9 @@ final class RssSourceCollector implements SourceCollectorAdapter {
                         Map.of(
                                 "collector", "rss",
                                 "feed_url", feedUrl.toString(),
-                                "source_tier", source.tier().name()),
+                                "source_tier", source.tier().name(),
+                                "proxy_route", proxyRoute,
+                                "fetch_attempts", Integer.toString(attempts)),
                         parsePublishedAt(firstText(entry, "pubDate", "published", "updated", "date")),
                         fetchedAt));
                 if (result.size() >= source.maximumResults()) {

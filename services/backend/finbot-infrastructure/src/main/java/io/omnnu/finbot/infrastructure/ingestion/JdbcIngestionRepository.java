@@ -10,6 +10,7 @@ import io.omnnu.finbot.application.ingestion.PersistEvidenceResult;
 import io.omnnu.finbot.application.ingestion.RawEvidenceRecord;
 import io.omnnu.finbot.application.ingestion.ResearchEvidencePackage;
 import io.omnnu.finbot.application.ingestion.SourceCollectionRun;
+import io.omnnu.finbot.application.ingestion.SourceFetchAttempt;
 import io.omnnu.finbot.application.research.AiCompressionRecord;
 import io.omnnu.finbot.application.research.CompressionPackage;
 import io.omnnu.finbot.application.research.CompressionRepository;
@@ -263,6 +264,36 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
     }
 
     @Override
+    public void recordFetchAttempt(SourceFetchAttempt attempt) {
+        jdbcClient.sql("""
+                insert into source_fetch_attempt (
+                  attempt_id, collection_id, source_id, requested_url, route_type,
+                  status_code, content_type, response_bytes, retry_count, outcome,
+                  error_code, parser_version, started_at, completed_at
+                ) values (
+                  :attemptId, :collectionId, :sourceId, :requestedUrl, :routeType,
+                  :statusCode, :contentType, :responseBytes, :retryCount, :outcome,
+                  :errorCode, :parserVersion, :startedAt, :completedAt
+                ) on conflict (attempt_id) do nothing
+                """)
+                .param("attemptId", attempt.attemptId())
+                .param("collectionId", attempt.collectionId().value())
+                .param("sourceId", attempt.sourceId().value())
+                .param("requestedUrl", uri(attempt.requestedUrl()))
+                .param("routeType", attempt.routeType())
+                .param("statusCode", attempt.statusCode())
+                .param("contentType", attempt.contentType())
+                .param("responseBytes", attempt.responseBytes())
+                .param("retryCount", attempt.retryCount())
+                .param("outcome", attempt.outcome())
+                .param("errorCode", safe(attempt.errorCode(), 80))
+                .param("parserVersion", safe(attempt.parserVersion(), 120))
+                .param("startedAt", timestamp(attempt.startedAt()))
+                .param("completedAt", timestamp(attempt.completedAt()))
+                .update();
+    }
+
+    @Override
     @Transactional
     public PersistEvidenceResult saveEvidence(
             RawEvidenceRecord evidence,
@@ -372,7 +403,8 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
         var sql = """
                 select document_id, evidence_id, source_id, source_tier, category,
                        trust_weight, canonical_url, title, title_key, language,
-                       normalized_text, content_hash, asset_scope::text as asset_scope,
+                       normalized_text, content_blocks::text as content_blocks,
+                       content_hash, asset_scope::text as asset_scope,
                        published_at, fetched_at, created_at
                 from normalized_document
                 """;
@@ -396,7 +428,8 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 select document.document_id, document.evidence_id, document.source_id,
                        document.source_tier, document.category, document.trust_weight,
                        document.canonical_url, document.title, document.title_key,
-                       document.language, document.normalized_text, document.content_hash,
+                       document.language, document.normalized_text,
+                       document.content_blocks::text as content_blocks, document.content_hash,
                        document.asset_scope::text as asset_scope, document.published_at,
                        document.fetched_at, document.created_at
                 from normalized_document document
@@ -508,12 +541,13 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 insert into normalized_document (
                   document_id, evidence_id, source_id, source_tier, category,
                   trust_weight, canonical_url, title, title_key, language,
-                  normalized_text, content_hash, asset_scope, published_at,
+                  normalized_text, content_blocks, content_hash, asset_scope, published_at,
                   fetched_at, created_at
                 ) values (
                   :documentId, :evidenceId, :sourceId, :sourceTier, :category,
                   :trustWeight, :canonicalUrl, :title, :titleKey, :language,
-                  :normalizedText, :contentHash, cast(:assetScope as jsonb), :publishedAt,
+                  :normalizedText, cast(:contentBlocks as jsonb), :contentHash,
+                  cast(:assetScope as jsonb), :publishedAt,
                   :fetchedAt, :createdAt
                 ) on conflict (evidence_id) do nothing
                 """)
@@ -528,6 +562,7 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("titleKey", document.titleKey())
                 .param("language", document.language())
                 .param("normalizedText", document.normalizedText())
+                .param("contentBlocks", json(document.contentBlocks()))
                 .param("contentHash", document.contentHash())
                 .param("assetScope", json(document.assetScope()))
                 .param("publishedAt", timestamp(document.publishedAt()))
@@ -575,6 +610,7 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 resultSet.getString("title_key"),
                 resultSet.getString("language"),
                 resultSet.getString("normalized_text"),
+                contentBlocks(resultSet.getString("content_blocks")),
                 resultSet.getString("content_hash"),
                 strings(resultSet.getString("asset_scope")),
                 instant(resultSet.getObject("published_at", OffsetDateTime.class)),
@@ -587,6 +623,16 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
             return List.of(objectMapper.readValue(json, String[].class));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to decode ingestion string collection", exception);
+        }
+    }
+
+    private List<io.omnnu.finbot.application.ingestion.ContentBlock> contentBlocks(String json) {
+        try {
+            return List.of(objectMapper.readValue(
+                    json,
+                    io.omnnu.finbot.application.ingestion.ContentBlock[].class));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to decode normalized document content blocks", exception);
         }
     }
 

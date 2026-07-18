@@ -9,6 +9,16 @@
 - 外部阻断：Firecrawl 代理池共 2494 个候选，两个独立 32 节点窗口均为 `403/429`；原始 403 明确表示出口 IP 可疑，需更换出口或配置 Firecrawl API Key，仍保持强制代理。
 - 详情：[`in-progress/TASK-20260716-runtime-configuration-control-plane.md`](./in-progress/TASK-20260716-runtime-configuration-control-plane.md)。
 
+## S3：自研信息采集内核
+
+- 状态：实现中，协议与证据链首批已完成（2026-07-18）。
+- 目标：由 FinBot 自己完成请求、代理路由、静态协议解析、抽取、规范化和观测，Firecrawl 降级为来源级可选兜底。
+- 已完成：固定 11 个默认来源目录；`HTML_DOCUMENT`、`RSS`、`JSON_API`、`SITEMAP` first-party collector；`WEB_CRAWL` 独立代理路由和独立 proxy gateway；Firecrawl 固定私有四节点池；搜索发现 `SEARCH_DISCOVERY`（SearXNG/Brave 兼容 JSON）；统一 `CrawlerTransport`；`ContentEnvelope`/稳定 `blockId` 安全视图；`normalized_document.content_blocks` 与多 Agent 合法 block 引用门禁；全局/单主机背压；SSRF（配置与运行时 DNS）拒绝、代理 fail-closed、每请求换出口、403/网络失败错误码；append-only `source_fetch_attempt`；Liquibase 035-039 和相关 Java/Web/OpenAPI 测试。
+- 当前边界：仍需在 CI/真实 PostgreSQL 与集群代理出口完成影子比较、在线 smoke 和生产切换门禁；第一阶段不引入浏览器渲染，不改变研究和交易工作流。
+- 需求：[`../docs/requirements/2026-07-18-first-party-crawling-architecture.md`](../docs/requirements/2026-07-18-first-party-crawling-architecture.md)。
+- 决策：[`../docs/decisions/022-first-party-crawling-core.md`](../docs/decisions/022-first-party-crawling-core.md)。
+- 任务：[`in-progress/TASK-20260718-first-party-crawler.md`](./in-progress/TASK-20260718-first-party-crawler.md)。
+
 ## S3：压缩后分裂的双环境研究工作流
 
 - 状态：进行中（2026-07-15）。

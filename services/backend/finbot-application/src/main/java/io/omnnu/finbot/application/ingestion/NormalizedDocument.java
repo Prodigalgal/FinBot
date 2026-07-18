@@ -21,12 +21,14 @@ public record NormalizedDocument(
         String titleKey,
         String language,
         String normalizedText,
+        List<ContentBlock> contentBlocks,
         String contentHash,
         List<String> assetScope,
         Instant publishedAt,
         Instant fetchedAt,
         Instant createdAt) {
     public NormalizedDocument {
+        contentBlocks = List.copyOf(contentBlocks);
         assetScope = List.copyOf(assetScope);
     }
 }

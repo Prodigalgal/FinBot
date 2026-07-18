@@ -43,11 +43,11 @@ spec:
                 secretKeyRef:
                   name: finbot-secrets
                   key: FINBOT_JAVA_SERVICE_TOKEN
-            - name: PROXY_SUBSCRIPTION_URL
+            - name: PROXY_NODES
               valueFrom:
                 secretKeyRef:
                   name: finbot-secrets
-                  key: FIRECRAWL_VLESS_SUBSCRIPTION_URL
+                  key: FIRECRAWL_PROXY_NODES
             - name: PROXY_MAXIMUM_NODES
               value: "32"
             - name: PROXY_NODE_PORT_START
@@ -66,6 +66,120 @@ spec:
               value: '"success":true'
             - name: PROXY_PROBE_TIMEOUT_SECONDS
               value: "25"
+            - name: PROXY_PROBE_CONCURRENCY
+              value: "4"
+          ports:
+            - name: proxy
+              containerPort: 8080
+            - name: health
+              containerPort: 8081
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: health
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: health
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp
+      volumes:
+        - name: runtime
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finbot-web-crawl-proxy
+  labels:
+    app.kubernetes.io/name: finbot-web-crawl-proxy
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: proxy-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-web-crawl-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-web-crawl-proxy
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: proxy-gateway
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: finbot-dockerhub
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: proxy
+          image: ghcr.io/example/finbot-proxy:latest
+          env:
+            - name: PROXY_CONTROL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_JAVA_SERVICE_TOKEN
+            - name: PROXY_SUBSCRIPTION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: WEB_CRAWL_SUBSCRIPTION_URL
+            - name: PROXY_MAXIMUM_NODES
+              value: "32"
+            - name: PROXY_NODE_PORT_START
+              value: "10000"
+            - name: PROXY_SUBSCRIPTION_REFRESH_SECONDS
+              value: "1800"
+            - name: PROXY_ALLOW_INSECURE_TLS
+              value: "false"
+            - name: PROXY_PROBE_URL
+              value: https://one.one.one.one/cdn-cgi/trace
+            - name: PROXY_PROBE_METHOD
+              value: GET
+            - name: PROXY_PROBE_EXPECTED_BODY
+              value: "ip="
+            - name: PROXY_PROBE_TIMEOUT_SECONDS
+              value: "20"
             - name: PROXY_PROBE_CONCURRENCY
               value: "4"
           ports:

@@ -190,6 +190,12 @@ public final class IngestionApplicationService implements IngestionUseCase {
                     throw new IllegalArgumentException("RSS source requires at least one feed URL");
                 }
             }
+            case HTML_DOCUMENT -> {
+                if (source.seedUrls().isEmpty()) {
+                    throw new IllegalArgumentException("HTML source requires at least one seed URL");
+                }
+            }
+            case SEARCH_DISCOVERY -> requireEndpoint(source);
             case FIRECRAWL_SCRAPE -> {
                 requireEndpoint(source);
                 if (source.seedUrls().isEmpty()) {
@@ -198,7 +204,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 }
             }
             case FIRECRAWL_SEARCH, FIRECRAWL_SEARCH_THEN_SCRAPE -> requireEndpoint(source);
-            case STRUCTURED_API, EXCHANGE_PUBLIC_API -> requireEndpoint(source);
+            case JSON_API, SITEMAP, EXCHANGE_PUBLIC_API -> requireEndpoint(source);
         }
     }
 
@@ -267,6 +273,12 @@ public final class IngestionApplicationService implements IngestionUseCase {
             var duplicates = 0;
             var excerpts = new ArrayList<EvidenceExcerpt>();
             for (var payload : payloads) {
+                repository.recordFetchAttempt(fetchAttempt(
+                        collectionId,
+                        source,
+                        payload,
+                        "PREPARED",
+                        null));
                 var contentHash = hash(payload.rawContent());
                 var deduplicationKey = hash(String.join("\u001f",
                         source.sourceId().value(),
@@ -285,7 +297,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
                         payload.contentType(),
                         payload.rawContent(),
                         payload.responseHeaders(),
-                        payload.metadata(),
+                        payload.evidenceMetadata(),
                         contentHash,
                         deduplicationKey,
                         payload.publishedAt(),
@@ -323,6 +335,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
                     List.copyOf(excerpts));
         } catch (SourceCollectionException exception) {
             var status = exception.blocked() ? CollectionStatus.BLOCKED : CollectionStatus.FAILED;
+            repository.recordFetchAttempt(failedFetchAttempt(collectionId, source, exception));
             repository.finishCollection(
                     collectionId,
                     status,
@@ -345,6 +358,13 @@ public final class IngestionApplicationService implements IngestionUseCase {
                     List.of());
         } catch (RuntimeException exception) {
             try {
+                repository.recordFetchAttempt(failedFetchAttempt(
+                        collectionId,
+                        source,
+                        new SourceCollectionException(
+                                "SOURCE_COLLECTION_UNEXPECTED",
+                                "Source collection failed unexpectedly",
+                                false)));
                 repository.finishCollection(
                         collectionId,
                         CollectionStatus.FAILED,
@@ -358,6 +378,68 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 exception.addSuppressed(persistenceException);
             }
             throw exception;
+        }
+    }
+
+    private SourceFetchAttempt fetchAttempt(
+            CollectionRunId collectionId,
+            InformationSource source,
+            CollectedPayload payload,
+            String outcome,
+            String errorCode) {
+        var metadata = payload.metadata();
+        var attemptCount = parsePositive(metadata.get("fetch_attempts"));
+        return new SourceFetchAttempt(
+                idGenerator.next("fetch_"),
+                collectionId,
+                source.sourceId(),
+                payload.requestedUrl(),
+                source.outboundRoute() == null ? "DIRECT" : source.outboundRoute().name(),
+                payload.statusCode(),
+                payload.contentType(),
+                payload.rawContent().getBytes(java.nio.charset.StandardCharsets.UTF_8).length,
+                Math.max(0, attemptCount - 1),
+                outcome,
+                errorCode,
+                metadata.getOrDefault("collector", "unknown"),
+                payload.fetchedAt(),
+                payload.fetchedAt());
+    }
+
+    private SourceFetchAttempt failedFetchAttempt(
+            CollectionRunId collectionId,
+            InformationSource source,
+            SourceCollectionException exception) {
+        var now = clock.instant();
+        var requestedUrl = source.endpointBaseUrl();
+        if (requestedUrl == null && !source.seedUrls().isEmpty()) {
+            requestedUrl = source.seedUrls().getFirst();
+        }
+        if (requestedUrl == null && !source.feedUrls().isEmpty()) {
+            requestedUrl = source.feedUrls().getFirst();
+        }
+        return new SourceFetchAttempt(
+                idGenerator.next("fetch_"),
+                collectionId,
+                source.sourceId(),
+                requestedUrl,
+                source.outboundRoute() == null ? "DIRECT" : source.outboundRoute().name(),
+                null,
+                null,
+                0,
+                0,
+                exception.blocked() ? "BLOCKED" : "FAILED",
+                exception.errorCode(),
+                "none",
+                now,
+                now);
+    }
+
+    private static int parsePositive(String value) {
+        try {
+            return value == null ? 1 : Math.max(1, Integer.parseInt(value));
+        } catch (NumberFormatException exception) {
+            return 1;
         }
     }
 

@@ -60,6 +60,10 @@ finbot:
     event-poll-interval: ${FINBOT_WORKFLOW_EVENT_POLL_INTERVAL:PT0.5S}
   trading-ledger:
     stale-after: ${FINBOT_TRADING_LEDGER_STALE_AFTER:PT10M}
+  crawler:
+    maximum-concurrent: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT:16}
+    maximum-concurrent-per-host: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT_PER_HOST:2}
+    permit-wait-timeout: ${FINBOT_CRAWLER_PERMIT_WAIT_TIMEOUT:PT10S}
   worker:
     instance-name: ${HOSTNAME:finbot-local}
     poll-delay: ${FINBOT_WORKER_POLL_DELAY:PT2S}

@@ -68,7 +68,7 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
             case FIRECRAWL_SCRAPE -> scrapeSeeds(source);
             case FIRECRAWL_SEARCH -> search(source, query, false);
             case FIRECRAWL_SEARCH_THEN_SCRAPE -> search(source, query, true);
-            case RSS, STRUCTURED_API, EXCHANGE_PUBLIC_API -> throw new IllegalStateException(
+            case RSS, HTML_DOCUMENT, SEARCH_DISCOVERY, JSON_API, SITEMAP, EXCHANGE_PUBLIC_API -> throw new IllegalStateException(
                     "Firecrawl collector received an unsupported source mode");
         };
     }

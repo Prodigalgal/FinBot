@@ -72,6 +72,62 @@ class IngestionApplicationServiceTest {
     }
 
     @Test
+    void rejectsFirstPartyHtmlWithoutSeedUrl() {
+        var definition = new SourceDefinition(
+                "Missing HTML seed",
+                SourceMode.HTML_DOCUMENT,
+                SourceTier.T1,
+                "official_news",
+                "first_party_html",
+                new BigDecimal("0.9"),
+                900,
+                SourcePriority.P1,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false,
+                OutboundRoute.WEB_CRAWL,
+                10,
+                0,
+                true);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service(new StubRepository()).createSource(new CreateSourceCommand(definition)));
+    }
+
+    @Test
+    void createsSearchDiscoverySourceWithProviderNeutralCredentialBinding() {
+        var definition = new SourceDefinition(
+                "Brave search",
+                SourceMode.SEARCH_DISCOVERY,
+                SourceTier.T2,
+                "market_news",
+                "brave",
+                new BigDecimal("0.8"),
+                900,
+                SourcePriority.P2,
+                List.of("BTCUSDT"),
+                List.of(),
+                List.of(),
+                List.of("bitcoin market latest"),
+                URI.create("https://api.search.brave.com/res/v1/web/search"),
+                true,
+                OutboundRoute.WEB_CRAWL,
+                10,
+                0,
+                false);
+
+        var created = service(new StubRepository()).createSource(new CreateSourceCommand(definition));
+
+        assertEquals(SourceMode.SEARCH_DISCOVERY, created.mode());
+        assertEquals("brave", created.provider());
+        assertEquals(OutboundRoute.WEB_CRAWL, created.outboundRoute());
+        assertEquals("FINBOT_INFORMATION_SOURCE_KEYS_JSON", created.credentialEnvironmentVariable());
+    }
+
+    @Test
     void completesCollectionAsFailedBeforePropagatingUnexpectedCollectorFailure() {
         var repository = new StubRepository();
         var service = new IngestionApplicationService(
@@ -195,6 +251,11 @@ class IngestionApplicationServiceTest {
         @Override
         public void startCollection(SourceCollectionRun collectionRun) {
             assertEquals(CollectionStatus.RUNNING, collectionRun.status());
+        }
+
+        @Override
+        public void recordFetchAttempt(SourceFetchAttempt attempt) {
+            // The application tests assert collection state; persistence is covered by the JDBC adapter.
         }
 
         @Override

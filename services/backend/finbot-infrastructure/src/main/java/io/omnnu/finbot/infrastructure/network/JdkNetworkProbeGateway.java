@@ -22,6 +22,8 @@ public final class JdkNetworkProbeGateway implements NetworkProbeGateway {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
     private static final Map<OutboundRoute, URI> TARGETS = Map.of(
+            OutboundRoute.WEB_CRAWL,
+            URI.create("https://www.cloudflare.com/cdn-cgi/trace"),
             OutboundRoute.FIRECRAWL,
             URI.create("https://www.cloudflare.com/cdn-cgi/trace"),
             OutboundRoute.EXCHANGE_GATE,

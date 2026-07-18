@@ -65,8 +65,12 @@ public record IngestionWorkspace(
             String stage,
             String status,
             String summary,
+            List<String> citations,
             String errorCode,
             String errorMessage,
             Instant createdAt) {
+        public EvidenceAiReviewSummary {
+            citations = List.copyOf(citations);
+        }
     }
 }

@@ -110,7 +110,7 @@ class LiquibasePostgresIntegrationTest {
             case "FINBOT_INFORMATION_SOURCE_KEYS_JSON" -> Optional.of(
                     "{\"source_test\":\"source-fallback-key\"}");
             case "FINBOT_PROXY_ROUTE_URLS_JSON" -> Optional.of(
-                    "{\"FIRECRAWL\":\"http://proxy.example:8080\"}");
+                    "{\"WEB_CRAWL\":\"http://proxy.example:8080\",\"FIRECRAWL\":\"http://proxy.example:8080\"}");
             case "FINBOT_PROXY_GATEWAY_SECRETS_JSON" -> Optional.of("""
                     {"proxygateway_firecrawl":{
                       "SUBSCRIPTION_URL":"https://subscription.example/list"
@@ -196,6 +196,11 @@ class LiquibasePostgresIntegrationTest {
         assertEquals("http://proxy.example:8080", store.resolve(
                 RuntimeSecretScope.PROXY_ROUTE,
                 "FIRECRAWL",
+                "PROXY_URL",
+                "FINBOT_PROXY_ROUTE_URLS_JSON").orElseThrow());
+        assertEquals("http://proxy.example:8080", store.resolve(
+                RuntimeSecretScope.PROXY_ROUTE,
+                "WEB_CRAWL",
                 "PROXY_URL",
                 "FINBOT_PROXY_ROUTE_URLS_JSON").orElseThrow());
         assertEquals("https://subscription.example/list", store.resolve(
@@ -533,6 +538,10 @@ class LiquibasePostgresIntegrationTest {
                            where execution_enabled = false) as research_only_instrument_count,
                           (select proxy_route_type from information_source
                            where source_id = 'source_x_market_search') as x_route,
+                          (select source_mode from information_source
+                           where source_id = 'source_x_market_search') as x_mode,
+                          (select enabled from information_source
+                           where source_id = 'source_x_market_search') as x_enabled,
                           (select count(*) from trade_execution_ai_stage
                            where version = 2
                              and user_prompt_template like '%UNSPECIFIED%')
@@ -585,7 +594,7 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals("workflowversion_standard_v6", result.getString("published_version_id"));
                 assertEquals("multi_strategy_ensemble", result.getString("published_quant_operation"));
                 assertEquals(11, result.getInt("source_count"));
-                assertEquals(4, result.getInt("proxy_route_count"));
+                assertEquals(5, result.getInt("proxy_route_count"));
                 assertEquals(5, result.getInt("watchlist_item_count"));
                 assertFalse(result.getBoolean("gate_proxy_required"));
                 assertTrue(result.getBoolean("gate_direct_allowed"));
@@ -619,7 +628,9 @@ class LiquibasePostgresIntegrationTest {
                         .compareTo(result.getBigDecimal("maximum_leverage")));
                 assertTrue(result.getBoolean("workflow_active"));
                 assertEquals(7, result.getInt("research_only_instrument_count"));
-                assertEquals("FIRECRAWL", result.getString("x_route"));
+                assertEquals("WEB_CRAWL", result.getString("x_route"));
+                assertEquals("SEARCH_DISCOVERY", result.getString("x_mode"));
+                assertFalse(result.getBoolean("x_enabled"));
                 assertEquals(2, result.getInt("execution_contract_stage_count"));
                 assertEquals(9, result.getInt("projection_value_column_count"));
                 assertEquals(6, result.getInt("new_control_column_count"));

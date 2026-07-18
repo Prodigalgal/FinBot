@@ -131,7 +131,7 @@ jobs:
           FINBOT_AI_PROVIDER_KEYS_JSON: '{"provider_mimo_default":"ci-not-used","provider_deepseek_default":"ci-not-used","provider_sub2api_default":"ci-not-used","provider_gemini_default":"ci-not-used","provider_grok_sub2api":"ci-not-used"}'
           FINBOT_EXCHANGE_ACCOUNT_CREDENTIALS_JSON: '{"account_gate_testnet_default":{"API_KEY":"ci-not-used","API_SECRET":"ci-not-used"},"account_bybit_demo_default":{"API_KEY":"ci-not-used","API_SECRET":"ci-not-used"}}'
           FINBOT_INFORMATION_SOURCE_KEYS_JSON: '{}'
-          FINBOT_PROXY_ROUTE_URLS_JSON: '{"FIRECRAWL":"http://127.0.0.1:9999","EXCHANGE_GATE":"http://127.0.0.1:9999","EXCHANGE_BYBIT":"http://127.0.0.1:9999"}'
+          FINBOT_PROXY_ROUTE_URLS_JSON: '{"WEB_CRAWL":"http://127.0.0.1:9999","FIRECRAWL":"http://127.0.0.1:9999","EXCHANGE_GATE":"http://127.0.0.1:9999","EXCHANGE_BYBIT":"http://127.0.0.1:9999"}'
           FINBOT_PROXY_GATEWAY_SECRETS_JSON: '{}'
           FINBOT_SUB2API_BASE_URL: https://example.invalid/v1
           FINBOT_URL: http://127.0.0.1:4173

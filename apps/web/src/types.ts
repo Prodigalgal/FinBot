@@ -558,7 +558,7 @@ export interface IngestionWorkspace {
   recentAiReviews: Array<{
     reviewId: string; workflowRunId: string; documentId: string; nodeId: string;
     stage: string; status: string; summary: string | null; errorCode: string | null;
-    errorMessage: string | null; createdAt: string;
+    citations: string[]; errorMessage: string | null; createdAt: string;
   }>;
   generatedAt: string;
 }

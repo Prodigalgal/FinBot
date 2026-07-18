@@ -2,6 +2,8 @@ package io.omnnu.finbot.infrastructure.workspace;
 
 import static io.omnnu.finbot.infrastructure.jdbc.PostgresJdbcParameters.timestamp;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
 import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
 import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
@@ -31,16 +33,19 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceRepository {
     private final JdbcClient jdbcClient;
+    private final ObjectMapper objectMapper;
     private final EnvironmentValueResolver environment;
     private final ProxyRouteResolver proxyRoutes;
     private final RuntimeSecretStore runtimeSecrets;
 
     public JdbcPlatformWorkspaceRepository(
             JdbcClient jdbcClient,
+            ObjectMapper objectMapper,
             EnvironmentValueResolver environment,
             ProxyRouteResolver proxyRoutes,
             RuntimeSecretStore runtimeSecrets) {
         this.jdbcClient = Objects.requireNonNull(jdbcClient, "jdbcClient");
+        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.environment = Objects.requireNonNull(environment, "environment");
         this.proxyRoutes = Objects.requireNonNull(proxyRoutes, "proxyRoutes");
         this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
@@ -147,7 +152,9 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 .list();
         var reviews = jdbcClient.sql("""
                 select review_id, workflow_run_id, document_id, node_id, stage, status,
-                       content->>'summary' as summary, error_code, error_message, created_at
+                       content->>'summary' as summary,
+                       coalesce(content->'citations', '[]'::jsonb)::text as citations,
+                       error_code, error_message, created_at
                 from evidence_ai_review
                 order by created_at desc, id desc
                 limit :limit
@@ -161,6 +168,7 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                         resultSet.getString("stage"),
                         resultSet.getString("status"),
                         safe(resultSet.getString("summary")),
+                        strings(resultSet.getString("citations")),
                         resultSet.getString("error_code"),
                         safe(resultSet.getString("error_message")),
                         instant(resultSet, "created_at")))
@@ -168,6 +176,14 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
         return new IngestionWorkspace(
                 totals.rawEvidence(), totals.documents(), totals.compressions(), totals.aiReviews(),
                 sources, runs, reviews, generatedAt);
+    }
+
+    private List<String> strings(String json) {
+        try {
+            return List.of(objectMapper.readValue(json, String[].class));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to decode workspace string collection", exception);
+        }
     }
 
     @Override
@@ -400,10 +416,23 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
     private PlatformReadiness.Check sourceCheck(Instant now) {
         var enabledSources = scalarLong(
                 "select count(*) from information_source where enabled and deleted_at is null");
-        var firecrawlReady = routeReady(OutboundRoute.FIRECRAWL);
-        var status = enabledSources == 0 || !firecrawlReady ? "BLOCKED" : "READY";
-        var detail = enabledSources + " 个信息源已启用；Firecrawl 路由"
-                + (firecrawlReady ? "可解析" : "未满足 fail-closed 条件");
+        var routes = jdbcClient.sql("""
+                select distinct proxy_route_type from information_source
+                where enabled and deleted_at is null and proxy_route_type is not null
+                order by proxy_route_type
+                """)
+                .query(String.class)
+                .list();
+        var unavailableRoutes = routes.stream()
+                .map(OutboundRoute::valueOf)
+                .filter(route -> !routeReady(route))
+                .map(OutboundRoute::name)
+                .toList();
+        var status = enabledSources == 0 || !unavailableRoutes.isEmpty() ? "BLOCKED" : "READY";
+        var detail = enabledSources + " 个信息源已启用；"
+                + (unavailableRoutes.isEmpty()
+                        ? routes.size() + " 条出站路由均可解析"
+                        : "以下路由未满足 fail-closed 条件：" + String.join(", ", unavailableRoutes));
         return check("INGESTION", "信息采集", status, detail, "ingestion", now);
     }
 

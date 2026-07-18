@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -379,8 +380,7 @@ public final class CompressionApplicationService implements CompressionUseCase {
     }
 
     private static String documentContext(NormalizedDocument document) {
-        var text = document.normalizedText();
-        var boundedText = text.substring(0, Math.min(text.length(), MAXIMUM_DOCUMENT_CHARACTERS));
+        var boundedText = referencedDocumentText(document);
         return "document_id: " + document.documentId().value()
                 + "\nevidence_id: " + document.evidenceId().value()
                 + "\nsource_id: " + document.sourceId().value()
@@ -388,6 +388,23 @@ public final class CompressionApplicationService implements CompressionUseCase {
                 + "\ntrust_weight: " + document.trustWeight()
                 + "\ntitle: " + document.title()
                 + "\ntext:\n" + boundedText;
+    }
+
+    private static String referencedDocumentText(NormalizedDocument document) {
+        if (document.contentBlocks().isEmpty()) {
+            var text = document.normalizedText();
+            return text.substring(0, Math.min(text.length(), MAXIMUM_DOCUMENT_CHARACTERS));
+        }
+        var result = new StringBuilder();
+        for (var block : document.contentBlocks()) {
+            var line = '[' + block.blockId() + "] " + block.text() + '\n';
+            var remaining = MAXIMUM_DOCUMENT_CHARACTERS - result.length();
+            if (remaining <= 0) {
+                break;
+            }
+            result.append(line, 0, Math.min(line.length(), remaining));
+        }
+        return result.toString().stripTrailing();
     }
 
     private static String renderReviews(List<ReviewResult> reviews) {
@@ -413,22 +430,33 @@ public final class CompressionApplicationService implements CompressionUseCase {
     private static String contractInstruction() {
         return "\n\n只返回 JSON：{\"summary\":\"...\",\"key_points\":[\"...\"],"
                 + "\"risks\":[\"...\"],\"missing_evidence\":[\"...\"],"
-                + "\"citations\":[\"document_id\",\"evidence_id\",\"source_id\"]}。"
+                + "\"citations\":[\"b0\",\"b1\"]}。citations 必须列出支撑结论的原文 block ID，"
+                + "不得生成输入中不存在的 block ID。"
                 + "不要输出隐藏思维链。";
     }
 
     private static CompressionContent withMandatoryCitations(
             CompressionContent content,
             NormalizedDocument document) {
+        var allowedBlocks = document.contentBlocks().stream()
+                .map(io.omnnu.finbot.application.ingestion.ContentBlock::blockId)
+                .collect(java.util.stream.Collectors.toSet());
+        var citations = new LinkedHashSet<String>();
+        citations.add(document.documentId().value());
+        citations.add(document.evidenceId().value());
+        citations.add(document.sourceId().value());
+        content.citations().stream()
+                .filter(allowedBlocks::contains)
+                .forEach(citations::add);
+        if (!allowedBlocks.isEmpty() && citations.size() == 3) {
+            throw new IllegalArgumentException("AI evidence review did not cite a valid source block");
+        }
         return new CompressionContent(
                 content.summary(),
                 content.keyPoints(),
                 content.risks(),
                 content.missingEvidence(),
-                List.of(
-                        document.documentId().value(),
-                        document.evidenceId().value(),
-                        document.sourceId().value()));
+                List.copyOf(citations));
     }
 
     private static CompressionContent fallback(
@@ -436,6 +464,14 @@ public final class CompressionApplicationService implements CompressionUseCase {
             String errorMessage) {
         var text = document.normalizedText();
         var excerpt = text.substring(0, Math.min(text.length(), 700));
+        var citations = new ArrayList<String>();
+        citations.add(document.documentId().value());
+        citations.add(document.evidenceId().value());
+        citations.add(document.sourceId().value());
+        document.contentBlocks().stream()
+                .findFirst()
+                .map(io.omnnu.finbot.application.ingestion.ContentBlock::blockId)
+                .ifPresent(citations::add);
         return new CompressionContent(
                 excerpt,
                 List.of(),
@@ -443,10 +479,7 @@ public final class CompressionApplicationService implements CompressionUseCase {
                 List.of(Objects.requireNonNullElse(
                         errorMessage,
                         "AI evidence consensus unavailable; deterministic excerpt retained")),
-                List.of(
-                        document.documentId().value(),
-                        document.evidenceId().value(),
-                        document.sourceId().value()));
+                citations);
     }
 
     private static CompressionItem item(

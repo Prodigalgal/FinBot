@@ -65,6 +65,24 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: finbot-web-crawl-proxy
+  labels:
+    app.kubernetes.io/name: finbot-web-crawl-proxy
+    app.kubernetes.io/part-of: finbot
+spec:
+  selector:
+    app.kubernetes.io/name: finbot-web-crawl-proxy
+  ports:
+    - name: proxy
+      port: 8080
+      targetPort: proxy
+    - name: health
+      port: 8081
+      targetPort: health
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: finbot-exchange-proxy
   labels:
     app.kubernetes.io/name: finbot-exchange-proxy

@@ -67,3 +67,13 @@ databaseChangeLog:
       file: db/changelog/releases/033-information-source-management.sql
   - include:
       file: db/changelog/releases/034-provider-display-names.sql
+  - include:
+      file: db/changelog/releases/035-first-party-source-protocol.sql
+  - include:
+      file: db/changelog/releases/036-search-discovery-protocol.sql
+  - include:
+      file: db/changelog/releases/037-normalized-document-content-blocks.sql
+  - include:
+      file: db/changelog/releases/038-json-sitemap-protocol.sql
+  - include:
+      file: db/changelog/releases/039-source-fetch-attempt.sql

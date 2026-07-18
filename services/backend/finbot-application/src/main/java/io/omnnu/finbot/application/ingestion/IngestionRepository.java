@@ -30,6 +30,8 @@ public interface IngestionRepository {
 
     void startCollection(SourceCollectionRun collectionRun);
 
+    void recordFetchAttempt(SourceFetchAttempt attempt);
+
     PersistEvidenceResult saveEvidence(
             RawEvidenceRecord evidence,
             Optional<NormalizedDocument> normalizedDocument);

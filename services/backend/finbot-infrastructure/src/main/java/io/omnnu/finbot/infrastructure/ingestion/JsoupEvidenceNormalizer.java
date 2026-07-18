@@ -21,7 +21,6 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.jsoup.Jsoup;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -47,7 +46,7 @@ public final class JsoupEvidenceNormalizer implements EvidenceNormalizer {
             InformationSource source,
             EvidenceId evidenceId,
             CollectedPayload payload) {
-        var text = clean(payload.rawContent(), payload.contentType());
+        var text = clean(payload);
         if (text.length() < MINIMUM_DOCUMENT_CHARACTERS) {
             return Optional.empty();
         }
@@ -68,6 +67,7 @@ public final class JsoupEvidenceNormalizer implements EvidenceNormalizer {
                 titleKey(title),
                 language(text),
                 text,
+                payload.envelope().blocks(),
                 contentHash,
                 source.assetScope(),
                 payload.publishedAt(),
@@ -75,13 +75,13 @@ public final class JsoupEvidenceNormalizer implements EvidenceNormalizer {
                 clock.instant()));
     }
 
-    private static String clean(String rawContent, String contentType) {
+    private static String clean(CollectedPayload payload) {
+        var rawContent = payload.rawContent();
+        var contentType = payload.contentType();
         var value = rawContent;
         if (contentType.toLowerCase(Locale.ROOT).contains("html")
                 || rawContent.stripLeading().startsWith("<")) {
-            var document = Jsoup.parse(rawContent);
-            document.select("script,style,noscript,svg,canvas,nav,footer").remove();
-            value = document.text();
+            value = payload.envelope().normalizedText();
         } else {
             value = MARKDOWN_LINK.matcher(value).replaceAll("$1");
             value = MARKDOWN_MARKER.matcher(value).replaceAll("");

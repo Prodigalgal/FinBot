@@ -19,6 +19,7 @@ import io.omnnu.finbot.application.ai.AiTextDelta;
 import io.omnnu.finbot.application.ai.AiUsageReported;
 import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
 import io.omnnu.finbot.application.ingestion.NormalizedDocument;
+import io.omnnu.finbot.application.ingestion.ContentBlock;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.application.workflow.WorkflowEventFactory;
 import io.omnnu.finbot.application.workflow.WorkflowEventPublisher;
@@ -94,7 +95,7 @@ final class CompressionApplicationServiceTest {
         var finalCompression = repository.compressions().getFirst();
         assertEquals(CompressionStatus.COMPLETED, finalCompression.status());
         assertEquals("node_validator-call-1", finalCompression.content().summary());
-        assertEquals(List.of("document_consensus", "evidence_consensus", "source_consensus"),
+        assertEquals(List.of("document_consensus", "evidence_consensus", "source_consensus", "b0"),
                 finalCompression.content().citations());
     }
 
@@ -142,7 +143,7 @@ final class CompressionApplicationServiceTest {
                 List.of(output),
                 List.of(),
                 List.of(),
-                List.of("untrusted-model-reference"));
+                List.of("b0", "untrusted-model-reference"));
         try (var executor = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().factory())) {
             var service = new CompressionApplicationService(
                     repository,
@@ -193,6 +194,12 @@ final class CompressionApplicationServiceTest {
                 "evidence title",
                 "zh",
                 "原始规范化证据包含价格、时效、反例和风险边界。",
+                List.of(new ContentBlock(
+                        "b0",
+                        "PARAGRAPH",
+                        "原始规范化证据包含价格、时效、反例和风险边界。",
+                        0,
+                        java.util.Map.of("tag", "p"))),
                 "a".repeat(64),
                 List.of("BTCUSDT"),
                 NOW,
