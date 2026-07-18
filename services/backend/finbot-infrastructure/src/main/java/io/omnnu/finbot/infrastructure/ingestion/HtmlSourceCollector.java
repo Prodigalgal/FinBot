@@ -34,7 +34,7 @@ final class HtmlSourceCollector implements SourceCollectorAdapter {
 
     HtmlSourceCollector(
             CrawlerTransport transport,
-            ContentEnvelopeBuilder envelopeBuilder) {
+            JsoupContentEnvelopeBuilder envelopeBuilder) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.envelopeBuilder = Objects.requireNonNull(envelopeBuilder, "envelopeBuilder");
     }
