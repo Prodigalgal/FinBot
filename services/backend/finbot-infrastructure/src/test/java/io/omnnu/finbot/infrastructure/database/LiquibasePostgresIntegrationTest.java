@@ -647,7 +647,7 @@ class LiquibasePostgresIntegrationTest {
                              where source_id in (
                                'source_reuters_search','source_ap_search','source_searxng_news_search'
                              ) and endpoint_base_url =
-                               'http://finbot-searxng:8080/search?categories=news&language=en&engine_shortcuts=gon%2Cbin%2Cddn%2Cbrnews%2Cqwn%2Cspn%2Cyhn'
+                               'http://finbot-searxng:8080/search?categories=news&language=en&engine_shortcuts=bi%2Cddg%2Cgon%2Cbin%2Cddn'
                                and deleted_at is null) as searxng_news_shortcut_mapping_count
                           , (select count(*) from information_source
                              where source_id = 'source_searxng_global_search'
@@ -658,7 +658,7 @@ class LiquibasePostgresIntegrationTest {
                              where source_id in (
                                'source_searxng_cn_mainstream','source_searxng_cn_finance'
                              ) and endpoint_base_url =
-                               'http://finbot-searxng:8080/search?categories=general%2Cnews&language=zh-CN&engine_shortcuts=bd%2C360so%2Csogou%2Csogouw'
+                               'http://finbot-searxng:8080/search?categories=general%2Cnews&language=zh-CN&engine_shortcuts=bi%2Cddg%2Cbd%2C360so%2Csogou%2Csogouw'
                                and deleted_at is null) as searxng_china_shortcut_mapping_count
                           , (select count(*) from information_source
                              where category in ('broad_news','finance_news','crypto_news','asia_news')
@@ -820,7 +820,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(49, result.getInt("changeset_count"));
+                    assertEquals(50, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

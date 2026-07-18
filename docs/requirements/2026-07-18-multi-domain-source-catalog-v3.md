@@ -4,7 +4,7 @@
 
 FinBot 的信源覆盖不能只依赖单一综合新闻或单一抓取服务。v3 在 v2 的官方宏观、监管和交易所来源基础上，增加国内外综合新闻、科技、金融、农业、医疗、能源、安全、科研、气象灾害和更多交易所公告，并将 SearXNG 与模型原生 Web Search 作为独立的“搜索发现渠道”。目录负责发现和保留证据，事实裁决仍由后续多 Agent 清洗、压缩、验证和研究工作流完成。
 
-默认目录由 Liquibase 046 以 append-only manifest 固化为 `v3`，包含 61 个稳定 source ID；Liquibase 047 在不修改历史变更集的前提下修正 SearXNG 引擎路由。manifest 只描述出厂目录；管理员仍可在 UI 中启停、修改或新增来源。
+默认目录由 Liquibase 046 以 append-only manifest 固化为 `v3`，包含 61 个稳定 source ID；Liquibase 047 在不修改历史变更集的前提下修正 SearXNG 引擎路由，048 根据生产真实结果为国际新闻和国内定向来源增加已验证可用的 general engine 冗余。manifest 只描述出厂目录；管理员仍可在 UI 中启停、修改或新增来源。
 
 ## 来源分层
 
@@ -32,6 +32,7 @@ FRED、EIA 需要免费 API Key，X 需要相应访问能力，Grok/Gemini Web S
 - 生产只部署一个内部单副本 `finbot-searxng`，通过不同来源的 `engine_shortcuts`、`categories`、`language` 和查询模板选择国内、国际或新闻引擎。`engine_shortcuts` 是 FinBot 内部 endpoint 配置，Backend 必须将其编译为 SearXNG 支持的 `!shortcut` 查询前缀并从实际 HTTP query 中移除。
 - 允许的引擎包括 360、Baidu、Bing、Brave、DuckDuckGo、Google、Qwant、Sogou、Startpage、Yahoo 及其新闻变体；配置必须与当前固定镜像的引擎注册表一致，镜像标记为 `inactive` 的引擎不得强制启用。
 - `engines=` 不是当前 SearXNG Search API 的有效显式选引擎参数，Backend 必须将其视为配置错误，不能静默发送后伪装成已按引擎路由。快捷码必须满足小写字母/数字/下划线/连字符约束、去重且最多 16 个。
+- 新闻专用或国内引擎受 CAPTCHA、限流、解析变化影响时，不进行隐式渠道 fallback；默认来源在同一个 `engine_shortcuts` 集合中显式混合 `bi`、`ddg` 与对应垂直/地区引擎，使运行时仍能返回目标站点结果，并保留实际响应引擎与不可用引擎。
 - SearXNG 不对公网暴露，NetworkPolicy 只允许 Backend 访问；所有上游请求必须经 `finbot-web-crawl-proxy`，代理无健康出口时 fail closed。
 - `/healthz` 只证明进程存活。上线验收必须另外调用 `/search?...&format=json`，校验 HTTP 2xx、JSON `results` 数组以及至少一个合法公网 URL。
 - SearXNG 只负责元搜索和结果规范化，不直接成为新闻事实来源；证据必须保留结果 URL、标题、摘要、引擎和抓取时间。
