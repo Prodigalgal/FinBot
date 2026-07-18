@@ -37,23 +37,29 @@ public final class RoutedHttpClientFactory {
         var decision = routeResolver.resolve(route);
         var key = new ClientKey(route, decisionFingerprint(decision));
         clients.keySet().removeIf(existing -> existing.route() == route && !existing.equals(key));
-        return clients.computeIfAbsent(key, ignored -> build(decision));
+        return clients.computeIfAbsent(key, ignored -> build(route, decision));
     }
 
     public HttpClient clientForRequest(ProxyRouteDecision decision) {
-        return build(Objects.requireNonNull(decision, "decision"));
+        var resolved = Objects.requireNonNull(decision, "decision");
+        return build(resolved.route(), resolved);
+    }
+
+    public void invalidate(OutboundRoute route) {
+        Objects.requireNonNull(route, "route");
+        clients.keySet().removeIf(existing -> existing.route() == route);
     }
 
     public ProxyRouteDecision route(OutboundRoute route) {
         return routeResolver.resolve(route);
     }
 
-    private HttpClient build(ProxyRouteDecision decision) {
+    private HttpClient build(OutboundRoute route, ProxyRouteDecision decision) {
         var builder = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .executor(executor)
                 .followRedirects(HttpClient.Redirect.NEVER)
-                .version(HttpClient.Version.HTTP_2);
+                .version(httpVersion(route));
         if (!decision.proxied()) {
             return builder.build();
         }
@@ -76,6 +82,13 @@ public final class RoutedHttpClientFactory {
             });
         }
         return builder.build();
+    }
+
+    private static HttpClient.Version httpVersion(OutboundRoute route) {
+        return switch (route) {
+            case EXCHANGE_GATE, EXCHANGE_BYBIT -> HttpClient.Version.HTTP_1_1;
+            default -> HttpClient.Version.HTTP_2;
+        };
     }
 
     private static String decisionFingerprint(ProxyRouteDecision decision) {

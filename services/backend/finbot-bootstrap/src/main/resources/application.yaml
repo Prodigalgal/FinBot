@@ -60,6 +60,9 @@ finbot:
     event-poll-interval: ${FINBOT_WORKFLOW_EVENT_POLL_INTERVAL:PT0.5S}
   trading-ledger:
     stale-after: ${FINBOT_TRADING_LEDGER_STALE_AFTER:PT10M}
+  exchange-account:
+    maximum-attempts: ${FINBOT_EXCHANGE_ACCOUNT_MAXIMUM_ATTEMPTS:3}
+    initial-backoff: ${FINBOT_EXCHANGE_ACCOUNT_INITIAL_BACKOFF:PT0.5S}
   crawler:
     maximum-concurrent: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT:16}
     maximum-concurrent-per-host: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT_PER_HOST:2}

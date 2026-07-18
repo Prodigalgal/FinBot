@@ -1,8 +1,6 @@
 package io.omnnu.finbot.infrastructure.exchange;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
 import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.application.exchange.ExchangeAccountConfiguration;
@@ -27,13 +25,10 @@ import io.omnnu.finbot.domain.ledger.PositionSide;
 import io.omnnu.finbot.domain.market.InstrumentSymbol;
 import io.omnnu.finbot.domain.market.Money;
 import io.omnnu.finbot.domain.network.OutboundRoute;
-import io.omnnu.finbot.infrastructure.network.RoutedHttpClientFactory;
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -55,24 +50,20 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
     private static final URI BYBIT_BASE = URI.create("https://api-demo.bybit.com");
     private static final int BYBIT_RECEIVE_WINDOW_MILLISECONDS = 5_000;
     private static final int PAGE_LIMIT = 1_000;
-    private static final int MAXIMUM_RESPONSE_BYTES = 8 * 1024 * 1024;
 
     private final ExchangeAccountConfigurationRepository accounts;
     private final RuntimeSecretStore runtimeSecrets;
-    private final RoutedHttpClientFactory httpClients;
-    private final ObjectMapper objectMapper;
+    private final ExchangeAccountHttpTransport transport;
     private final Clock clock;
 
     public JdkExchangeAccountGateway(
             ExchangeAccountConfigurationRepository accounts,
             RuntimeSecretStore runtimeSecrets,
-            RoutedHttpClientFactory httpClients,
-            ObjectMapper objectMapper,
+            ExchangeAccountHttpTransport transport,
             Clock clock) {
         this.accounts = Objects.requireNonNull(accounts, "accounts");
         this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
-        this.httpClients = Objects.requireNonNull(httpClients, "httpClients");
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.transport = Objects.requireNonNull(transport, "transport");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -559,53 +550,55 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
         return List.copyOf(result);
     }
 
-    private HttpResponseData gateRequest(
+    private ExchangeAccountHttpTransport.Response gateRequest(
             String method,
             String path,
             LinkedHashMap<String, String> query,
             String body,
             Credentials credentials) {
-        var queryString = query(query);
-        var timestamp = Long.toString(clock.instant().getEpochSecond());
-        var signature = GateRequestSigner.sign(
-                credentials.secret(),
-                method,
-                GATE_BASE.getPath() + path,
-                queryString,
-                body,
-                timestamp);
-        var request = request(GATE_BASE, path, queryString, method, body)
-                .header("KEY", credentials.key())
-                .header("Timestamp", timestamp)
-                .header("SIGN", signature)
-                .header("X-Gate-Exptime", Long.toString(clock.instant().plusSeconds(5).toEpochMilli()))
-                .build();
-        return send(request, OutboundRoute.EXCHANGE_GATE);
+        return transport.send(OutboundRoute.EXCHANGE_GATE, () -> {
+            var queryString = query(query);
+            var timestamp = Long.toString(clock.instant().getEpochSecond());
+            var signature = GateRequestSigner.sign(
+                    credentials.secret(),
+                    method,
+                    GATE_BASE.getPath() + path,
+                    queryString,
+                    body,
+                    timestamp);
+            return request(GATE_BASE, path, queryString, method, body)
+                    .header("KEY", credentials.key())
+                    .header("Timestamp", timestamp)
+                    .header("SIGN", signature)
+                    .header("X-Gate-Exptime", Long.toString(clock.instant().plusSeconds(5).toEpochMilli()))
+                    .build();
+        });
     }
 
-    private HttpResponseData bybitRequest(
+    private ExchangeAccountHttpTransport.Response bybitRequest(
             String method,
             String path,
             LinkedHashMap<String, String> query,
             String body,
             Credentials credentials) {
-        var queryString = query(query);
-        var payload = "GET".equals(method) ? queryString : body;
-        var timestamp = Long.toString(clock.instant().toEpochMilli());
-        var signature = BybitRequestSigner.sign(
-                credentials.secret(),
-                timestamp,
-                credentials.key(),
-                BYBIT_RECEIVE_WINDOW_MILLISECONDS,
-                payload);
-        var request = request(BYBIT_BASE, path, queryString, method, body)
-                .header("X-BAPI-API-KEY", credentials.key())
-                .header("X-BAPI-TIMESTAMP", timestamp)
-                .header("X-BAPI-SIGN", signature)
-                .header("X-BAPI-SIGN-TYPE", "2")
-                .header("X-BAPI-RECV-WINDOW", Integer.toString(BYBIT_RECEIVE_WINDOW_MILLISECONDS))
-                .build();
-        return send(request, OutboundRoute.EXCHANGE_BYBIT);
+        return transport.send(OutboundRoute.EXCHANGE_BYBIT, () -> {
+            var queryString = query(query);
+            var payload = "GET".equals(method) ? queryString : body;
+            var timestamp = Long.toString(clock.instant().toEpochMilli());
+            var signature = BybitRequestSigner.sign(
+                    credentials.secret(),
+                    timestamp,
+                    credentials.key(),
+                    BYBIT_RECEIVE_WINDOW_MILLISECONDS,
+                    payload);
+            return request(BYBIT_BASE, path, queryString, method, body)
+                    .header("X-BAPI-API-KEY", credentials.key())
+                    .header("X-BAPI-TIMESTAMP", timestamp)
+                    .header("X-BAPI-SIGN", signature)
+                    .header("X-BAPI-SIGN-TYPE", "2")
+                    .header("X-BAPI-RECV-WINDOW", Integer.toString(BYBIT_RECEIVE_WINDOW_MILLISECONDS))
+                    .build();
+        });
     }
 
     private static HttpRequest.Builder request(
@@ -616,39 +609,13 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
             String body) {
         var uri = URI.create(base + path + (query.isBlank() ? "" : "?" + query));
         var builder = HttpRequest.newBuilder(uri)
-                .timeout(Duration.ofSeconds(30))
+                .timeout(Duration.ofSeconds(45))
                 .header("Accept", "application/json")
                 .header("User-Agent", "FinBot/2.0 account-sync");
         return "GET".equals(method)
                 ? builder.GET()
                 : builder.header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
-    }
-
-    private HttpResponseData send(HttpRequest request, OutboundRoute route) {
-        try {
-            var response = httpClients.client(route).send(
-                    request,
-                    HttpResponse.BodyHandlers.ofInputStream());
-            try (var input = response.body()) {
-                var bytes = input.readNBytes(MAXIMUM_RESPONSE_BYTES + 1);
-                if (bytes.length > MAXIMUM_RESPONSE_BYTES) {
-                    throw new IllegalStateException("Exchange account response exceeded the safety limit");
-                }
-                JsonNode json;
-                try {
-                    json = objectMapper.readTree(bytes);
-                } catch (JsonProcessingException exception) {
-                    throw new IllegalStateException("Exchange account response is invalid JSON", exception);
-                }
-                return new HttpResponseData(response.statusCode(), json);
-            }
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Exchange account request was interrupted", exception);
-        } catch (IOException exception) {
-            throw new IllegalStateException("Exchange account request failed", exception);
-        }
     }
 
     private Credentials credentials(ExchangeAccountConfiguration account) {
@@ -676,21 +643,21 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
         }
     }
 
-    private static JsonNode requireGate(HttpResponseData response) {
+    private static JsonNode requireGate(ExchangeAccountHttpTransport.Response response) {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException("Gate account API returned HTTP " + response.statusCode());
         }
         return response.json();
     }
 
-    private static JsonNode requireBybit(HttpResponseData response) {
+    private static JsonNode requireBybit(ExchangeAccountHttpTransport.Response response) {
         if (!bybitSuccessful(response)) {
             throw new IllegalStateException("Bybit account API rejected the request");
         }
         return response.json();
     }
 
-    private static boolean bybitSuccessful(HttpResponseData response) {
+    private static boolean bybitSuccessful(ExchangeAccountHttpTransport.Response response) {
         return response.statusCode() >= 200
                 && response.statusCode() < 300
                 && response.json().path("retCode").asInt(-1) == 0;
@@ -876,9 +843,6 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
     }
 
     private record Credentials(String key, String secret) {
-    }
-
-    private record HttpResponseData(int statusCode, JsonNode json) {
     }
 
     private record Page(List<JsonNode> rows, boolean complete) {

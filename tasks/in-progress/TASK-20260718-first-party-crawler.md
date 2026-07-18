@@ -2,7 +2,7 @@
 
 ## 状态
 
-实现阶段：first-party 协议、ContentEnvelope、生产控制面和默认关闭策略已落地；仍需积累影子比较样本完成来源切换门禁。
+实现阶段：first-party 协议、ContentEnvelope、生产控制面和默认关闭策略已落地；自动化测试和生产 smoke 通过后直接作为主路径，不设置 14 天影子比较门禁。
 
 ## 目标
 
@@ -22,14 +22,14 @@
 2. 把请求安全、代理、重定向、限速、响应上限和重试收敛到 `CrawlerTransport`。
 3. 实现 HTML、RSS/Atom、JSON API、Sitemap first-party adapter，并补齐 fixture、WireMock 和 SSRF 测试。
 4. 新增 Liquibase changeset 与控制面 API/UI，支持 AI 清洗策略、可选 ExtractionHint、限额、测活预览和健康状态。
-5. 对现有来源运行影子比较，达到门禁后按来源切换 primary collector。
-6. 完成影子期和生产 smoke 后，再清理旧 `FIRECRAWL_*` source mode、旧配置和默认 Firecrawl 资源；当前 Firecrawl 仅保留显式管理员启用入口。
+5. 对现有来源执行真实在线测活和生产采集 smoke，通过后按来源直接切换 primary collector。
+6. 保留显式管理员启用的 Firecrawl fallback；旧 `FIRECRAWL_*` source mode、旧配置和生产资源的删除另立 breaking change，不以日历等待作为条件。
 
 ## 非目标
 
 - 本任务第一阶段不实现浏览器渲染。
 - 不改变研究压缩、多 Agent 辩论、量化预测和模拟交易流程。
-- 不在没有影子比较和真实在线 smoke 证据时删除 Firecrawl fallback。
+- 不把 Firecrawl fallback 作为默认路径，也不允许 first-party 失败时隐式调用；删除 fallback 另立 breaking change。
 
 ## 验收
 
