@@ -3,6 +3,7 @@ package io.omnnu.finbot.infrastructure.exchange;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.omnnu.finbot.application.network.ProxyRouteDecision;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import io.omnnu.finbot.infrastructure.network.RoutedHttpClientFactory;
 import java.io.IOException;
@@ -50,9 +51,14 @@ public final class ExchangeAccountHttpTransport {
             Supplier<HttpRequest> requestFactory) {
         Objects.requireNonNull(route, "route");
         Objects.requireNonNull(requestFactory, "requestFactory");
+        var directFallback = false;
         for (var attempt = 1; attempt <= maximumAttempts; attempt++) {
             try {
-                var response = httpClients.client(route).send(
+                var resolvedRoute = httpClients.route(route);
+                var effectiveRoute = directFallback
+                        ? directRoute(resolvedRoute)
+                        : resolvedRoute;
+                var response = httpClients.clientForRequest(effectiveRoute).send(
                         requestFactory.get(),
                         HttpResponse.BodyHandlers.ofInputStream());
                 byte[] bytes;
@@ -91,6 +97,16 @@ public final class ExchangeAccountHttpTransport {
                         exception);
             } catch (IOException exception) {
                 httpClients.invalidate(route);
+                if (!directFallback) {
+                    var resolvedRoute = httpClients.route(route);
+                    if (resolvedRoute.proxied() && resolvedRoute.directAllowed()) {
+                        directFallback = true;
+                        LOGGER.warn(
+                                "Exchange account proxy failed; switching to direct fallback; route={}, reason={}",
+                                route,
+                                exception.getClass().getSimpleName());
+                    }
+                }
                 if (attempt < maximumAttempts) {
                     retry(route, attempt, exception.getClass().getSimpleName(), backoff(attempt));
                     continue;
@@ -104,6 +120,16 @@ public final class ExchangeAccountHttpTransport {
             }
         }
         throw new IllegalStateException("Exchange account retry loop completed without a result");
+    }
+
+    private static ProxyRouteDecision directRoute(ProxyRouteDecision route) {
+        return new ProxyRouteDecision(
+                route.route(),
+                false,
+                true,
+                null,
+                route.expectedIpFamily(),
+                "direct");
     }
 
     private void retry(

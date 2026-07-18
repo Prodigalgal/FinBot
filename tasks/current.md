@@ -15,6 +15,7 @@
 - 目标：由 FinBot 自己完成请求、代理路由、静态协议解析、抽取、规范化和观测，Firecrawl 降级为来源级可选兜底。
 - 已完成：固定 11 个默认来源目录；`HTML_DOCUMENT`、`RSS`、`JSON_API`、`SITEMAP` first-party collector；`WEB_CRAWL` 独立路由、Deployment、Service 与 `proxygateway_web_crawl` profile；Firecrawl profile 固定私有四节点 `INLINE_NODES` 但默认 disabled；搜索发现 `SEARCH_DISCOVERY`（SearXNG/Brave 兼容 JSON）；统一 `CrawlerTransport`；`ContentEnvelope`/稳定 `blockId` 安全视图；`normalized_document.content_blocks` 与多 Agent 合法 block 引用门禁；全局/单主机背压；SSRF（配置与运行时 DNS）拒绝、代理 fail-closed、每请求换出口、403/网络失败错误码；append-only `source_fetch_attempt`；Liquibase 035-041 和相关 Java/Web/OpenAPI/Proxy 测试。
 - 当前边界：first-party 已完成真实 PostgreSQL、K8S、ArgoCD 与代理控制面 smoke；Firecrawl 私有四节点当前 `0/4` 健康并保持 fail-closed，不能伪装为可用。first-party 不再受影子比较或 14 天日历门禁约束；Firecrawl 仅保留显式管理员启用的 fallback，第一阶段不引入浏览器渲染，不改变研究和交易工作流。
+- 运行态修复：`ACCOUNT_SYNC` 交易所只读请求已增加重新签名、HTTP/1.1、有限退避、连接失效清理；可选交易所代理失败后按 `allow_direct` 受控直连，Firecrawl/Web Crawl 仍 fail-closed。
 - 需求：[`../docs/requirements/2026-07-18-first-party-crawling-architecture.md`](../docs/requirements/2026-07-18-first-party-crawling-architecture.md)。
 - 决策：[`../docs/decisions/022-first-party-crawling-core.md`](../docs/decisions/022-first-party-crawling-core.md)。
 - 任务：[`in-progress/TASK-20260718-first-party-crawler.md`](./in-progress/TASK-20260718-first-party-crawler.md)。

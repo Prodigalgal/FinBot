@@ -88,6 +88,25 @@ class ExchangeAccountHttpTransportTest {
         assertEquals(2, failure.attempts());
     }
 
+    @Test
+    void switchesFromAnUnavailableOptionalProxyToDirectAccess() throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/account", exchange -> respond(exchange, 200, "{\"ok\":true}"));
+        server.start();
+
+        var transport = new ExchangeAccountHttpTransport(
+                new RoutedHttpClientFactory(new UnavailableProxyResolver(), Runnable::run),
+                new ObjectMapper(),
+                2,
+                Duration.ofNanos(1));
+        var response = transport.send(
+                OutboundRoute.EXCHANGE_BYBIT,
+                () -> request(serverUri("/account"), "signature"));
+
+        assertEquals(200, response.statusCode());
+        assertEquals(2, response.attempts());
+    }
+
     private ExchangeAccountHttpTransport transport(int attempts, Duration backoff) {
         var resolver = new DirectResolver();
         return new ExchangeAccountHttpTransport(
@@ -121,6 +140,19 @@ class ExchangeAccountHttpTransportTest {
         @Override
         public ProxyRouteDecision resolve(OutboundRoute route) {
             return new ProxyRouteDecision(route, false, true, null, "ANY", "DIRECT");
+        }
+    }
+
+    private static final class UnavailableProxyResolver implements ProxyRouteResolver {
+        @Override
+        public ProxyRouteDecision resolve(OutboundRoute route) {
+            return new ProxyRouteDecision(
+                    route,
+                    false,
+                    true,
+                    URI.create("http://127.0.0.1:1"),
+                    "IPV4",
+                    "http://127.0.0.1:1");
         }
     }
 }
