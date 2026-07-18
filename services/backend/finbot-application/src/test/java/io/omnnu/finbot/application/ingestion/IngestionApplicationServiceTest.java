@@ -160,7 +160,8 @@ class IngestionApplicationServiceTest {
         service.createSource(new CreateSourceCommand(rssDefinition(false)));
 
         var exception = assertThrows(CompletionException.class,
-                () -> service.testSource(
+                () -> service.collectSource(
+                                null,
                                 new SourceId("source_managed_test01"),
                                 "market update")
                         .toCompletableFuture()

@@ -457,16 +457,6 @@ export interface SourceRecord {
   } | null;
 }
 export type SourceMutation = Omit<SourceRecord, 'sourceId' | 'version'>;
-export interface SourceTestResult {
-  collectionId: string;
-  sourceId: string;
-  status: string;
-  fetchedCount: number;
-  insertedCount: number;
-  duplicateCount: number;
-  errorCode: string | null;
-  errorMessage: string | null;
-}
 export interface SourceHealth {
   sourceId: string;
   serviceReady: boolean;

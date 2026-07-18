@@ -931,6 +931,7 @@ paths:
           required: true
           schema:
             type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
   /sources/{sourceId}/health:
     get:
@@ -974,6 +975,7 @@ paths:
       operationId: testInformationSource
       parameters:
         - $ref: "#/components/parameters/SourceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: true
@@ -989,12 +991,8 @@ paths:
                   minLength: 1
                   maxLength: 1000
       responses:
-        "200":
-          description: Synchronous source probe result
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SourceTestResponse"
+        "202":
+          $ref: "#/components/responses/JsonObject"
         default:
           $ref: "#/components/responses/Problem"
   /trading/accounts:
@@ -1719,45 +1717,6 @@ components:
       items:
         type: string
         format: uri
-    SourceTestResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - collectionId
-        - sourceId
-        - status
-        - fetchedCount
-        - insertedCount
-        - duplicateCount
-      properties:
-        collectionId:
-          type: string
-        sourceId:
-          type: string
-        status:
-          type: string
-          enum:
-            - COMPLETED
-            - PARTIAL
-            - BLOCKED
-            - FAILED
-        fetchedCount:
-          type: integer
-          minimum: 0
-        insertedCount:
-          type: integer
-          minimum: 0
-        duplicateCount:
-          type: integer
-          minimum: 0
-        errorCode:
-          type:
-            - string
-            - "null"
-        errorMessage:
-          type:
-            - string
-            - "null"
     SourceHealthResponse:
       type: object
       additionalProperties: false

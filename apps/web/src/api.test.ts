@@ -54,6 +54,30 @@ describe('control-plane API transport', () => {
 
     await expect(api.deleteWatchlist('watchlist_default')).resolves.toBeUndefined();
   });
+
+  it('submits source tests as idempotent asynchronous commands', async () => {
+    document.cookie = 'XSRF-TOKEN=csrf-cookie; Path=/';
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      taskId: 'task_source_test01',
+      status: 'PENDING',
+    }, 202));
+    vi.stubGlobal('fetch', fetchMock);
+    const { api } = await import('./api');
+
+    await api.testSource('source_searxng_news_search', 'market news', 'source-test-key');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v2/sources/source_searxng_news_search/test',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'source-test-key',
+          'X-XSRF-TOKEN': 'csrf-cookie',
+        }),
+      }),
+    );
+  });
 });
 
 function jsonResponse(body: unknown, status: number): Response {

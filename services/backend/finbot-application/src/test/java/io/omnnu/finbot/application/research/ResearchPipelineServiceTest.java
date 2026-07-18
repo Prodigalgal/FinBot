@@ -395,12 +395,6 @@ final class ResearchPipelineServiceTest {
                 throw new UnsupportedOperationException("Not used by the research pipeline test");
             }
 
-            @Override
-            public java.util.concurrent.CompletionStage<SourceCollectionSummary> testSource(
-                    SourceId sourceId,
-                    String query) {
-                throw new UnsupportedOperationException("Not used by the research pipeline test");
-            }
         };
     }
 
@@ -451,12 +445,6 @@ final class ResearchPipelineServiceTest {
                 throw new UnsupportedOperationException("Not used by the research pipeline test");
             }
 
-            @Override
-            public java.util.concurrent.CompletionStage<SourceCollectionSummary> testSource(
-                    SourceId sourceId,
-                    String query) {
-                throw new UnsupportedOperationException("Not used by the research pipeline test");
-            }
         };
     }
 

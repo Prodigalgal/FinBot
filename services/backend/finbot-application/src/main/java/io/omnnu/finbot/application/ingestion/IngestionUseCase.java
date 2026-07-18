@@ -34,6 +34,4 @@ public interface IngestionUseCase {
             WorkflowRunId workflowRunId,
             SourceId sourceId,
             String query);
-
-    CompletionStage<SourceCollectionSummary> testSource(SourceId sourceId, String query);
 }

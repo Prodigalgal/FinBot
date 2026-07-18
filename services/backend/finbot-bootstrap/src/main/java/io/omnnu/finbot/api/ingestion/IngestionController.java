@@ -17,7 +17,6 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletionStage;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -36,6 +35,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 @RequestMapping("/api/v2")
 public final class IngestionController {
     private static final String MANUAL_INGESTION_IDEMPOTENCY_SCOPE = "manual-ingestion";
+    private static final String SOURCE_TEST_IDEMPOTENCY_SCOPE = "source-test";
+    private static final int MANUAL_INGESTION_PRIORITY = 70;
+    private static final int SOURCE_TEST_PRIORITY = 80;
+    private static final int MAXIMUM_ATTEMPTS = 3;
 
     private final IngestionUseCase ingestionUseCase;
     private final BackgroundTaskCoordinator taskCoordinator;
@@ -110,30 +113,48 @@ public final class IngestionController {
             @PathVariable String sourceId,
             @RequestHeader("Idempotency-Key") String clientIdempotencyKey,
             @Valid @RequestBody CollectSourceRequest request) {
-        var typedSourceId = new SourceId(sourceId);
         var workflowRunId = request.workflowRunId() == null || request.workflowRunId().isBlank()
                 ? null
                 : new WorkflowRunId(request.workflowRunId());
-        var normalizedQuery = request.query().strip();
-        var task = taskCoordinator.enqueue(new EnqueueTaskCommand(
-                BackgroundTaskType.INGESTION,
-                IdempotencyKeys.scoped(
-                        MANUAL_INGESTION_IDEMPOTENCY_SCOPE,
-                        typedSourceId.value() + ':' + clientIdempotencyKey),
-                new IngestionTaskPayload(workflowRunId, typedSourceId, normalizedQuery),
-                70,
-                3,
-                null));
-        return ResponseEntity.accepted().body(TaskResponse.from(task));
+        return enqueueCollection(
+                new SourceId(sourceId),
+                workflowRunId,
+                request.query(),
+                clientIdempotencyKey,
+                MANUAL_INGESTION_IDEMPOTENCY_SCOPE,
+                MANUAL_INGESTION_PRIORITY);
     }
 
     @PostMapping("/sources/{sourceId}/test")
-    public CompletionStage<SourceTestResponse> testSource(
+    public ResponseEntity<TaskResponse> testSource(
             @PathVariable String sourceId,
+            @RequestHeader("Idempotency-Key") String clientIdempotencyKey,
             @Valid @RequestBody TestSourceRequest request) {
-        return ingestionUseCase.testSource(
-                        new SourceId(sourceId),
-                        request.query().strip())
-                .thenApply(SourceTestResponse::from);
+        return enqueueCollection(
+                new SourceId(sourceId),
+                null,
+                request.query(),
+                clientIdempotencyKey,
+                SOURCE_TEST_IDEMPOTENCY_SCOPE,
+                SOURCE_TEST_PRIORITY);
+    }
+
+    private ResponseEntity<TaskResponse> enqueueCollection(
+            SourceId sourceId,
+            WorkflowRunId workflowRunId,
+            String query,
+            String clientIdempotencyKey,
+            String idempotencyScope,
+            int priority) {
+        var task = taskCoordinator.enqueue(new EnqueueTaskCommand(
+                BackgroundTaskType.INGESTION,
+                IdempotencyKeys.scoped(
+                        idempotencyScope,
+                        sourceId.value() + ':' + clientIdempotencyKey),
+                new IngestionTaskPayload(workflowRunId, sourceId, query.strip()),
+                priority,
+                MAXIMUM_ATTEMPTS,
+                null));
+        return ResponseEntity.accepted().body(TaskResponse.from(task));
     }
 }

@@ -13,6 +13,42 @@ import { SecretTextField } from './SecretTextField';
 import type { AiModel, AiProvider, ConfigurationSnapshot, EvidenceDocument, IngestionWorkspace, ReasoningEffort, SourceHealth, SourceMutation, SourceRecord, TaskRecord } from './types';
 import { EmptyBlock, ErrorBlock, LoadingBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
 
+const SOURCE_TEST_POLL_INTERVAL_MILLISECONDS = 2_000;
+const SOURCE_TEST_TIMEOUT_MILLISECONDS = 10 * 60 * 1_000;
+
+async function waitForSourceTestTask(taskId: string): Promise<TaskRecord> {
+  const deadline = Date.now() + SOURCE_TEST_TIMEOUT_MILLISECONDS;
+  while (Date.now() < deadline) {
+    const task = await api.task(taskId);
+    if (task.status === 'COMPLETED') return task;
+    if (task.status === 'FAILED' || task.status === 'CANCELLED') {
+      const reason = task.errorCode
+        ? `${task.errorCode}${task.errorMessage ? `：${task.errorMessage}` : ''}`
+        : task.errorMessage || statusLabel(task.status);
+      throw new Error(`在线测试任务 ${task.taskId} ${statusLabel(task.status)}：${reason}`);
+    }
+    await new Promise<void>((resolve) => window.setTimeout(resolve, SOURCE_TEST_POLL_INTERVAL_MILLISECONDS));
+  }
+  throw new Error(`在线测试任务 ${taskId} 等待超时，任务仍在后台运行，可在持久化后台任务中继续查看`);
+}
+
+async function loadSourceTestRun(
+  testedSourceId: string,
+  testedQuery: string,
+  acceptedAt: string,
+): Promise<{ workspace: IngestionWorkspace; run: IngestionWorkspace['recentRuns'][number] }> {
+  const acceptedAtMilliseconds = Date.parse(acceptedAt);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const workspace = await api.ingestionWorkspace(150);
+    const run = workspace.recentRuns.find((candidate) => candidate.sourceId === testedSourceId
+      && candidate.query === testedQuery
+      && (Number.isNaN(acceptedAtMilliseconds) || Date.parse(candidate.startedAt) >= acceptedAtMilliseconds));
+    if (run) return { workspace, run };
+    if (attempt < 4) await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
+  }
+  throw new Error('在线测试任务已完成，但暂未读取到对应采集记录，请刷新后在采集运行中查看');
+}
+
 export function IngestionPage() {
   const [workspace, setWorkspace] = useState<IngestionWorkspace | null>(null);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
@@ -72,10 +108,16 @@ export function IngestionPage() {
     if (!sourceId || !queryText.trim()) return;
     setBusy(true); setError(null); setMessage('');
     try {
-      const result = await api.testSource(sourceId, queryText.trim());
-      setMessage(`在线测试${statusLabel(result.status)}：获取 ${result.fetchedCount}，新增 ${result.insertedCount}，重复 ${result.duplicateCount}${result.errorCode ? ` · ${result.errorCode}` : ''}`);
-      await refresh();
-    } catch (cause) { setError(cause); } finally { setBusy(false); }
+      const testedSourceId = sourceId;
+      const testedQuery = queryText.trim();
+      const task = await api.testSource(testedSourceId, testedQuery, crypto.randomUUID());
+      setMessage(`在线测试任务 ${task.taskId} 已受理，正在后台执行`);
+      await waitForSourceTestTask(task.taskId);
+      const completed = await loadSourceTestRun(testedSourceId, testedQuery, task.createdAt);
+      setWorkspace(completed.workspace);
+      setMessage(`在线测试${statusLabel(completed.run.status)}：获取 ${completed.run.fetchedCount}，新增 ${completed.run.insertedCount}，重复 ${completed.run.duplicateCount}${completed.run.errorCode ? ` · ${completed.run.errorCode}` : ''}`);
+      await refresh(testedSourceId);
+    } catch (cause) { setMessage(''); setError(cause); } finally { setBusy(false); }
   };
   const saveSource = async (definition: SourceMutation) => {
     setBusy(true); setError(null); setMessage('');

@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-import type { IngestionWorkspace, SourceRecord } from './types';
+import type { IngestionWorkspace, SourceRecord, TaskRecord } from './types';
 
 const source: SourceRecord = {
   sourceId: 'source_test_rss01',
@@ -79,6 +79,45 @@ const workspaceAfterCreate: IngestionWorkspace = {
   sources: [...workspace.sources, workspaceSource(createdSource)],
 };
 
+const sourceTestTask: TaskRecord = {
+  taskId: 'task_source_test01',
+  taskType: 'INGESTION',
+  status: 'PENDING',
+  priority: 80,
+  payloadSummary: `${source.sourceId}: 最新市场、宏观、监管和交易所事件`,
+  attemptCount: 0,
+  maximumAttempts: 3,
+  availableAt: '2026-07-16T14:01:00Z',
+  claimedAt: null,
+  leaseExpiresAt: null,
+  claimOwner: null,
+  heartbeatAt: null,
+  completedAt: null,
+  errorCode: null,
+  errorMessage: null,
+  createdAt: '2026-07-16T14:01:00Z',
+  updatedAt: '2026-07-16T14:01:00Z',
+};
+
+const workspaceAfterTest: IngestionWorkspace = {
+  ...workspace,
+  recentRuns: [{
+    collectionId: 'collection_test01',
+    workflowRunId: null,
+    sourceId: source.sourceId,
+    sourceName: source.displayName,
+    query: '最新市场、宏观、监管和交易所事件',
+    status: 'COMPLETED',
+    fetchedCount: 1,
+    insertedCount: 1,
+    duplicateCount: 0,
+    errorCode: null,
+    errorMessage: null,
+    startedAt: '2026-07-16T14:01:01Z',
+    completedAt: '2026-07-16T14:01:02Z',
+  }],
+};
+
 const apiMock = vi.hoisted(() => ({
   ingestionWorkspace: vi.fn(),
   tasks: vi.fn(),
@@ -91,6 +130,7 @@ const apiMock = vi.hoisted(() => ({
   deleteSource: vi.fn(),
   setSourceEnabled: vi.fn(),
   testSource: vi.fn(),
+  task: vi.fn(),
   collectSource: vi.fn(),
   putRuntimeSecret: vi.fn(),
   clearRuntimeSecret: vi.fn(),
@@ -115,9 +155,13 @@ beforeEach(() => {
     latestStatusCode: 200, latestErrorCode: null, safeMessage: null,
   });
   apiMock.createSource.mockResolvedValue(createdSource);
-  apiMock.testSource.mockResolvedValue({
-    collectionId: 'collection_test01', sourceId: source.sourceId, status: 'COMPLETED',
-    fetchedCount: 1, insertedCount: 1, duplicateCount: 0, errorCode: null, errorMessage: null,
+  apiMock.testSource.mockResolvedValue(sourceTestTask);
+  apiMock.task.mockResolvedValue({
+    ...sourceTestTask,
+    status: 'COMPLETED',
+    attemptCount: 1,
+    completedAt: '2026-07-16T14:01:02Z',
+    updatedAt: '2026-07-16T14:01:02Z',
   });
 });
 
@@ -151,6 +195,9 @@ it('creates a user-managed RSS source from the management dialog', async () => {
 }, 10_000);
 
 it('runs an immediate source test through the selected source configuration', async () => {
+  apiMock.ingestionWorkspace
+    .mockResolvedValueOnce(workspace)
+    .mockResolvedValue(workspaceAfterTest);
   const user = userEvent.setup();
   render(<IngestionPage />);
   await user.click(await screen.findByRole('button', { name: '在线测试' }));
@@ -158,8 +205,29 @@ it('runs an immediate source test through the selected source configuration', as
   await waitFor(() => expect(apiMock.testSource).toHaveBeenCalledWith(
     source.sourceId,
     '最新市场、宏观、监管和交易所事件',
+    expect.any(String),
   ));
+  await waitFor(() => expect(apiMock.task).toHaveBeenCalledWith(sourceTestTask.taskId));
   expect(await screen.findByText(/在线测试已完成/)).toBeInTheDocument();
+  expect(screen.getByText(/获取 1，新增 1，重复 0/)).toBeInTheDocument();
+});
+
+it('shows the persistent task failure without reporting a successful source test', async () => {
+  apiMock.task.mockResolvedValue({
+    ...sourceTestTask,
+    status: 'FAILED',
+    attemptCount: 3,
+    completedAt: '2026-07-16T14:01:05Z',
+    errorCode: 'SEARXNG_UPSTREAM_TIMEOUT',
+    errorMessage: '搜索上游超时',
+    updatedAt: '2026-07-16T14:01:05Z',
+  });
+  const user = userEvent.setup();
+  render(<IngestionPage />);
+  await user.click(await screen.findByRole('button', { name: '在线测试' }));
+
+  expect(await screen.findByText(/SEARXNG_UPSTREAM_TIMEOUT：搜索上游超时/)).toBeInTheDocument();
+  expect(screen.queryByText(/在线测试已完成/)).not.toBeInTheDocument();
 });
 
 it('shows the selected source runtime channel and egress state', async () => {

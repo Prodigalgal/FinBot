@@ -170,18 +170,6 @@ public final class IngestionApplicationService implements IngestionUseCase {
         }, executor);
     }
 
-    @Override
-    public CompletionStage<SourceCollectionSummary> testSource(SourceId sourceId, String query) {
-        Objects.requireNonNull(sourceId, "sourceId");
-        var normalizedQuery = requireText(query, "query", 1_000);
-        return CompletableFuture.supplyAsync(() -> {
-            var source = repository.findSource(sourceId)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Information source does not exist"));
-            return collectOne(null, source, normalizedQuery).summary();
-        }, executor);
-    }
-
     private static InformationSource source(
             SourceId sourceId,
             SourceDefinition definition,

@@ -2,7 +2,7 @@
 
 ## 状态
 
-生产验收完成：first-party 协议、ContentEnvelope、生产控制面和目录 v1/v2/v3 已落地，国内外新闻、内部 SearXNG 与 AI Web Search 已生产发布；047 已将来源级引擎配置编译为 SearXNG 官方支持的 `!shortcut` 查询语法，048 已增加显式可用引擎冗余，长 source ID 异步采集已修复；不设置 14 天影子比较门禁。
+生产验收基本完成：first-party 协议、ContentEnvelope、生产控制面和目录 v1/v2/v3 已落地，国内外新闻、内部 SearXNG 与 AI Web Search 已生产发布；047 已将来源级引擎配置编译为 SearXNG 官方支持的 `!shortcut` 查询语法，048 已增加显式可用引擎冗余，长 source ID 异步采集已修复；信息源在线测试异步化正在完成 CI/GitOps 与公网验收；不设置 14 天影子比较门禁。
 
 ## 目标
 
@@ -20,6 +20,7 @@
 - 已完成 SearXNG 引擎路由修正：校验最多 16 个来源级 engine shortcut、拒绝会被忽略的遗留 `engines=`、编译 `!shortcut` 查询前缀、保留原业务 query 和 `search_engine_shortcuts` 证据元数据；047 使用精确旧 endpoint 作为更新条件，避免覆盖管理员修改。
 - 生产真实 smoke 发现新闻专用引擎与 Baidu/Sogou 会同时受解析错误、CAPTCHA 或限流影响；048 为国际新闻组显式加入 `bi,ddg`，为国内组显式加入 `bi,ddg` 且保留国内引擎，最终分别返回 16 和 10 条公网结果。
 - 生产控制面 smoke 发现长 source ID 被错误拼入最长 40 字符的 idempotency scope，导致异步 `/collect` 返回 400；已改为固定 `manual-ingestion` scope，并将 source ID 纳入被 SHA-256 的 client key，生产异步任务均首次尝试 `COMPLETED`。
+- 生产公网同步 `/test` 在 SearXNG 长查询期间被 Cloudflare 504 截断，而后端仍继续完成采集；已将在线测试改为独立 `source-test` 幂等域的持久化 `INGESTION` 任务，控制面立即返回 `202`，Web 短轮询任务并按 source/query/任务创建时间关联采集运行，原结构化统计保持不变。
 
 ## 下一阶段实现顺序
 
