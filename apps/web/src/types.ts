@@ -449,6 +449,12 @@ export interface SourceRecord {
   maximumScrapeTargets: number;
   enabled: boolean;
   version: number;
+  aiWebSearchBinding: {
+    providerProfileId: string;
+    modelName: string;
+    reasoningEffort: ReasoningEffort;
+    tool: 'WEB_SEARCH' | 'GOOGLE_SEARCH';
+  } | null;
 }
 export type SourceMutation = Omit<SourceRecord, 'sourceId' | 'version'>;
 export interface SourceTestResult {

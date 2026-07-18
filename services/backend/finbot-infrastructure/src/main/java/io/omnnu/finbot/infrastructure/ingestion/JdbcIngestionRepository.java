@@ -16,6 +16,10 @@ import io.omnnu.finbot.application.research.AiCompressionRecord;
 import io.omnnu.finbot.application.research.CompressionPackage;
 import io.omnnu.finbot.application.research.CompressionRepository;
 import io.omnnu.finbot.application.research.EvidenceAiReview;
+import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
+import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.ingestion.AiWebSearchBinding;
+import io.omnnu.finbot.domain.ingestion.AiWebSearchTool;
 import io.omnnu.finbot.domain.ingestion.CollectionRunId;
 import io.omnnu.finbot.domain.ingestion.CollectionStatus;
 import io.omnnu.finbot.domain.ingestion.DocumentId;
@@ -47,7 +51,19 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
             feed_urls::text as feed_urls, seed_urls::text as seed_urls,
             search_queries::text as search_queries, endpoint_base_url,
             credential_env, proxy_route_type, maximum_results,
-            maximum_scrape_targets, enabled, version
+            maximum_scrape_targets, enabled, version,
+            (select binding.provider_profile_id
+               from information_source_ai_web_search binding
+              where binding.source_id = information_source.source_id) as ai_provider_profile_id,
+            (select binding.model_name
+               from information_source_ai_web_search binding
+              where binding.source_id = information_source.source_id) as ai_model_name,
+            (select binding.reasoning_effort
+               from information_source_ai_web_search binding
+              where binding.source_id = information_source.source_id) as ai_reasoning_effort,
+            (select binding.tool_type
+               from information_source_ai_web_search binding
+              where binding.source_id = information_source.source_id) as ai_tool_type
             """;
 
     private final JdbcClient jdbcClient;
@@ -161,7 +177,11 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("enabled", source.enabled())
                 .param("createdAt", timestamp(createdAt))
                 .update();
-        return inserted == 1 ? findSource(source.sourceId()) : Optional.empty();
+        if (inserted != 1) {
+            return Optional.empty();
+        }
+        saveAiWebSearchBinding(source);
+        return findSource(source.sourceId());
     }
 
     @Override
@@ -220,7 +240,11 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("expectedVersion", expectedVersion)
                 .param("updatedAt", timestamp(updatedAt))
                 .update();
-        return changed == 1 ? findSource(source.sourceId()) : Optional.empty();
+        if (changed != 1) {
+            return Optional.empty();
+        }
+        saveAiWebSearchBinding(source);
+        return findSource(source.sourceId());
     }
 
     @Override
@@ -670,7 +694,50 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 resultSet.getInt("maximum_results"),
                 resultSet.getInt("maximum_scrape_targets"),
                 resultSet.getBoolean("enabled"),
-                resultSet.getLong("version"));
+                resultSet.getLong("version"),
+                aiWebSearchBinding(resultSet));
+    }
+
+    private AiWebSearchBinding aiWebSearchBinding(ResultSet resultSet) throws SQLException {
+        var providerProfileId = resultSet.getString("ai_provider_profile_id");
+        if (providerProfileId == null) {
+            return null;
+        }
+        return new AiWebSearchBinding(
+                new AiProviderProfileId(providerProfileId),
+                resultSet.getString("ai_model_name"),
+                ReasoningEffort.valueOf(resultSet.getString("ai_reasoning_effort")),
+                AiWebSearchTool.valueOf(resultSet.getString("ai_tool_type")));
+    }
+
+    private void saveAiWebSearchBinding(InformationSource source) {
+        var binding = source.aiWebSearchBinding();
+        if (binding == null) {
+            jdbcClient.sql("delete from information_source_ai_web_search where source_id = :sourceId")
+                    .param("sourceId", source.sourceId().value())
+                    .update();
+            return;
+        }
+        jdbcClient.sql("""
+                insert into information_source_ai_web_search (
+                  source_id, provider_profile_id, model_name, reasoning_effort,
+                  tool_type, created_at, updated_at
+                ) values (
+                  :sourceId, :providerProfileId, :modelName, :reasoningEffort,
+                  :toolType, current_timestamp, current_timestamp
+                ) on conflict (source_id) do update
+                set provider_profile_id = excluded.provider_profile_id,
+                    model_name = excluded.model_name,
+                    reasoning_effort = excluded.reasoning_effort,
+                    tool_type = excluded.tool_type,
+                    updated_at = current_timestamp
+                """)
+                .param("sourceId", source.sourceId().value())
+                .param("providerProfileId", binding.providerProfileId().value())
+                .param("modelName", binding.modelName())
+                .param("reasoningEffort", binding.reasoningEffort().name())
+                .param("toolType", binding.tool().name())
+                .update();
     }
 
     private NormalizedDocument document(ResultSet resultSet, int rowNumber) throws SQLException {

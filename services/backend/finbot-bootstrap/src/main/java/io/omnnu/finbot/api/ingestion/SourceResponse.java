@@ -23,7 +23,8 @@ public record SourceResponse(
         int maximumResults,
         int maximumScrapeTargets,
         boolean enabled,
-        long version) {
+        long version,
+        AiWebSearchBindingResponse aiWebSearchBinding) {
     static SourceResponse from(InformationSource source) {
         return new SourceResponse(
                 source.sourceId().value(),
@@ -45,6 +46,7 @@ public record SourceResponse(
                 source.maximumResults(),
                 source.maximumScrapeTargets(),
                 source.enabled(),
-                source.version());
+                source.version(),
+                AiWebSearchBindingResponse.from(source.aiWebSearchBinding()));
     }
 }

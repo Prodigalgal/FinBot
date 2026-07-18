@@ -3,6 +3,8 @@ package io.omnnu.finbot.domain.ingestion;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
+import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
+import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -20,6 +22,19 @@ class InformationSourceTest {
     @Test
     void acceptsPublicHttpsSeedUrl() {
         assertDoesNotThrow(() -> source(URI.create("https://www.example.com/news")));
+    }
+
+    @Test
+    void requiresProviderBindingAndNoIndependentTransportForAiWebSearch() {
+        var binding = new AiWebSearchBinding(
+                new AiProviderProfileId("provider_grok_test"),
+                "grok-test",
+                ReasoningEffort.XHIGH,
+                AiWebSearchTool.WEB_SEARCH);
+
+        assertDoesNotThrow(() -> aiSource(binding, null));
+        assertThrows(IllegalArgumentException.class, () -> aiSource(null, null));
+        assertThrows(IllegalArgumentException.class, () -> aiSource(binding, OutboundRoute.PUBLIC_DATA));
     }
 
     private static InformationSource source(URI seedUrl) {
@@ -44,5 +59,32 @@ class InformationSourceTest {
                 0,
                 true,
                 0);
+    }
+
+    private static InformationSource aiSource(
+            AiWebSearchBinding binding,
+            OutboundRoute route) {
+        return new InformationSource(
+                new SourceId("source_ai_test01"),
+                "AI web search",
+                SourceMode.AI_WEB_SEARCH,
+                SourceTier.T3,
+                "ai_search",
+                "ai_web_search",
+                new BigDecimal("0.6"),
+                900,
+                SourcePriority.P2,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("latest news"),
+                null,
+                null,
+                route,
+                10,
+                0,
+                true,
+                0,
+                binding);
     }
 }

@@ -1,0 +1,218 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finbot-searxng-config
+  labels:
+    app.kubernetes.io/name: finbot-searxng
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: search-discovery
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+data:
+  settings.yml: |
+    use_default_settings:
+      engines:
+        keep_only:
+          - 360search
+          - baidu
+          - bing
+          - bing news
+          - brave
+          - brave.news
+          - duckduckgo
+          - duckduckgo news
+          - google
+          - google news
+          - qwant
+          - qwant news
+          - sogou
+          - sogou wechat
+          - startpage
+          - startpage news
+          - yahoo
+          - yahoo news
+    engines:
+      - name: 360search
+        disabled: false
+      - name: baidu
+        disabled: false
+      - name: bing
+        disabled: false
+      - name: bing news
+        disabled: false
+      - name: brave
+        disabled: false
+      - name: brave.news
+        disabled: false
+      - name: duckduckgo
+        disabled: false
+      - name: duckduckgo news
+        disabled: false
+      - name: google
+        disabled: false
+      - name: google news
+        disabled: false
+      - name: qwant
+        disabled: false
+      - name: qwant news
+        disabled: false
+      - name: sogou
+        disabled: false
+      - name: sogou wechat
+        disabled: false
+      - name: startpage
+        disabled: false
+      - name: startpage news
+        disabled: false
+      - name: yahoo
+        disabled: false
+      - name: yahoo news
+        disabled: false
+    general:
+      debug: false
+      instance_name: FinBot Search Discovery
+    search:
+      safe_search: 0
+      autocomplete: ""
+      default_lang: auto
+      formats:
+        - json
+    server:
+      bind_address: 0.0.0.0
+      port: 8080
+      secret_key: ultrasecretkey
+      limiter: false
+      image_proxy: false
+    outgoing:
+      request_timeout: 8.0
+      max_request_timeout: 20.0
+      extra_proxy_timeout: 10.0
+      pool_connections: 50
+      pool_maxsize: 20
+      retries: 1
+      proxies:
+        all://:
+          - http://finbot-web-crawl-proxy:8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finbot-searxng
+  labels:
+    app.kubernetes.io/name: finbot-searxng
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: search-discovery
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-searxng
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-searxng
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: search-discovery
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      nodeSelector:
+        infra.mnnu/node-class: core-public
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 977
+        runAsGroup: 977
+        fsGroup: 977
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: searxng
+          image: ghcr.io/searxng/searxng@sha256:800a5e3757df04f59e6bd6c622f15de2edbfa47f5591c5b82d4a8ff3b938a845
+          env:
+            - name: SEARXNG_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: SEARXNG_SECRET
+            - name: FORCE_OWNERSHIP
+              value: "false"
+            - name: SEARXNG_PORT
+              value: "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 40
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/searxng
+              readOnly: true
+            - name: cache
+              mountPath: /var/cache/searxng
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: finbot-searxng-config
+        - name: cache
+          emptyDir:
+            sizeLimit: 512Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: finbot-searxng
+  labels:
+    app.kubernetes.io/name: finbot-searxng
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: search-discovery
+spec:
+  selector:
+    app.kubernetes.io/name: finbot-searxng
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

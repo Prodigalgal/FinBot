@@ -206,7 +206,8 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 definition.maximumResults(),
                 definition.maximumScrapeTargets(),
                 definition.enabled(),
-                version);
+                version,
+                definition.aiWebSearchBinding());
         validateModeConfiguration(source);
         return source;
     }
@@ -224,6 +225,12 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 }
             }
             case SEARCH_DISCOVERY -> requireEndpoint(source);
+            case AI_WEB_SEARCH -> {
+                if (source.searchQueries().isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "AI web search source requires at least one default search query");
+                }
+            }
             case FIRECRAWL_SCRAPE -> {
                 requireEndpoint(source);
                 if (source.seedUrls().isEmpty()) {

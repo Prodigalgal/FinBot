@@ -35,7 +35,8 @@ public record SourceMutationRequest(
         OutboundRoute outboundRoute,
         @Min(1) @Max(100) int maximumResults,
         @Min(0) @Max(20) int maximumScrapeTargets,
-        boolean enabled) {
+        boolean enabled,
+        @Valid AiWebSearchBindingRequest aiWebSearchBinding) {
     SourceDefinition toDefinition() {
         return new SourceDefinition(
                 displayName,
@@ -55,6 +56,7 @@ public record SourceMutationRequest(
                 outboundRoute,
                 maximumResults,
                 maximumScrapeTargets,
-                enabled);
+                enabled,
+                aiWebSearchBinding == null ? null : aiWebSearchBinding.toDomain());
     }
 }

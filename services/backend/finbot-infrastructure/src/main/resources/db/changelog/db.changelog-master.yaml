@@ -87,3 +87,7 @@ databaseChangeLog:
       file: db/changelog/releases/043-source-fetch-redirect-count.sql
   - include:
       file: db/changelog/releases/044-free-structured-source-catalog-v2.sql
+  - include:
+      file: db/changelog/releases/045-ai-web-search-source.sql
+  - include:
+      file: db/changelog/releases/046-multi-domain-source-catalog-v3.sql

@@ -627,6 +627,33 @@ class LiquibasePostgresIntegrationTest {
                              where table_schema = 'public'
                                and table_name = 'source_fetch_attempt'
                                and column_name = 'redirect_count') as fetch_redirect_column_count
+                          , (select count(*) from information_source_ai_web_search)
+                            as ai_web_search_binding_count
+                          , (select count(*) from information_source
+                             where source_mode = 'AI_WEB_SEARCH' and enabled = false
+                               and deleted_at is null) as disabled_ai_web_search_count
+                          , (select count(*) from information_source
+                             where provider = 'searxng_internal' and enabled = true
+                               and deleted_at is null) as searxng_source_count
+                          , (select count(*) from information_source
+                             where category in ('broad_news','finance_news','crypto_news','asia_news')
+                               and enabled = true and deleted_at is null) as international_news_source_count
+                          , (select count(*) from information_source
+                             where source_id in (
+                               'source_chinanews_cn','source_people_cn','source_sina_cn','source_ifeng_cn',
+                               'source_36kr_cn','source_ithome_cn','source_oschina_cn','source_sspai_cn',
+                               'source_cnbeta_cn','source_searxng_cn_mainstream','source_searxng_cn_finance'
+                             ) and enabled = true and deleted_at is null) as china_news_source_count
+                          , (select count(*) from information_source
+                             where category = 'exchange_announcements'
+                               and enabled = true and deleted_at is null) as exchange_news_source_count
+                          , (select provider from information_source
+                             where source_id = 'source_gate_announcements') as gate_source_provider
+                          , (select count(*) from information_schema.tables
+                             where table_schema = 'public'
+                               and table_name in (
+                                 'information_source_ai_web_search','ai_web_search_invocation'
+                               )) as ai_web_search_table_count
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
@@ -640,8 +667,8 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(6, result.getInt("workflow_version_count"));
                 assertEquals("workflowversion_standard_v6", result.getString("published_version_id"));
                 assertEquals("multi_strategy_ensemble", result.getString("published_quant_operation"));
-                assertEquals(16, result.getInt("source_count"));
-                assertEquals(11, result.getInt("enabled_source_count"));
+                assertEquals(61, result.getInt("source_count"));
+                assertEquals(56, result.getInt("enabled_source_count"));
                 assertEquals(5, result.getInt("proxy_route_count"));
                 assertEquals(5, result.getInt("watchlist_item_count"));
                 assertFalse(result.getBoolean("gate_proxy_required"));
@@ -688,18 +715,26 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(3, result.getInt("experiment_assignment_column_count"));
                 assertEquals(1, result.getInt("network_idempotency_column_count"));
                 assertEquals(1, result.getInt("activity_view_count"));
-                assertEquals("v2", result.getString("source_catalog_version"));
+                assertEquals("v3", result.getString("source_catalog_version"));
                 assertEquals(
-                        "94617c0d468a6f1d4f1ebcaa250e5c3ea7d2ad3eb92358203275c3679f1f5463",
+                        "e1abe028cf7e97ac51b40b2485a37a4bbcf48d969ad31143b379bcf537abed22",
                         result.getString("source_catalog_hash"));
-                assertEquals(16, result.getInt("source_catalog_manifest_count"));
-                assertEquals(2, result.getInt("source_catalog_history_count"));
+                assertEquals(61, result.getInt("source_catalog_manifest_count"));
+                assertEquals(3, result.getInt("source_catalog_history_count"));
                 assertEquals(5, result.getInt("free_structured_source_count"));
                 assertEquals(1, result.getInt("sec_source_ready"));
                 assertEquals(1, result.getInt("gdelt_source_ready"));
                 assertEquals(1, result.getInt("cftc_source_ready"));
                 assertEquals(1, result.getInt("fred_key_bound_disabled"));
                 assertEquals(1, result.getInt("fetch_redirect_column_count"));
+                assertEquals(2, result.getInt("ai_web_search_binding_count"));
+                assertEquals(2, result.getInt("disabled_ai_web_search_count"));
+                assertEquals(6, result.getInt("searxng_source_count"));
+                assertEquals(12, result.getInt("international_news_source_count"));
+                assertEquals(11, result.getInt("china_news_source_count"));
+                assertEquals(8, result.getInt("exchange_news_source_count"));
+                assertEquals("gate", result.getString("gate_source_provider"));
+                assertEquals(2, result.getInt("ai_web_search_table_count"));
             }
         }
     }
@@ -755,7 +790,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                assertEquals(46, result.getInt("changeset_count"));
+                assertEquals(48, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

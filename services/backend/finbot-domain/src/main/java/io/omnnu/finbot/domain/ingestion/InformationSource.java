@@ -28,7 +28,53 @@ public record InformationSource(
         int maximumResults,
         int maximumScrapeTargets,
         boolean enabled,
-        long version) {
+        long version,
+        AiWebSearchBinding aiWebSearchBinding) {
+    public InformationSource(
+            SourceId sourceId,
+            String displayName,
+            SourceMode mode,
+            SourceTier tier,
+            String category,
+            String provider,
+            BigDecimal trustWeight,
+            int pollIntervalSeconds,
+            SourcePriority priority,
+            List<String> assetScope,
+            List<URI> feedUrls,
+            List<URI> seedUrls,
+            List<String> searchQueries,
+            URI endpointBaseUrl,
+            String credentialEnvironmentVariable,
+            OutboundRoute outboundRoute,
+            int maximumResults,
+            int maximumScrapeTargets,
+            boolean enabled,
+            long version) {
+        this(
+                sourceId,
+                displayName,
+                mode,
+                tier,
+                category,
+                provider,
+                trustWeight,
+                pollIntervalSeconds,
+                priority,
+                assetScope,
+                feedUrls,
+                seedUrls,
+                searchQueries,
+                endpointBaseUrl,
+                credentialEnvironmentVariable,
+                outboundRoute,
+                maximumResults,
+                maximumScrapeTargets,
+                enabled,
+                version,
+                null);
+    }
+
     public InformationSource {
         Objects.requireNonNull(sourceId, "sourceId");
         displayName = DomainText.required(displayName, "displayName", 160);
@@ -63,6 +109,17 @@ public record InformationSource(
                 && outboundRoute != OutboundRoute.PUBLIC_DATA) {
             throw new IllegalArgumentException(
                     "Search discovery sources must use WEB_CRAWL or PUBLIC_DATA");
+        }
+        if (mode == SourceMode.AI_WEB_SEARCH && aiWebSearchBinding == null) {
+            throw new IllegalArgumentException("AI web search sources require an AI binding");
+        }
+        if (mode != SourceMode.AI_WEB_SEARCH && aiWebSearchBinding != null) {
+            throw new IllegalArgumentException("AI web search binding is only valid for AI_WEB_SEARCH sources");
+        }
+        if (mode == SourceMode.AI_WEB_SEARCH
+                && (endpointBaseUrl != null || credentialEnvironmentVariable != null || outboundRoute != null)) {
+            throw new IllegalArgumentException(
+                    "AI web search sources use their AI provider binding instead of source transport settings");
         }
         if (maximumResults < 1 || maximumResults > 100
                 || maximumScrapeTargets < 0 || maximumScrapeTargets > 20) {

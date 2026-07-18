@@ -356,6 +356,17 @@ public class RuntimeConfiguration {
                 .build();
     }
 
+    @Bean(name = "searxngHttpClient")
+    HttpClient searxngHttpClient(
+            @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
+        return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .executor(executor)
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
+    }
+
     @Bean
     StartWorkflowUseCase startWorkflowUseCase(
             SortableIdGenerator idGenerator,

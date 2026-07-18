@@ -64,7 +64,7 @@ spec:
           expr: |
             kube_deployment_status_replicas_available{
               namespace="finbot",
-              deployment=~"finbot-(backend|quant|web|firecrawl-proxy|exchange-proxy)"
+              deployment=~"finbot-(backend|quant|web|searxng|firecrawl-proxy|web-crawl-proxy|exchange-proxy)"
             } < 1
           for: 5m
           labels:

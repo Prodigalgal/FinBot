@@ -9,12 +9,14 @@ public enum SourceMode {
     FIRECRAWL_SEARCH_THEN_SCRAPE,
     JSON_API,
     SITEMAP,
+    AI_WEB_SEARCH,
     EXCHANGE_PUBLIC_API;
 
     public boolean firecrawl() {
         return switch (this) {
             case FIRECRAWL_SCRAPE, FIRECRAWL_SEARCH, FIRECRAWL_SEARCH_THEN_SCRAPE -> true;
-            case RSS, HTML_DOCUMENT, SEARCH_DISCOVERY, JSON_API, SITEMAP, EXCHANGE_PUBLIC_API -> false;
+            case RSS, HTML_DOCUMENT, SEARCH_DISCOVERY, JSON_API, SITEMAP, AI_WEB_SEARCH,
+                    EXCHANGE_PUBLIC_API -> false;
         };
     }
 }

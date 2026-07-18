@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted，2026-07-18。v2 changeset 已写入源码，生产发布需经过 CI PostgreSQL 集成门禁和人工发布授权。
+Superseded by [ADR 024](./024-multi-domain-news-search-discovery.md)，2026-07-18。本文继续保留 v2 的历史决策与回滚依据。
 
 ## 决策
 

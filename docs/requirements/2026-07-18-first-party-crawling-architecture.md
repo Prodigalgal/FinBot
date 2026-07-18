@@ -95,9 +95,10 @@ flowchart LR
 | `RSS` | RSS/Atom | JDK HTTP + 安全 XML 解析 |
 | `JSON_API` | 公开 JSON 接口 | JDK HTTP + Jackson |
 | `SITEMAP` | sitemap.xml 或 sitemap index | JDK HTTP + 安全 XML 解析 |
+| `AI_WEB_SEARCH` | 模型原生 Web Search 与结构化引用 | 已配置 AI Provider/Model + 调用审计 |
 | `FIRECRAWL_*` | Firecrawl 独立采集渠道（scrape/search/search-then-scrape） | Firecrawl adapter |
 
-搜索发现与正文抓取保持独立：`SEARCH_DISCOVERY` 只返回带 canonical URL 的摘要证据；已知页面通过 `HTML_DOCUMENT` 另行抓取，通用搜索端点不可用不会阻断静态和官方来源。Firecrawl 是独立可选渠道，不由 first-party 失败隐式触发。
+搜索发现与正文抓取保持独立：`SEARCH_DISCOVERY` 和 `AI_WEB_SEARCH` 只返回带 canonical URL 的摘要证据；已知页面通过 `HTML_DOCUMENT` 另行抓取，通用搜索端点不可用不会阻断静态和官方来源。SearXNG、AI Web Search、GDELT 与 Firecrawl 均为独立可选渠道，彼此失败不得隐式改变来源语义。
 
 统一的应用层结果保持不可变：
 

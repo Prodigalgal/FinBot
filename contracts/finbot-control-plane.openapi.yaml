@@ -1559,6 +1559,7 @@ components:
         - maximumResults
         - maximumScrapeTargets
         - enabled
+        - aiWebSearchBinding
       properties:
         displayName:
           type: string
@@ -1575,6 +1576,7 @@ components:
             - FIRECRAWL_SEARCH_THEN_SCRAPE
             - JSON_API
             - SITEMAP
+            - AI_WEB_SEARCH
             - EXCHANGE_PUBLIC_API
         tier:
           type: string
@@ -1655,6 +1657,42 @@ components:
           maximum: 20
         enabled:
           type: boolean
+        aiWebSearchBinding:
+          anyOf:
+            - $ref: "#/components/schemas/AiWebSearchBinding"
+            - type: "null"
+    AiWebSearchBinding:
+      type: object
+      additionalProperties: false
+      required:
+        - providerProfileId
+        - modelName
+        - reasoningEffort
+        - tool
+      properties:
+        providerProfileId:
+          type: string
+          pattern: ^provider_[a-z0-9_-]{4,71}$
+        modelName:
+          type: string
+          minLength: 1
+          maxLength: 160
+        reasoningEffort:
+          type: string
+          enum:
+            - PROVIDER_DEFAULT
+            - NONE
+            - MINIMAL
+            - LOW
+            - MEDIUM
+            - HIGH
+            - XHIGH
+            - MAX
+        tool:
+          type: string
+          enum:
+            - WEB_SEARCH
+            - GOOGLE_SEARCH
     SourceMutationRequest:
       allOf:
         - $ref: "#/components/schemas/SourceDefinition"

@@ -25,6 +25,7 @@ const source: SourceRecord = {
   maximumScrapeTargets: 0,
   enabled: true,
   version: 0,
+  aiWebSearchBinding: null,
 };
 
 const createdSource: SourceRecord = {
@@ -67,9 +68,9 @@ const workspace: IngestionWorkspace = {
   sources: [workspaceSource(source)],
   recentRuns: [],
   recentAiReviews: [],
-  sourceCatalogVersion: 'v2',
-  sourceCatalogManifestHash: '94617c0d468a6f1d4f1ebcaa250e5c3ea7d2ad3eb92358203275c3679f1f5463',
-  sourceCatalogSize: 16,
+  sourceCatalogVersion: 'v3',
+  sourceCatalogManifestHash: 'e1abe028cf7e97ac51b40b2485a37a4bbcf48d969ad31143b379bcf537abed22',
+  sourceCatalogSize: 61,
   generatedAt: '2026-07-16T14:00:00Z',
 };
 
@@ -82,6 +83,7 @@ const apiMock = vi.hoisted(() => ({
   ingestionWorkspace: vi.fn(),
   tasks: vi.fn(),
   sources: vi.fn(),
+  configuration: vi.fn(),
   sourceHealth: vi.fn(),
   documents: vi.fn(),
   createSource: vi.fn(),
@@ -102,6 +104,7 @@ beforeEach(() => {
   apiMock.ingestionWorkspace.mockResolvedValue(workspace);
   apiMock.tasks.mockResolvedValue([]);
   apiMock.sources.mockResolvedValue([source]);
+  apiMock.configuration.mockResolvedValue({ settings: [], providers: [], models: [] });
   apiMock.documents.mockResolvedValue([]);
   apiMock.sourceHealth.mockResolvedValue({
     sourceId: source.sourceId, serviceReady: true, egressReady: true,
@@ -132,7 +135,7 @@ it('creates a user-managed RSS source from the management dialog', async () => {
     .mockResolvedValue([source, createdSource]);
   const user = userEvent.setup();
   render(<IngestionPage />);
-  expect(await screen.findByText(/默认信源目录 v2 · 16 项/)).toBeInTheDocument();
+  expect(await screen.findByText(/默认信源目录 v3 · 61 项/)).toBeInTheDocument();
   await user.click(await screen.findByRole('button', { name: '新增信源' }));
   await user.type(screen.getByLabelText(/^名称/), '用户 RSS');
   await user.type(screen.getByLabelText(/^RSS Feed URL/), 'https://news.example.com/feed.xml');

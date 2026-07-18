@@ -6,8 +6,8 @@
 
 | 目录 | 内容 | 入口 |
 | --- | --- | --- |
-| `requirements/` | 业务边界、验收标准和跨模块需求 | [`2026-07-18-first-party-crawling-architecture.md`](./requirements/2026-07-18-first-party-crawling-architecture.md) |
-| `decisions/` | 已接受的架构决策与取舍 | [`022-first-party-crawling-core.md`](./decisions/022-first-party-crawling-core.md) |
+| `requirements/` | 业务边界、验收标准和跨模块需求 | [`2026-07-18-multi-domain-source-catalog-v3.md`](./requirements/2026-07-18-multi-domain-source-catalog-v3.md) |
+| `decisions/` | 已接受的架构决策与取舍 | [`024-multi-domain-news-search-discovery.md`](./decisions/024-multi-domain-news-search-discovery.md) |
 | `migrations/` | 数据与运行时迁移计划、门禁和回滚 | [`010-java-breaking-exec-plan.md`](./migrations/010-java-breaking-exec-plan.md) |
 | `reports/` | 验收证据、审计和运行态结论 | [`30-java-breaking-migration-acceptance.md`](./reports/30-java-breaking-migration-acceptance.md) |
 | `archive/legacy-python/` | Java breaking migration 前的阶段设计 | [`README.md`](./archive/legacy-python/README.md) |
