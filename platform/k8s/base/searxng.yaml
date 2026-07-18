@@ -86,7 +86,7 @@ data:
     outgoing:
       request_timeout: 8.0
       max_request_timeout: 20.0
-      extra_proxy_timeout: 10.0
+      extra_proxy_timeout: 10
       pool_connections: 50
       pool_maxsize: 20
       retries: 1

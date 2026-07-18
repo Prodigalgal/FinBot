@@ -106,6 +106,37 @@ jobs:
 
       - name: Repository secret scan
         run: python scripts/secret_scan.py
+      - name: Validate SearXNG runtime configuration
+        run: |
+          searxng_image="$(python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          documents = list(yaml.safe_load_all(Path("platform/k8s/base/searxng.yaml").read_text()))
+          config = next(document for document in documents if document["kind"] == "ConfigMap")
+          deployment = next(document for document in documents if document["kind"] == "Deployment")
+          Path("/tmp/finbot-searxng-settings.yml").write_text(
+              config["data"]["settings.yml"], encoding="utf-8"
+          )
+          print(deployment["spec"]["template"]["spec"]["containers"][0]["image"])
+          PY
+          )"
+          docker run --detach --rm \
+            --name finbot-searxng-config-check \
+            --publish 127.0.0.1:18080:8080 \
+            --env SEARXNG_SECRET=ci-searxng-secret-at-least-thirty-two-characters \
+            --volume /tmp/finbot-searxng-settings.yml:/etc/searxng/settings.yml:ro \
+            "$searxng_image"
+          trap 'docker logs finbot-searxng-config-check || true; docker rm --force finbot-searxng-config-check 2>/dev/null || true' EXIT
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:18080/healthz >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" = 40 ]; then
+              exit 1
+            fi
+            sleep 1
+          done
       - uses: imranismail/setup-kustomize@v2
       - name: Render production Kubernetes manifests
         run: |
