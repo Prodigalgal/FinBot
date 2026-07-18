@@ -32,6 +32,7 @@ configMapGenerator:
       - FINBOT_WORKER_HEARTBEAT_INTERVAL=PT5S
       - FINBOT_SCHEDULER_POLL_DELAY=PT5S
       - FINBOT_TRADING_LEDGER_STALE_AFTER=PT10M
+      - FINBOT_CRAWLER_USER_AGENT=FinBot/2.0 (+https://github.com/Prodigalgal/FinBot; contact=finbot@omnnu.xyz)
 generatorOptions:
   annotations:
     argocd.argoproj.io/sync-wave: "-50"

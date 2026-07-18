@@ -63,6 +63,7 @@ final class RssSourceCollector implements SourceCollectorAdapter {
     private List<CollectedPayload> fetchFeed(InformationSource source, URI feedUrl) {
         var route = source.outboundRoute() == null ? OutboundRoute.PUBLIC_DATA : source.outboundRoute();
         var response = transport.get(new CrawlerTransport.Request(
+                source.sourceId().value(),
                 feedUrl,
                 route,
                 Map.of(
@@ -71,7 +72,7 @@ final class RssSourceCollector implements SourceCollectorAdapter {
                 Duration.ofSeconds(30),
                 MAXIMUM_RESPONSE_BYTES,
                 3,
-                false,
+                route != OutboundRoute.PUBLIC_DATA,
                 "RSS",
                 "RSS source"));
         var contentType = "application/octet-stream".equals(response.contentType())
@@ -213,7 +214,13 @@ final class RssSourceCollector implements SourceCollectorAdapter {
         }
         try {
             var uri = URI.create(value.strip());
-            return uri.getHost() == null ? null : uri;
+            return uri.getHost() == null
+                    || uri.getUserInfo() != null
+                    || uri.getFragment() != null
+                    || !("http".equalsIgnoreCase(uri.getScheme())
+                            || "https".equalsIgnoreCase(uri.getScheme()))
+                    ? null
+                    : uri;
         } catch (IllegalArgumentException exception) {
             return null;
         }

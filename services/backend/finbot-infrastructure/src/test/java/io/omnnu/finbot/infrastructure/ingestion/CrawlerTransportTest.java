@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -33,11 +34,14 @@ class CrawlerTransportTest {
                         route -> new ProxyRouteDecision(
                                 route, true, false, URI.create("http://127.0.0.1:1"), "IPV4", "redacted"),
                         Runnable::run),
-                new CrawlerConcurrencyLimiter(2, 1, Duration.ofSeconds(1)),
-                Clock.systemUTC());
+                new CrawlerConcurrencyLimiter(2, 1, 1, Duration.ofSeconds(1)),
+                new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                Clock.systemUTC(),
+                "FinBot test contact=test@example.com");
 
         var exception = assertThrows(SourceCollectionException.class, () -> transport.get(
                 new CrawlerTransport.Request(
+                        "source_test_crawler",
                         URI.create("http://127.0.0.1/metadata"),
                         OutboundRoute.WEB_CRAWL,
                         Map.of(),
@@ -66,10 +70,13 @@ class CrawlerTransportTest {
             };
             var transport = new CrawlerTransport(
                     new RoutedHttpClientFactory(resolver, Runnable::run),
-                    new CrawlerConcurrencyLimiter(2, 1, Duration.ofSeconds(1)),
-                    Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC));
+                    new CrawlerConcurrencyLimiter(2, 1, 1, Duration.ofSeconds(1)),
+                    new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                    Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                    "FinBot test contact=test@example.com");
 
             var response = transport.get(new CrawlerTransport.Request(
+                    "source_test_crawler",
                     URI.create("http://target.test/data"),
                     OutboundRoute.WEB_CRAWL,
                     Map.of("Accept", "application/json"),
@@ -127,6 +134,46 @@ class CrawlerTransportTest {
     }
 
     @Test
+    void preservesUpstreamHttpStatusInBlockedCollectionErrors() throws IOException {
+        var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxy.createContext("/blocked", exchange -> {
+            try (exchange) {
+                var body = "blocked".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(403, body.length);
+                exchange.getResponseBody().write(body);
+            }
+        });
+        proxy.start();
+        try {
+            var exception = assertThrows(SourceCollectionException.class,
+                    () -> transportThrough(proxy).get(request(URI.create("http://target.test/blocked"), 1)));
+
+            assertEquals("TEST_CRAWLER_HTTP_403", exception.errorCode());
+            assertEquals(403, exception.statusCode());
+            assertTrue(exception.blocked());
+        } finally {
+            proxy.stop(0);
+        }
+    }
+
+    @Test
+    void waitsAtLeastFiveSecondsWhenRateLimitedWithoutRetryAfter() {
+        var response = new CrawlerTransport.Response(
+                URI.create("https://api.gdeltproject.org/api/v2/doc/doc"),
+                429,
+                "text/plain",
+                new byte[0],
+                Map.of(),
+                null,
+                "direct",
+                1,
+                0,
+                Instant.parse("2026-07-18T08:00:00Z"));
+
+        assertEquals(Duration.ofSeconds(5), CrawlerTransport.retryDelay(response, 1));
+    }
+
+    @Test
     void blocksRedirectsToPrivateTargetsBeforeOpeningAnotherConnection() throws IOException {
         var requests = new AtomicInteger();
         var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -176,6 +223,7 @@ class CrawlerTransportTest {
         proxy.start();
         try {
             var request = new CrawlerTransport.Request(
+                    "source_test_crawler",
                     URI.create("http://target.test/start"),
                     OutboundRoute.WEB_CRAWL,
                     Map.of(
@@ -204,12 +252,15 @@ class CrawlerTransportTest {
                 route, true, false, proxyUri, "IPV4", proxyUri.toString());
         return new CrawlerTransport(
                 new RoutedHttpClientFactory(resolver, Runnable::run),
-                new CrawlerConcurrencyLimiter(2, 1, Duration.ofSeconds(1)),
-                Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC));
+                new CrawlerConcurrencyLimiter(2, 1, 1, Duration.ofSeconds(1)),
+                new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                "FinBot test contact=test@example.com");
     }
 
     private static CrawlerTransport.Request request(URI target, int maximumAttempts) {
         return new CrawlerTransport.Request(
+                "source_test_crawler",
                 target,
                 OutboundRoute.WEB_CRAWL,
                 Map.of("Accept", "text/plain"),

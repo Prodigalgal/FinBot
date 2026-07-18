@@ -461,6 +461,23 @@ export interface SourceTestResult {
   errorCode: string | null;
   errorMessage: string | null;
 }
+export interface SourceHealth {
+  sourceId: string;
+  serviceReady: boolean;
+  egressReady: boolean;
+  routeType: string;
+  routeEndpoint: string;
+  channelStatus: string;
+  firecrawlChannelStatus: string;
+  rateLimitStatus: string;
+  lastSuccessAt: string | null;
+  lastBlockedAt: string | null;
+  lastAttemptAt: string | null;
+  latestOutcome: string | null;
+  latestStatusCode: number | null;
+  latestErrorCode: string | null;
+  safeMessage: string | null;
+}
 export interface EvidenceDocument { documentId: string; evidenceId: string; sourceId: string; sourceTier: string; category: string; trustWeight: number; canonicalUrl: string | null; title: string; language: string; excerpt: string; assetScope: string[]; publishedAt: string | null; fetchedAt: string }
 
 export interface AutonomousStatus {

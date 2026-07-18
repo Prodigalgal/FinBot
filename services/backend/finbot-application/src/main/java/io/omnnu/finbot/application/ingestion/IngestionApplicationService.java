@@ -29,6 +29,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
     private final IngestionRepository repository;
     private final SourceCollectionGateway collectionGateway;
     private final EvidenceNormalizer evidenceNormalizer;
+    private final SourceRuntimeHealthGateway runtimeHealthGateway;
     private final SortableIdGenerator idGenerator;
     private final Clock clock;
     private final Executor executor;
@@ -37,12 +38,14 @@ public final class IngestionApplicationService implements IngestionUseCase {
             IngestionRepository repository,
             SourceCollectionGateway collectionGateway,
             EvidenceNormalizer evidenceNormalizer,
+            SourceRuntimeHealthGateway runtimeHealthGateway,
             SortableIdGenerator idGenerator,
             Clock clock,
             Executor executor) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.collectionGateway = Objects.requireNonNull(collectionGateway, "collectionGateway");
         this.evidenceNormalizer = Objects.requireNonNull(evidenceNormalizer, "evidenceNormalizer");
+        this.runtimeHealthGateway = Objects.requireNonNull(runtimeHealthGateway, "runtimeHealthGateway");
         this.idGenerator = Objects.requireNonNull(idGenerator, "idGenerator");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.executor = Objects.requireNonNull(executor, "executor");
@@ -56,6 +59,31 @@ public final class IngestionApplicationService implements IngestionUseCase {
     @Override
     public List<NormalizedDocument> listRecentDocuments(SourceId sourceId, int limit) {
         return repository.listRecentDocuments(sourceId, Math.max(1, Math.min(limit, 200)));
+    }
+
+    @Override
+    public SourceRuntimeHealth sourceHealth(SourceId sourceId) {
+        Objects.requireNonNull(sourceId, "sourceId");
+        var source = repository.findSource(sourceId)
+                .orElseThrow(() -> new IllegalArgumentException("Information source does not exist"));
+        var runtime = runtimeHealthGateway.inspect(source);
+        var history = repository.sourceAttemptHistory(sourceId);
+        return new SourceRuntimeHealth(
+                sourceId,
+                runtime.serviceReady(),
+                runtime.egressReady(),
+                runtime.routeType(),
+                runtime.routeEndpoint(),
+                source.enabled() ? runtime.channelStatus() : "DISABLED",
+                runtime.firecrawlChannelStatus(),
+                runtime.rateLimitStatus(),
+                history.lastSuccessAt(),
+                history.lastBlockedAt(),
+                history.lastAttemptAt(),
+                history.latestOutcome(),
+                history.latestStatusCode(),
+                history.latestErrorCode() == null ? runtime.errorCode() : history.latestErrorCode(),
+                history.safeMessage() == null ? runtime.safeMessage() : history.safeMessage());
     }
 
     @Override
@@ -426,7 +454,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 source.sourceId(),
                 requestedUrl,
                 source.outboundRoute() == null ? "DIRECT" : source.outboundRoute().name(),
-                null,
+                exception.statusCode(),
                 null,
                 0,
                 0,

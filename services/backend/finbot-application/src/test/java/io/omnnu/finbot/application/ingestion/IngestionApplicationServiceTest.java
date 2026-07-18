@@ -128,6 +128,22 @@ class IngestionApplicationServiceTest {
     }
 
     @Test
+    void exposesRuntimeHealthAndKeepsAttemptHistorySeparateFromChannelState() {
+        var repository = new StubRepository();
+        var service = service(repository);
+        service.createSource(new CreateSourceCommand(rssDefinition(true)));
+
+        var health = service.sourceHealth(new SourceId("source_managed_test01"));
+
+        assertEquals("source_managed_test01", health.sourceId().value());
+        assertEquals("READY", health.channelStatus());
+        assertEquals("PUBLIC_DATA", health.routeType());
+        assertEquals("READY", health.rateLimitStatus());
+        assertNull(health.lastAttemptAt());
+        assertNull(health.latestErrorCode());
+    }
+
+    @Test
     void completesCollectionAsFailedBeforePropagatingUnexpectedCollectorFailure() {
         var repository = new StubRepository();
         var service = new IngestionApplicationService(
@@ -136,6 +152,8 @@ class IngestionApplicationServiceTest {
                     throw new IllegalStateException("provider failed outside the error contract");
                 },
                 (source, evidenceId, payload) -> Optional.empty(),
+                source -> new SourceRuntimeHealthGateway.RuntimeChannelState(
+                        true, true, "PUBLIC_DATA", "direct", "READY", "NOT_APPLICABLE", "READY", null, null),
                 prefix -> prefix + "managed_test01",
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Runnable::run);
@@ -158,6 +176,8 @@ class IngestionApplicationServiceTest {
                 repository,
                 (source, query) -> List.of(),
                 (source, evidenceId, payload) -> Optional.empty(),
+                source -> new SourceRuntimeHealthGateway.RuntimeChannelState(
+                        true, true, "PUBLIC_DATA", "direct", "READY", "NOT_APPLICABLE", "READY", null, null),
                 prefix -> prefix + "managed_test01",
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Runnable::run);

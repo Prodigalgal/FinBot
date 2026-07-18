@@ -11,6 +11,10 @@ public interface IngestionUseCase {
 
     List<NormalizedDocument> listRecentDocuments(SourceId sourceId, int limit);
 
+    default SourceRuntimeHealth sourceHealth(SourceId sourceId) {
+        throw new UnsupportedOperationException("Source health is not available");
+    }
+
     InformationSource createSource(CreateSourceCommand command);
 
     InformationSource updateSource(UpdateSourceCommand command);

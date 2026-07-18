@@ -13,6 +13,10 @@ public interface IngestionRepository {
 
     Optional<InformationSource> findSource(SourceId sourceId);
 
+    default SourceAttemptHistory sourceAttemptHistory(SourceId sourceId) {
+        return new SourceAttemptHistory(null, null, null, null, null, null, null);
+    }
+
     Optional<InformationSource> createSource(InformationSource source, Instant createdAt);
 
     Optional<InformationSource> updateSource(
@@ -29,6 +33,10 @@ public interface IngestionRepository {
             Instant updatedAt);
 
     void startCollection(SourceCollectionRun collectionRun);
+
+    default int recoverStaleCollections(Instant staleBefore, Instant recoveredAt) {
+        return 0;
+    }
 
     void recordFetchAttempt(SourceFetchAttempt attempt);
 

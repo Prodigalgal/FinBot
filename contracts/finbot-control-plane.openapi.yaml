@@ -932,6 +932,21 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+  /sources/{sourceId}/health:
+    get:
+      operationId: getInformationSourceHealth
+      description: Safe source-channel, egress, limiter, and recent-attempt health without credentials or proxy URLs.
+      parameters:
+        - $ref: "#/components/parameters/SourceId"
+      responses:
+        "200":
+          description: Current source runtime health and latest persisted attempt summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceHealthResponse"
+        default:
+          $ref: "#/components/responses/Problem"
   /sources/{sourceId}/status:
     put:
       operationId: setInformationSourceStatus
@@ -1705,6 +1720,99 @@ components:
           type:
             - string
             - "null"
+    SourceHealthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - serviceReady
+        - egressReady
+        - routeType
+        - routeEndpoint
+        - channelStatus
+        - firecrawlChannelStatus
+        - rateLimitStatus
+      properties:
+        sourceId:
+          type: string
+          pattern: ^source_[a-z0-9_-]{4,72}$
+        serviceReady:
+          type: boolean
+        egressReady:
+          type: boolean
+        routeType:
+          type: string
+          enum:
+            - FIRECRAWL
+            - WEB_CRAWL
+            - EXCHANGE_GATE
+            - EXCHANGE_BYBIT
+            - PUBLIC_DATA
+        routeEndpoint:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Redacted route endpoint such as direct or scheme/host/port only.
+        channelStatus:
+          type: string
+          enum:
+            - READY
+            - DISABLED
+            - UNSUPPORTED
+            - EGRESS_UNAVAILABLE
+            - CIRCUIT_OPEN
+            - BUDGET_EXHAUSTED
+        firecrawlChannelStatus:
+          type: string
+          enum:
+            - NOT_APPLICABLE
+            - READY
+            - CIRCUIT_OPEN
+            - BUDGET_EXHAUSTED
+        rateLimitStatus:
+          type: string
+          minLength: 1
+          maxLength: 32
+        lastSuccessAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        lastBlockedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        lastAttemptAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        latestOutcome:
+          type:
+            - string
+            - "null"
+          enum:
+            - PREPARED
+            - FAILED
+            - BLOCKED
+            - null
+        latestStatusCode:
+          type:
+            - integer
+            - "null"
+          minimum: 100
+          maximum: 599
+        latestErrorCode:
+          type:
+            - string
+            - "null"
+          maxLength: 80
+        safeMessage:
+          type:
+            - string
+            - "null"
+          maxLength: 2000
     IngestionWorkspace:
       type: object
       additionalProperties: false

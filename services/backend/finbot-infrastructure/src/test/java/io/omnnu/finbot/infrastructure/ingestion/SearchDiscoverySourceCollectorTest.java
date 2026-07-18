@@ -125,8 +125,10 @@ class SearchDiscoverySourceCollectorTest {
         return new SearchDiscoverySourceCollector(List.of(new JsonSearchDiscoveryProvider(
                 new CrawlerTransport(
                         new RoutedHttpClientFactory(resolver, Runnable::run),
-                        new CrawlerConcurrencyLimiter(16, 2, Duration.ofSeconds(1)),
-                        Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC)),
+                        new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
+                        new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                        Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                        "FinBot test contact=test@example.com"),
                 new ObjectMapper(),
                 runtimeSecrets)));
     }
@@ -136,7 +138,8 @@ class SearchDiscoverySourceCollectorTest {
         observedTarget.set(exchange.getRequestURI().toString());
         var body = """
                 {"results":[{"title":"Oil inventory","url":"https://example.com/oil",
-                "content":"Official inventory fell this week.","publishedDate":"2026-07-18T07:00:00Z"}]}
+                "content":"Official inventory fell this week.","publishedDate":"2026-07-18T07:00:00Z"},
+                {"title":"Credential URL","url":"https://user:secret@example.com/private","content":"discard"}]}
                 """.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, body.length);

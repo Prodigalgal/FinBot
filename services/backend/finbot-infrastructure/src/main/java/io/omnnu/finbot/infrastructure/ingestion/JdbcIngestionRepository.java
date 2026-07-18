@@ -10,6 +10,7 @@ import io.omnnu.finbot.application.ingestion.PersistEvidenceResult;
 import io.omnnu.finbot.application.ingestion.RawEvidenceRecord;
 import io.omnnu.finbot.application.ingestion.ResearchEvidencePackage;
 import io.omnnu.finbot.application.ingestion.SourceCollectionRun;
+import io.omnnu.finbot.application.ingestion.SourceAttemptHistory;
 import io.omnnu.finbot.application.ingestion.SourceFetchAttempt;
 import io.omnnu.finbot.application.research.AiCompressionRecord;
 import io.omnnu.finbot.application.research.CompressionPackage;
@@ -79,6 +80,41 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("sourceId", sourceId.value())
                 .query(this::source)
                 .optional();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SourceAttemptHistory sourceAttemptHistory(SourceId sourceId) {
+        return jdbcClient.sql("""
+                select aggregate.last_success_at, aggregate.last_blocked_at,
+                       latest.started_at as last_attempt_at, latest.outcome,
+                       latest.status_code, latest.error_code, latest.error_message
+                from (
+                  select max(started_at) filter (where outcome = 'PREPARED') as last_success_at,
+                         max(started_at) filter (where outcome = 'BLOCKED') as last_blocked_at
+                  from source_fetch_attempt
+                  where source_id = :sourceId
+                ) aggregate
+                left join lateral (
+                  select attempt.started_at, attempt.outcome, attempt.status_code,
+                         attempt.error_code, run.error_message
+                  from source_fetch_attempt attempt
+                  join source_collection_run run on run.collection_id = attempt.collection_id
+                  where attempt.source_id = :sourceId
+                  order by attempt.started_at desc, attempt.id desc
+                  limit 1
+                ) latest on true
+                """)
+                .param("sourceId", sourceId.value())
+                .query((resultSet, rowNumber) -> new SourceAttemptHistory(
+                        instant(resultSet.getObject("last_success_at", OffsetDateTime.class)),
+                        instant(resultSet.getObject("last_blocked_at", OffsetDateTime.class)),
+                        instant(resultSet.getObject("last_attempt_at", OffsetDateTime.class)),
+                        resultSet.getString("outcome"),
+                        resultSet.getObject("status_code", Integer.class),
+                        resultSet.getString("error_code"),
+                        safe(resultSet.getString("error_message"), 2_000)))
+                .single();
     }
 
     @Override
@@ -260,6 +296,45 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("sourceId", collectionRun.sourceId().value())
                 .param("query", collectionRun.query())
                 .param("startedAt", timestamp(collectionRun.startedAt()))
+                .update();
+    }
+
+    @Override
+    @Transactional
+    public int recoverStaleCollections(Instant staleBefore, Instant recoveredAt) {
+        jdbcClient.sql("""
+                insert into source_fetch_attempt (
+                  attempt_id, collection_id, source_id, requested_url, route_type,
+                  status_code, content_type, response_bytes, retry_count, outcome,
+                  error_code, parser_version, started_at, completed_at
+                )
+                select 'fetch_recovery_' || substr(md5(run.collection_id), 1, 40),
+                       run.collection_id, run.source_id,
+                       coalesce(source.endpoint_base_url,
+                                source.seed_urls->>0,
+                                source.feed_urls->>0),
+                       coalesce(source.proxy_route_type, 'DIRECT'),
+                       null, null, 0, 0, 'FAILED',
+                       'COLLECTION_RECOVERED_AFTER_INTERRUPTION',
+                       'worker-recovery-v1', :recoveredAt, :recoveredAt
+                from source_collection_run run
+                join information_source source on source.source_id = run.source_id
+                where run.status = 'RUNNING' and run.started_at < :staleBefore
+                on conflict (attempt_id) do nothing
+                """)
+                .param("staleBefore", timestamp(staleBefore))
+                .param("recoveredAt", timestamp(recoveredAt))
+                .update();
+        return jdbcClient.sql("""
+                update source_collection_run
+                set status = 'FAILED',
+                    error_code = 'COLLECTION_RECOVERED_AFTER_INTERRUPTION',
+                    error_message = 'Collection was terminated after its worker stopped before completion',
+                    completed_at = :recoveredAt
+                where status = 'RUNNING' and started_at < :staleBefore
+                """)
+                .param("staleBefore", timestamp(staleBefore))
+                .param("recoveredAt", timestamp(recoveredAt))
                 .update();
     }
 

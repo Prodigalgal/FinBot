@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -23,22 +24,29 @@ public final class CrawlerTransport {
     private static final int MAXIMUM_REDIRECTS = 5;
     private final RoutedHttpClientFactory httpClients;
     private final CrawlerConcurrencyLimiter concurrencyLimiter;
+    private final CrawlerPolitenessController politenessController;
     private final Clock clock;
+    private final String userAgent;
 
     public CrawlerTransport(
             RoutedHttpClientFactory httpClients,
             CrawlerConcurrencyLimiter concurrencyLimiter,
-            Clock clock) {
+            CrawlerPolitenessController politenessController,
+            Clock clock,
+            @Value("${finbot.crawler.user-agent:FinBot/2.0 (contact: finbot@omnnu.xyz)}")
+                    String userAgent) {
         this.httpClients = Objects.requireNonNull(httpClients, "httpClients");
         this.concurrencyLimiter = Objects.requireNonNull(concurrencyLimiter, "concurrencyLimiter");
+        this.politenessController = Objects.requireNonNull(politenessController, "politenessController");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.userAgent = requireHeaderValue(userAgent, "userAgent", 500);
     }
 
     @SuppressWarnings("try")
     public Response get(Request request) {
         Objects.requireNonNull(request, "request");
         var target = request.target();
-        var headers = request.headers();
+        var headers = withUserAgent(request.headers());
         var redirects = 0;
         var totalAttempts = 0;
         while (true) {
@@ -50,7 +58,9 @@ public final class CrawlerTransport {
                     throw new SourceCollectionException(
                             request.errorPrefix() + "_HTTP_" + response.statusCode(),
                             request.safeName() + " returned HTTP " + response.statusCode(),
-                            response.statusCode() == 401 || response.statusCode() == 403);
+                            response.statusCode() == 401 || response.statusCode() == 403
+                                    || response.statusCode() == 429,
+                            response.statusCode());
                 }
                 return new Response(
                         response.requestedUrl(),
@@ -95,7 +105,8 @@ public final class CrawlerTransport {
             headers.forEach(builder::header);
             try {
                 Response response;
-                try (var permit = concurrencyLimiter.acquire(target)) {
+                try (var permit = concurrencyLimiter.acquire(request.sourceId(), target)) {
+                    politenessController.await(target);
                     var httpResponse = httpClients.clientForRequest(route).send(
                             builder.build(),
                             HttpResponse.BodyHandlers.ofInputStream());
@@ -170,6 +181,26 @@ public final class CrawlerTransport {
         return Map.copyOf(result);
     }
 
+    private Map<String, String> withUserAgent(Map<String, String> headers) {
+        var result = new HashMap<String, String>();
+        headers.forEach((name, value) -> {
+            if (!"user-agent".equalsIgnoreCase(name)) {
+                result.put(name, value);
+            }
+        });
+        result.put("User-Agent", userAgent);
+        return Map.copyOf(result);
+    }
+
+    private static String requireHeaderValue(String value, String field, int maximumLength) {
+        var normalized = Objects.requireNonNull(value, field).strip();
+        if (normalized.isEmpty() || normalized.length() > maximumLength
+                || normalized.indexOf('\r') >= 0 || normalized.indexOf('\n') >= 0) {
+            throw new IllegalArgumentException(field + " is invalid");
+        }
+        return normalized;
+    }
+
     private static boolean sameOrigin(URI left, URI right) {
         return left.getScheme().equalsIgnoreCase(right.getScheme())
                 && left.getHost().equalsIgnoreCase(right.getHost())
@@ -216,12 +247,14 @@ public final class CrawlerTransport {
                 || statusCode == 502 || statusCode == 503 || statusCode == 504;
     }
 
-    private static Duration retryDelay(Response response, int attempt) {
+    static Duration retryDelay(Response response, int attempt) {
         var retryAfter = response.responseHeaders().getOrDefault("retry-after", "");
         try {
             return Duration.ofSeconds(Math.max(1, Math.min(10, Long.parseLong(retryAfter))));
         } catch (NumberFormatException exception) {
-            return Duration.ofSeconds(Math.min(4, attempt));
+            return response.statusCode() == 429
+                    ? Duration.ofSeconds(5)
+                    : Duration.ofSeconds(Math.min(4, attempt));
         }
     }
 
@@ -287,6 +320,7 @@ public final class CrawlerTransport {
     }
 
     public record Request(
+            String sourceId,
             URI target,
             OutboundRoute route,
             Map<String, String> headers,
@@ -297,6 +331,7 @@ public final class CrawlerTransport {
             String errorPrefix,
             String safeName) {
         public Request {
+            sourceId = requireSourceId(sourceId);
             target = Objects.requireNonNull(target, "target");
             route = Objects.requireNonNull(route, "route");
             headers = Map.copyOf(Objects.requireNonNull(headers, "headers"));
@@ -314,6 +349,14 @@ public final class CrawlerTransport {
             var normalized = Objects.requireNonNull(value, field).strip();
             if (normalized.isEmpty() || normalized.length() > 80) {
                 throw new IllegalArgumentException(field + " is invalid");
+            }
+            return normalized;
+        }
+
+        private static String requireSourceId(String value) {
+            var normalized = requireText(value, "sourceId").toLowerCase(Locale.ROOT);
+            if (!normalized.matches("source_[a-z0-9_-]{4,72}")) {
+                throw new IllegalArgumentException("sourceId is invalid");
             }
             return normalized;
         }

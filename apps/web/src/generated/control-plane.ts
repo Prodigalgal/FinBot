@@ -58,6 +58,7 @@ export type ControlPlanePath =
   | "/api/v2/sources"
   | "/api/v2/sources/{sourceId}"
   | "/api/v2/sources/{sourceId}/collect"
+  | "/api/v2/sources/{sourceId}/health"
   | "/api/v2/sources/{sourceId}/status"
   | "/api/v2/sources/{sourceId}/test"
   | "/api/v2/trading/accounts"
@@ -148,6 +149,7 @@ export type ControlPlaneRequestPathBase =
   | `/api/v2/sources`
   | `/api/v2/sources/${string}`
   | `/api/v2/sources/${string}/collect`
+  | `/api/v2/sources/${string}/health`
   | `/api/v2/sources/${string}/status`
   | `/api/v2/sources/${string}/test`
   | `/api/v2/trading/accounts`
@@ -215,6 +217,7 @@ export type ControlPlaneGetRequestPathBase =
   | `/api/v2/setup-profiles/${string}/preview`
   | `/api/v2/setup-profiles/history`
   | `/api/v2/sources`
+  | `/api/v2/sources/${string}/health`
   | `/api/v2/trading/accounts`
   | `/api/v2/trading/accounts/${string}/positions`
   | `/api/v2/trading/activity`
@@ -371,6 +374,7 @@ export type ControlPlaneOperation =
   | { method: 'DELETE'; path: "/sources/{sourceId}" }
   | { method: 'PUT'; path: "/sources/{sourceId}" }
   | { method: 'POST'; path: "/sources/{sourceId}/collect" }
+  | { method: 'GET'; path: "/sources/{sourceId}/health" }
   | { method: 'PUT'; path: "/sources/{sourceId}/status" }
   | { method: 'POST'; path: "/sources/{sourceId}/test" }
   | { method: 'GET'; path: "/trading/accounts" }

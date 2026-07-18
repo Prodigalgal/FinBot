@@ -56,8 +56,10 @@ class SitemapSourceCollectorTest {
         };
         return new SitemapSourceCollector(new CrawlerTransport(
                 new RoutedHttpClientFactory(resolver, Runnable::run),
-                new CrawlerConcurrencyLimiter(16, 2, Duration.ofSeconds(1)),
-                Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC)));
+                new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
+                new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                "FinBot test contact=test@example.com"));
     }
 
     private static InformationSource source(URI endpoint) {

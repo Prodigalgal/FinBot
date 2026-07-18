@@ -45,6 +45,7 @@ final class SitemapSourceCollector implements SourceCollectorAdapter {
         }
         var route = source.outboundRoute() == null ? OutboundRoute.PUBLIC_DATA : source.outboundRoute();
         var response = transport.get(new CrawlerTransport.Request(
+                source.sourceId().value(),
                 endpoint,
                 route,
                 Map.of(

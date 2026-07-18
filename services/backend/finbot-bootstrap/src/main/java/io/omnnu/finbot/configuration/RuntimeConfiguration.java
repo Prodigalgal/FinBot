@@ -13,6 +13,7 @@ import io.omnnu.finbot.application.ingestion.IngestionApplicationService;
 import io.omnnu.finbot.application.ingestion.IngestionRepository;
 import io.omnnu.finbot.application.ingestion.IngestionUseCase;
 import io.omnnu.finbot.application.ingestion.SourceCollectionGateway;
+import io.omnnu.finbot.application.ingestion.SourceRuntimeHealthGateway;
 import io.omnnu.finbot.application.identity.AuthenticationApplicationService;
 import io.omnnu.finbot.application.identity.AuthenticationCryptography;
 import io.omnnu.finbot.application.identity.AuthenticationPolicy;
@@ -511,6 +512,7 @@ public class RuntimeConfiguration {
             IngestionRepository repository,
             SourceCollectionGateway collectionGateway,
             EvidenceNormalizer evidenceNormalizer,
+            SourceRuntimeHealthGateway runtimeHealthGateway,
             SortableIdGenerator idGenerator,
             Clock clock,
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
@@ -518,6 +520,7 @@ public class RuntimeConfiguration {
                 repository,
                 collectionGateway,
                 evidenceNormalizer,
+                runtimeHealthGateway,
                 idGenerator,
                 clock,
                 executor);

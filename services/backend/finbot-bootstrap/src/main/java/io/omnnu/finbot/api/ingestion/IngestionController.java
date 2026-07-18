@@ -98,6 +98,11 @@ public final class IngestionController {
                 .toList();
     }
 
+    @GetMapping("/sources/{sourceId}/health")
+    public SourceHealthResponse sourceHealth(@PathVariable String sourceId) {
+        return SourceHealthResponse.from(ingestionUseCase.sourceHealth(new SourceId(sourceId)));
+    }
+
     @PostMapping("/sources/{sourceId}/collect")
     public ResponseEntity<TaskResponse> collect(
             @PathVariable String sourceId,

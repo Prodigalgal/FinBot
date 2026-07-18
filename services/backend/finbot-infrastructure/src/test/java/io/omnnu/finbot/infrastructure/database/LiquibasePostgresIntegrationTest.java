@@ -447,6 +447,8 @@ class LiquibasePostgresIntegrationTest {
                              and node_type = 'QUANT') as published_quant_operation,
                           (select count(*) from information_source where deleted_at is null)
                             as source_count,
+                          (select count(*) from information_source
+                           where enabled = true and deleted_at is null) as enabled_source_count,
                           (select count(*) from network_proxy_route) as proxy_route_count,
                           (select count(*) from watchlist_item) as watchlist_item_count,
                           (select require_proxy from network_proxy_route
@@ -590,11 +592,37 @@ class LiquibasePostgresIntegrationTest {
                              where table_schema = 'public'
                                and table_name = 'trading_activity_projection') as activity_view_count
                           , (select catalog_version from information_source_catalog_manifest
-                             where catalog_id = 'catalog_default_sources') as source_catalog_version
+                             where catalog_id = 'catalog_default_sources'
+                             order by created_at desc, catalog_version desc limit 1) as source_catalog_version
                           , (select manifest_hash from information_source_catalog_manifest
-                             where catalog_id = 'catalog_default_sources') as source_catalog_hash
+                             where catalog_id = 'catalog_default_sources'
+                             order by created_at desc, catalog_version desc limit 1) as source_catalog_hash
                           , (select source_count from information_source_catalog_manifest
-                             where catalog_id = 'catalog_default_sources') as source_catalog_manifest_count
+                             where catalog_id = 'catalog_default_sources'
+                             order by created_at desc, catalog_version desc limit 1) as source_catalog_manifest_count
+                          , (select count(*) from information_source_catalog_manifest
+                             where catalog_id = 'catalog_default_sources') as source_catalog_history_count
+                          , (select count(*) from information_source
+                             where source_id in (
+                               'source_sec_edgar','source_world_bank_macro','source_bls_labor',
+                               'source_cftc_cot','source_fred_macro'
+                             )) as free_structured_source_count
+                          , (select count(*) from information_source
+                             where source_id = 'source_sec_edgar'
+                               and source_mode = 'RSS' and proxy_route_type = 'WEB_CRAWL'
+                               and enabled = true) as sec_source_ready
+                          , (select count(*) from information_source
+                             where source_id = 'source_global_search'
+                               and source_mode = 'SEARCH_DISCOVERY' and provider = 'gdelt'
+                               and proxy_route_type = 'WEB_CRAWL' and enabled = true) as gdelt_source_ready
+                          , (select count(*) from information_source
+                             where source_id = 'source_cftc_cot'
+                               and endpoint_base_url like '%/resource/gpe5-46if.json%24limit%'
+                               and endpoint_base_url like '%24order%') as cftc_source_ready
+                          , (select count(*) from information_source
+                             where source_id = 'source_fred_macro'
+                               and credential_env = 'FINBOT_INFORMATION_SOURCE_KEYS_JSON'
+                               and enabled = false) as fred_key_bound_disabled
                           , (select count(*) from information_schema.columns
                              where table_schema = 'public'
                                and table_name = 'source_fetch_attempt'
@@ -612,7 +640,8 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(6, result.getInt("workflow_version_count"));
                 assertEquals("workflowversion_standard_v6", result.getString("published_version_id"));
                 assertEquals("multi_strategy_ensemble", result.getString("published_quant_operation"));
-                assertEquals(11, result.getInt("source_count"));
+                assertEquals(16, result.getInt("source_count"));
+                assertEquals(11, result.getInt("enabled_source_count"));
                 assertEquals(5, result.getInt("proxy_route_count"));
                 assertEquals(5, result.getInt("watchlist_item_count"));
                 assertFalse(result.getBoolean("gate_proxy_required"));
@@ -659,11 +688,17 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(3, result.getInt("experiment_assignment_column_count"));
                 assertEquals(1, result.getInt("network_idempotency_column_count"));
                 assertEquals(1, result.getInt("activity_view_count"));
-                assertEquals("v1", result.getString("source_catalog_version"));
+                assertEquals("v2", result.getString("source_catalog_version"));
                 assertEquals(
-                        "d072d9c03dda10d7005a43906e50dbc0a4eda3d4df3b6bb40a18f868f9ed53c6",
+                        "94617c0d468a6f1d4f1ebcaa250e5c3ea7d2ad3eb92358203275c3679f1f5463",
                         result.getString("source_catalog_hash"));
-                assertEquals(11, result.getInt("source_catalog_manifest_count"));
+                assertEquals(16, result.getInt("source_catalog_manifest_count"));
+                assertEquals(2, result.getInt("source_catalog_history_count"));
+                assertEquals(5, result.getInt("free_structured_source_count"));
+                assertEquals(1, result.getInt("sec_source_ready"));
+                assertEquals(1, result.getInt("gdelt_source_ready"));
+                assertEquals(1, result.getInt("cftc_source_ready"));
+                assertEquals(1, result.getInt("fred_key_bound_disabled"));
                 assertEquals(1, result.getInt("fetch_redirect_column_count"));
             }
         }
@@ -720,7 +755,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                assertEquals(45, result.getInt("changeset_count"));
+                assertEquals(46, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

@@ -106,6 +106,8 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 select catalog_version, manifest_hash, source_count
                 from information_source_catalog_manifest
                 where catalog_id = 'catalog_default_sources'
+                order by created_at desc, catalog_version desc
+                limit 1
                 """)
                 .query((resultSet, rowNumber) -> new SourceCatalogManifest(
                         resultSet.getString("catalog_version"),

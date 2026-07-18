@@ -67,9 +67,9 @@ const workspace: IngestionWorkspace = {
   sources: [workspaceSource(source)],
   recentRuns: [],
   recentAiReviews: [],
-  sourceCatalogVersion: 'v1',
-  sourceCatalogManifestHash: 'd072d9c03dda10d7005a43906e50dbc0a4eda3d4df3b6bb40a18f868f9ed53c6',
-  sourceCatalogSize: 11,
+  sourceCatalogVersion: 'v2',
+  sourceCatalogManifestHash: '94617c0d468a6f1d4f1ebcaa250e5c3ea7d2ad3eb92358203275c3679f1f5463',
+  sourceCatalogSize: 16,
   generatedAt: '2026-07-16T14:00:00Z',
 };
 
@@ -82,6 +82,7 @@ const apiMock = vi.hoisted(() => ({
   ingestionWorkspace: vi.fn(),
   tasks: vi.fn(),
   sources: vi.fn(),
+  sourceHealth: vi.fn(),
   documents: vi.fn(),
   createSource: vi.fn(),
   updateSource: vi.fn(),
@@ -102,6 +103,14 @@ beforeEach(() => {
   apiMock.tasks.mockResolvedValue([]);
   apiMock.sources.mockResolvedValue([source]);
   apiMock.documents.mockResolvedValue([]);
+  apiMock.sourceHealth.mockResolvedValue({
+    sourceId: source.sourceId, serviceReady: true, egressReady: true,
+    routeType: 'PUBLIC_DATA', routeEndpoint: 'direct', channelStatus: 'READY',
+    firecrawlChannelStatus: 'NOT_APPLICABLE', rateLimitStatus: 'READY; hosts=0',
+    lastSuccessAt: '2026-07-16T14:00:00Z', lastBlockedAt: null,
+    lastAttemptAt: '2026-07-16T14:00:00Z', latestOutcome: 'PREPARED',
+    latestStatusCode: 200, latestErrorCode: null, safeMessage: null,
+  });
   apiMock.createSource.mockResolvedValue(createdSource);
   apiMock.testSource.mockResolvedValue({
     collectionId: 'collection_test01', sourceId: source.sourceId, status: 'COMPLETED',
@@ -123,7 +132,7 @@ it('creates a user-managed RSS source from the management dialog', async () => {
     .mockResolvedValue([source, createdSource]);
   const user = userEvent.setup();
   render(<IngestionPage />);
-  expect(await screen.findByText(/默认信源目录 v1 · 11 项/)).toBeInTheDocument();
+  expect(await screen.findByText(/默认信源目录 v2 · 16 项/)).toBeInTheDocument();
   await user.click(await screen.findByRole('button', { name: '新增信源' }));
   await user.type(screen.getByLabelText(/^名称/), '用户 RSS');
   await user.type(screen.getByLabelText(/^RSS Feed URL/), 'https://news.example.com/feed.xml');
@@ -148,4 +157,12 @@ it('runs an immediate source test through the selected source configuration', as
     '最新市场、宏观、监管和交易所事件',
   ));
   expect(await screen.findByText(/在线测试已完成/)).toBeInTheDocument();
+});
+
+it('shows the selected source runtime channel and egress state', async () => {
+  render(<IngestionPage />);
+
+  expect(await screen.findByText('采集器可用')).toBeInTheDocument();
+  expect(screen.getByText('PUBLIC_DATA · 出口可用')).toBeInTheDocument();
+  expect(apiMock.sourceHealth).toHaveBeenCalledWith(source.sourceId);
 });

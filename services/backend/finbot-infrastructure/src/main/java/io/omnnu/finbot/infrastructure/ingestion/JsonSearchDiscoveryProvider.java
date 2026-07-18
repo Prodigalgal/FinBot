@@ -79,6 +79,7 @@ final class JsonSearchDiscoveryProvider implements SearchDiscoveryProvider {
             headers.put("Authorization", "Bearer " + credential);
         }
         var response = transport.get(new CrawlerTransport.Request(
+                source.sourceId().value(),
                 requestUri,
                 OutboundRoute.WEB_CRAWL,
                 headers,
@@ -255,6 +256,8 @@ final class JsonSearchDiscoveryProvider implements SearchDiscoveryProvider {
 
     private static boolean isHttp(URI uri) {
         return uri.getHost() != null
+                && uri.getUserInfo() == null
+                && uri.getFragment() == null
                 && ("http".equalsIgnoreCase(uri.getScheme())
                         || "https".equalsIgnoreCase(uri.getScheme()));
     }

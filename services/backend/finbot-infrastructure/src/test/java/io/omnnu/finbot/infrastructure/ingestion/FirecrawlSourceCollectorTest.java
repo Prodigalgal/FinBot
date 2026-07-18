@@ -23,6 +23,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -50,7 +51,8 @@ class FirecrawlSourceCollectorTest {
                     new RoutedHttpClientFactory(resolver, Runnable::run),
                     new ObjectMapper(),
                     Clock.fixed(Instant.parse("2026-07-16T14:00:00Z"), ZoneOffset.UTC),
-                    new EmptyRuntimeSecretStore());
+                    new EmptyRuntimeSecretStore(),
+                    guard());
 
             var payloads = collector.collect(source(), "market update");
 
@@ -90,7 +92,8 @@ class FirecrawlSourceCollectorTest {
                     new RoutedHttpClientFactory(resolver, Runnable::run),
                     new ObjectMapper(),
                     Clock.fixed(Instant.parse("2026-07-16T14:00:00Z"), ZoneOffset.UTC),
-                    new EmptyRuntimeSecretStore());
+                    new EmptyRuntimeSecretStore(),
+                    guard());
 
             var payloads = collector.collect(source(), "market update");
 
@@ -142,6 +145,14 @@ class FirecrawlSourceCollectorTest {
                 1,
                 true,
                 0);
+    }
+
+    private static FirecrawlChannelGuard guard() {
+        return new FirecrawlChannelGuard(
+                100,
+                3,
+                Duration.ofMinutes(15),
+                Clock.fixed(Instant.parse("2026-07-16T14:00:00Z"), ZoneOffset.UTC));
     }
 
     private static final class EmptyRuntimeSecretStore implements RuntimeSecretStore {

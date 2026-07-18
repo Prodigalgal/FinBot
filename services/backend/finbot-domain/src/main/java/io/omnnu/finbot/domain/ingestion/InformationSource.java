@@ -58,8 +58,11 @@ public record InformationSource(
         if (mode == SourceMode.HTML_DOCUMENT && outboundRoute != OutboundRoute.WEB_CRAWL) {
             throw new IllegalArgumentException("HTML sources must use the WEB_CRAWL route");
         }
-        if (mode == SourceMode.SEARCH_DISCOVERY && outboundRoute != OutboundRoute.WEB_CRAWL) {
-            throw new IllegalArgumentException("Search discovery sources must use the WEB_CRAWL route");
+        if (mode == SourceMode.SEARCH_DISCOVERY
+                && outboundRoute != OutboundRoute.WEB_CRAWL
+                && outboundRoute != OutboundRoute.PUBLIC_DATA) {
+            throw new IllegalArgumentException(
+                    "Search discovery sources must use WEB_CRAWL or PUBLIC_DATA");
         }
         if (maximumResults < 1 || maximumResults > 100
                 || maximumScrapeTargets < 0 || maximumScrapeTargets > 20) {

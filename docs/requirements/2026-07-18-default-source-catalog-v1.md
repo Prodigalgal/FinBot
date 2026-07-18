@@ -1,4 +1,6 @@
-# 默认信源目录 v1
+# 默认信源目录 v1（历史版本）
+
+> v1 是 2026-07-18 之前发布的历史目录。当前默认目录为 v2，见 [`2026-07-18-default-source-catalog-v2.md`](2026-07-18-default-source-catalog-v2.md)；v1 的 source ID 和 manifest 记录保持不变，用于审计与回滚。
 
 ## 目标
 

@@ -38,16 +38,19 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final RuntimeSecretStore runtimeSecrets;
+    private final FirecrawlChannelGuard channelGuard;
 
     FirecrawlSourceCollector(
             RoutedHttpClientFactory httpClients,
             ObjectMapper objectMapper,
             Clock clock,
-            RuntimeSecretStore runtimeSecrets) {
+            RuntimeSecretStore runtimeSecrets,
+            FirecrawlChannelGuard channelGuard) {
         this.httpClients = Objects.requireNonNull(httpClients, "httpClients");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
+        this.channelGuard = Objects.requireNonNull(channelGuard, "channelGuard");
     }
 
     @Override
@@ -193,6 +196,15 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
             InformationSource source,
             String path,
             ObjectNode body) {
+        return channelGuard.execute(
+                source.sourceId(),
+                () -> postGuarded(source, path, body));
+    }
+
+    private FirecrawlResponse postGuarded(
+            InformationSource source,
+            String path,
+            ObjectNode body) {
         var requestBuilder = HttpRequest.newBuilder(endpoint(source, path))
                 .timeout(Duration.ofSeconds(75))
                 .header("Accept", "application/json")
@@ -226,7 +238,9 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
                             throw new SourceCollectionException(
                                     "FIRECRAWL_HTTP_" + response.statusCode(),
                                     failureMessage(response.statusCode(), bytes, attempt),
-                                    false);
+                                    response.statusCode() == 401 || response.statusCode() == 403
+                                            || response.statusCode() == 429,
+                                    response.statusCode());
                         }
                         var payload = objectMapper.readTree(bytes);
                         if (!payload.isObject()) {

@@ -85,3 +85,5 @@ databaseChangeLog:
       file: db/changelog/releases/042-default-source-catalog-manifest.sql
   - include:
       file: db/changelog/releases/043-source-fetch-redirect-count.sql
+  - include:
+      file: db/changelog/releases/044-free-structured-source-catalog-v2.sql

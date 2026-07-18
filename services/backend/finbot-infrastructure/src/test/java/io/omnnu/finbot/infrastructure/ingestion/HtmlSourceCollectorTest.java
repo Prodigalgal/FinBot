@@ -50,7 +50,9 @@ class HtmlSourceCollectorTest {
                     new CrawlerTransport(
                             new RoutedHttpClientFactory(resolver, Runnable::run),
                             limiter(),
-                            Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC)),
+                            new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                            Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                            "FinBot test contact=test@example.com"),
                     new JsoupContentEnvelopeBuilder());
 
             var payloads = collector.collect(source(), "energy update");
@@ -105,7 +107,9 @@ class HtmlSourceCollectorTest {
                     new CrawlerTransport(
                             new RoutedHttpClientFactory(directResolver, Runnable::run),
                             limiter(),
-                            Clock.systemUTC()),
+                            new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                            Clock.systemUTC(),
+                            "FinBot test contact=test@example.com"),
                     new JsoupContentEnvelopeBuilder());
             var exception = assertThrows(
                     SourceCollectionException.class,
@@ -161,12 +165,14 @@ class HtmlSourceCollectorTest {
                 new CrawlerTransport(
                         new RoutedHttpClientFactory(resolver, Runnable::run),
                         limiter(),
-                        Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC)),
+                        new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                        Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                        "FinBot test contact=test@example.com"),
                 new JsoupContentEnvelopeBuilder());
     }
 
     private static CrawlerConcurrencyLimiter limiter() {
-        return new CrawlerConcurrencyLimiter(16, 2, Duration.ofSeconds(1));
+        return new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1));
     }
 
     private static InformationSource source() {

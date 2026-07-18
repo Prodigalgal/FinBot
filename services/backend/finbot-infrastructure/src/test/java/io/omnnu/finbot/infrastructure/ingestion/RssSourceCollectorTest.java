@@ -1,11 +1,13 @@
 package io.omnnu.finbot.infrastructure.ingestion;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.omnnu.finbot.application.network.ProxyRouteDecision;
 import io.omnnu.finbot.application.network.ProxyRouteResolver;
+import io.omnnu.finbot.application.ingestion.SourceCollectionException;
 import io.omnnu.finbot.domain.ingestion.InformationSource;
 import io.omnnu.finbot.domain.ingestion.SourceId;
 import io.omnnu.finbot.domain.ingestion.SourceMode;
@@ -43,14 +45,48 @@ class RssSourceCollectorTest {
             var collector = new RssSourceCollector(
                     new CrawlerTransport(
                             new RoutedHttpClientFactory(resolver, Runnable::run),
-                            new CrawlerConcurrencyLimiter(16, 2, Duration.ofSeconds(1)),
-                            Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC)));
+                            new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
+                            new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                            Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                            "FinBot test contact=test@example.com"));
 
             var payloads = collector.collect(source(), "");
 
             assertEquals(2, routeCalls.get());
             assertEquals(2, requests.get());
             assertEquals(2, payloads.size());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void doesNotDirectConnectWhenTheSourceUsesTheWebCrawlRoute() throws IOException {
+        var requests = new AtomicInteger();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/feed.xml", exchange -> respond(exchange, requests));
+        server.start();
+        try {
+            ProxyRouteResolver resolver = route -> new ProxyRouteDecision(
+                    route,
+                    false,
+                    true,
+                    null,
+                    "IPV4",
+                    "direct");
+            var collector = new RssSourceCollector(
+                    new CrawlerTransport(
+                            new RoutedHttpClientFactory(resolver, Runnable::run),
+                            new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
+                            new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                            Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                            "FinBot test contact=test@example.com"));
+
+            var exception = assertThrows(SourceCollectionException.class,
+                    () -> collector.collect(source(OutboundRoute.WEB_CRAWL, server.getAddress().getPort()), ""));
+
+            assertEquals("RSS_PROXY_REQUIRED", exception.errorCode());
+            assertEquals(0, requests.get());
         } finally {
             server.stop(0);
         }
@@ -72,7 +108,12 @@ class RssSourceCollectorTest {
     }
 
     private static InformationSource source() {
-        var feed = URI.create("http://feed.test/feed.xml");
+        return source(OutboundRoute.PUBLIC_DATA, -1);
+    }
+
+    private static InformationSource source(OutboundRoute route, int port) {
+        var feed = port < 0 ? URI.create("http://feed.test/feed.xml")
+                : URI.create("http://feed.test:" + port + "/feed.xml");
         return new InformationSource(
                 new SourceId("source_rss_test01"),
                 "RSS test",
@@ -89,10 +130,11 @@ class RssSourceCollectorTest {
                 List.of(),
                 null,
                 null,
-                OutboundRoute.PUBLIC_DATA,
+                route,
                 10,
                 0,
                 true,
                 0);
     }
+
 }

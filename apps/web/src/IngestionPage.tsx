@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from './api';
 import { SecretTextField } from './SecretTextField';
-import type { EvidenceDocument, IngestionWorkspace, SourceMutation, SourceRecord, TaskRecord } from './types';
+import type { EvidenceDocument, IngestionWorkspace, SourceHealth, SourceMutation, SourceRecord, TaskRecord } from './types';
 import { EmptyBlock, ErrorBlock, LoadingBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
 
 export function IngestionPage() {
@@ -18,6 +18,7 @@ export function IngestionPage() {
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [sourceCatalog, setSourceCatalog] = useState<SourceRecord[]>([]);
   const [documents, setDocuments] = useState<EvidenceDocument[]>([]);
+  const [sourceHealth, setSourceHealth] = useState<SourceHealth | null>(null);
   const [sourceId, setSourceId] = useState('');
   const [status, setStatus] = useState('');
   const [queryText, setQueryText] = useState('最新市场、宏观、监管和交易所事件');
@@ -41,7 +42,20 @@ export function IngestionPage() {
     } catch (cause) { setError(cause); }
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => { if (sourceId) api.documents(sourceId, 50).then(setDocuments).catch(setError); else setDocuments([]); }, [sourceId]);
+  useEffect(() => {
+    let active = true;
+    setSourceHealth(null);
+    if (!sourceId) { setDocuments([]); return () => { active = false; }; }
+    void Promise.allSettled([api.documents(sourceId, 50), api.sourceHealth(sourceId)])
+      .then(([documentsResult, healthResult]) => {
+        if (!active) return;
+        if (documentsResult.status === 'fulfilled') setDocuments(documentsResult.value);
+        else setError(documentsResult.reason);
+        if (healthResult.status === 'fulfilled') setSourceHealth(healthResult.value);
+        else setError(healthResult.reason);
+      });
+    return () => { active = false; };
+  }, [sourceId]);
   const collect = async () => {
     if (!sourceId || !queryText.trim()) return;
     setBusy(true); setError(null); setMessage('');
@@ -104,6 +118,15 @@ export function IngestionPage() {
       <Button startIcon={<ScienceOutlinedIcon />} disabled={busy || !sourceId || !queryText.trim()} onClick={() => void testSource()}>在线测试</Button>
       <Button startIcon={<RefreshIcon />} onClick={() => void refresh()}>刷新</Button>
     </Stack></Paper>
+    {sourceHealth && <Alert severity={sourceHealth.serviceReady && sourceHealth.egressReady && sourceHealth.channelStatus === 'READY' ? 'success' : sourceHealth.channelStatus === 'DISABLED' ? 'info' : 'warning'}>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} useFlexGap flexWrap="wrap" alignItems={{ md: 'center' }}>
+        <Typography variant="body2" fontWeight={700}>渠道 {statusLabel(sourceHealth.channelStatus)}</Typography>
+        <Chip size="small" color={sourceHealth.serviceReady ? 'success' : 'error'} label={sourceHealth.serviceReady ? '采集器可用' : '采集器不可用'} />
+        <Chip size="small" color={sourceHealth.egressReady ? 'success' : 'error'} label={`${sourceHealth.routeType} · ${sourceHealth.egressReady ? '出口可用' : '出口不可用'}`} />
+        <Typography variant="caption">{sourceHealth.routeEndpoint} · {sourceHealth.rateLimitStatus} · 最近成功 {formatTime(sourceHealth.lastSuccessAt)}</Typography>
+        {sourceHealth.latestErrorCode && <Typography variant="caption" color="error">{sourceHealth.latestErrorCode}{sourceHealth.safeMessage ? `：${sourceHealth.safeMessage}` : ''}</Typography>}
+      </Stack>
+    </Alert>}
     {selectedSource?.credentialSupported && <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Box sx={{ minWidth: { md: 240 } }}><Typography fontWeight={700}>{selectedSource.displayName}凭据</Typography><Typography variant="caption" color="text.secondary">{sourceCredentialLabel(selectedSource.credentialSource)}{selectedSource.credentialFingerprint ? ` · 指纹 ${selectedSource.credentialFingerprint}` : ''}</Typography></Box><SecretTextField fullWidth autoComplete="new-password" label="新 API Key" value={credentialValue} onChange={(event) => setCredentialValue(event.target.value)} helperText="保存后下一次采集立即使用；旧值不会回显" /><Button disabled={busy || credentialValue.trim().length < 8} onClick={() => void putSourceCredential(selectedSource)}>设置凭据</Button><Button color="error" disabled={busy || selectedSource.credentialSource !== 'DATABASE_OVERRIDE'} onClick={() => void clearSourceCredential(selectedSource)}>清除热配置</Button></Stack></Paper>}
     <Box><SectionTitle title="信息源状态" action={<Button startIcon={<AddIcon />} onClick={() => setEditorSource('new')}>新增信源</Button>} /><Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>信息源</TableCell><TableCell>层级 / 分类</TableCell><TableCell>路由 / 凭据</TableCell><TableCell>启用</TableCell><TableCell align="right">获取 / 新增 / 重复</TableCell><TableCell>最近状态</TableCell><TableCell>最近运行</TableCell><TableCell align="right">操作</TableCell></TableRow></TableHead><TableBody>{workspace.sources.map((source) => { const configuration = sourceCatalog.find((item) => item.sourceId === source.sourceId); return <TableRow key={source.sourceId} hover selected={source.sourceId === sourceId} onClick={() => { setSourceId(source.sourceId); setCredentialValue(''); }} sx={{ cursor: 'pointer' }}><TableCell><Typography variant="body2" fontWeight={700}>{source.displayName}</Typography><Typography variant="caption" color="text.secondary">{source.sourceId}</Typography></TableCell><TableCell>{source.tier} · {source.category}</TableCell><TableCell><Typography variant="body2">{source.outboundRoute || 'DIRECT'}</Typography><Typography variant="caption" color={source.credentialConfigured ? 'text.secondary' : 'error'}>{sourceCredentialLabel(source.credentialSource)}</Typography></TableCell><TableCell><Switch size="small" checked={source.enabled} disabled={busy} inputProps={{ 'aria-label': `${source.displayName}启用状态` }} onClick={(event) => event.stopPropagation()} onChange={(event) => void setSourceEnabled(source.sourceId, event.target.checked, source.version)} /></TableCell><TableCell align="right">{source.fetchedCount} / {source.insertedCount} / {source.duplicateCount}</TableCell><TableCell><Chip size="small" color={statusColor(source.latestStatus)} label={statusLabel(source.latestStatus || 'NO_DATA')} />{source.errorMessage && <Typography variant="caption" color="error" display="block">{source.errorCode}: {source.errorMessage}</Typography>}</TableCell><TableCell>{formatTime(source.lastCollectedAt)}</TableCell><TableCell align="right" sx={{ whiteSpace: 'nowrap' }}><Tooltip title="编辑信源"><span><IconButton size="small" disabled={!configuration || busy} onClick={(event) => { event.stopPropagation(); if (configuration) setEditorSource(configuration); }}><EditOutlinedIcon fontSize="small" /></IconButton></span></Tooltip><Tooltip title="删除信源"><span><IconButton size="small" color="error" disabled={!configuration || busy} onClick={(event) => { event.stopPropagation(); if (configuration) void deleteSource(configuration); }}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell></TableRow>; })}</TableBody></Table></Paper></Box>
     <Box><SectionTitle title="阶段运行与重试" action={<TextField select size="small" label="状态" value={status} onChange={(event) => setStatus(event.target.value)} sx={{ minWidth: 150 }}><MenuItem value="">全部</MenuItem>{['RUNNING', 'COMPLETED', 'PARTIAL', 'BLOCKED', 'FAILED'].map((value) => <MenuItem key={value} value={value}>{statusLabel(value)}</MenuItem>)}</TextField>} /><Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>开始</TableCell><TableCell>来源 / 查询</TableCell><TableCell align="right">获取</TableCell><TableCell align="right">新增</TableCell><TableCell align="right">重复</TableCell><TableCell>状态 / 错误</TableCell></TableRow></TableHead><TableBody>{runs.map((run) => <TableRow key={run.collectionId}><TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTime(run.startedAt)}</TableCell><TableCell><Typography variant="body2" fontWeight={700}>{run.sourceName}</Typography><Typography variant="caption" color="text.secondary">{run.query || '-'} · {run.workflowRunId || '手动采集'}</Typography></TableCell><TableCell align="right">{run.fetchedCount}</TableCell><TableCell align="right">{run.insertedCount}</TableCell><TableCell align="right">{run.duplicateCount}</TableCell><TableCell><Chip size="small" color={statusColor(run.status)} label={statusLabel(run.status)} />{run.errorMessage && <Typography variant="caption" color="error" display="block">{run.errorCode}: {run.errorMessage}</Typography>}</TableCell></TableRow>)}</TableBody></Table>{runs.length === 0 && <EmptyBlock>当前筛选没有采集运行</EmptyBlock>}</Paper></Box>
@@ -129,7 +152,6 @@ function SourceEditorDialog({ open, source, busy, onClose, onSave }: { open: boo
   const set = <K extends keyof SourceMutation>(key: K, value: SourceMutation[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const firecrawl = draft.mode.startsWith('FIRECRAWL');
   const htmlDocument = draft.mode === 'HTML_DOCUMENT';
-  const searchDiscovery = draft.mode === 'SEARCH_DISCOVERY';
   const sitemap = draft.mode === 'SITEMAP';
   const sourceModes = ['RSS', 'HTML_DOCUMENT', 'SEARCH_DISCOVERY', 'JSON_API', 'SITEMAP', 'EXCHANGE_PUBLIC_API', ...(showFirecrawlChannel ? ['FIRECRAWL_SCRAPE', 'FIRECRAWL_SEARCH', 'FIRECRAWL_SEARCH_THEN_SCRAPE'] : [])];
   return <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="md" fullWidth><DialogTitle>{source ? '编辑信息源' : '新增信息源'}</DialogTitle><DialogContent dividers><Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.5, pt: .5 }}>
@@ -141,7 +163,7 @@ function SourceEditorDialog({ open, source, busy, onClose, onSave }: { open: boo
     <TextField select label="优先级" value={draft.priority} onChange={(event) => set('priority', event.target.value)}>{['P0', 'P1', 'P2', 'P3'].map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
     <TextField type="number" label="信任权重" value={draft.trustWeight} onChange={(event) => set('trustWeight', Number(event.target.value))} inputProps={{ min: 0, max: 1, step: .05 }} />
     <TextField type="number" label="轮询间隔（秒）" value={draft.pollIntervalSeconds} onChange={(event) => set('pollIntervalSeconds', Number(event.target.value))} inputProps={{ min: 10, max: 2592000 }} />
-    <TextField select label="出站路由" value={draft.outboundRoute || ''} onChange={(event) => set('outboundRoute', event.target.value || null)} disabled={firecrawl || htmlDocument || searchDiscovery}>{['PUBLIC_DATA', 'WEB_CRAWL', 'FIRECRAWL', 'EXCHANGE_GATE', 'EXCHANGE_BYBIT'].map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
+    <TextField select label="出站路由" value={draft.outboundRoute || ''} onChange={(event) => set('outboundRoute', event.target.value || null)} disabled={firecrawl || htmlDocument}>{['PUBLIC_DATA', 'WEB_CRAWL', 'FIRECRAWL', 'EXCHANGE_GATE', 'EXCHANGE_BYBIT'].map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
     <TextField type="url" label="Endpoint Base URL" value={draft.endpointBaseUrl || ''} onChange={(event) => set('endpointBaseUrl', event.target.value || null)} required={!htmlDocument && draft.mode !== 'RSS'} helperText={sitemap ? '仅解析 sitemap.xml 地址，文章正文由后续 HTML_DOCUMENT 来源采集' : undefined} />
     <TextField type="number" label="最大结果数" value={draft.maximumResults} onChange={(event) => set('maximumResults', Number(event.target.value))} inputProps={{ min: 1, max: 100 }} />
     <TextField type="number" label="最大抓取目标" value={draft.maximumScrapeTargets} onChange={(event) => set('maximumScrapeTargets', Number(event.target.value))} inputProps={{ min: 0, max: 20 }} />

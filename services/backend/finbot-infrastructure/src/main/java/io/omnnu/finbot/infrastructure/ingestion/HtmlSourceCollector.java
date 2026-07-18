@@ -68,6 +68,7 @@ final class HtmlSourceCollector implements SourceCollectorAdapter {
                     true);
         }
         var response = transport.get(new CrawlerTransport.Request(
+                source.sourceId().value(),
                 targetUrl,
                 source.outboundRoute(),
                 Map.of(
@@ -162,7 +163,13 @@ final class HtmlSourceCollector implements SourceCollectorAdapter {
         }
         try {
             var canonical = URI.create(value);
-            return canonical.getHost() == null ? requestedUrl : canonical;
+            return canonical.getHost() == null
+                    || canonical.getUserInfo() != null
+                    || canonical.getFragment() != null
+                    || !("http".equalsIgnoreCase(canonical.getScheme())
+                            || "https".equalsIgnoreCase(canonical.getScheme()))
+                    ? requestedUrl
+                    : canonical;
         } catch (IllegalArgumentException exception) {
             return requestedUrl;
         }

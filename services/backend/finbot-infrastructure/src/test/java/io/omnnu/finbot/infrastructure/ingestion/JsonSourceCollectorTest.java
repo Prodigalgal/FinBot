@@ -27,6 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class JsonSourceCollectorTest {
@@ -63,7 +64,52 @@ class JsonSourceCollectorTest {
         }
     }
 
+    @Test
+    void usesSourceDisplayNameWhenStructuredPayloadHasNoTopLevelTitle() throws IOException {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api", exchange -> respond(exchange, 200, "application/json",
+                "[{\"report_date\":\"2026-07-14\",\"value\":42}]"));
+        server.start();
+        try {
+            var collector = collector(server.getAddress().getPort());
+            var payload = collector.collect(source(URI.create("http://example.test/api")), "cot").getFirst();
+            assertEquals("JSON test", payload.title());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void sendsFredCredentialAsAQueryParameterWithoutPersistingItInThePayloadUrl() throws IOException {
+        var observedQuery = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api", exchange -> {
+            observedQuery.set(exchange.getRequestURI().getRawQuery());
+            respond(exchange, 200, "application/json", "{\"observations\":[{\"value\":\"5.25\"}]}");
+        });
+        server.start();
+        try {
+            var endpoint = URI.create("http://example.test/api?series_id=DFF&file_type=json");
+            var collector = collector(server.getAddress().getPort(), new TestRuntimeSecretStore("secret-key"));
+
+            var payload = collector.collect(source(endpoint, "fred", "FINBOT_INFORMATION_SOURCE_KEYS_JSON"), "rates")
+                    .getFirst();
+
+            assertTrue(observedQuery.get().contains("api_key=secret-key"));
+            assertEquals(endpoint, payload.requestedUrl());
+            assertTrue(!payload.requestedUrl().toString().contains("secret-key"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private static JsonSourceCollector collector(int port) {
+        return collector(port, new TestRuntimeSecretStore());
+    }
+
+    private static JsonSourceCollector collector(
+            int port,
+            io.omnnu.finbot.application.configuration.RuntimeSecretStore runtimeSecrets) {
         ProxyRouteResolver resolver = route -> {
             var proxy = URI.create("http://127.0.0.1:" + port);
             return new ProxyRouteDecision(route, true, false, proxy, "IPV4", proxy.toString());
@@ -71,20 +117,30 @@ class JsonSourceCollectorTest {
         return new JsonSourceCollector(
                 new CrawlerTransport(
                         new RoutedHttpClientFactory(resolver, Runnable::run),
-                        new CrawlerConcurrencyLimiter(16, 2, Duration.ofSeconds(1)),
-                        Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC)),
+                        new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
+                        new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                        Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                        "FinBot test contact=test@example.com"),
                 new ObjectMapper(),
-                new JsonContentEnvelopeBuilder(new ObjectMapper()));
+                new JsonContentEnvelopeBuilder(new ObjectMapper()),
+                runtimeSecrets);
     }
 
     private static InformationSource source(URI endpoint) {
+        return source(endpoint, "test", null);
+    }
+
+    private static InformationSource source(
+            URI endpoint,
+            String provider,
+            String credentialEnvironmentVariable) {
         return new InformationSource(
                 new SourceId("source_json_test01"),
                 "JSON test",
                 SourceMode.JSON_API,
                 SourceTier.T1,
                 "macro",
-                "test",
+                provider,
                 new BigDecimal("0.9"),
                 900,
                 SourcePriority.P1,
@@ -93,7 +149,7 @@ class JsonSourceCollectorTest {
                 List.of(),
                 List.of(),
                 endpoint,
-                null,
+                credentialEnvironmentVariable,
                 OutboundRoute.WEB_CRAWL,
                 10,
                 0,

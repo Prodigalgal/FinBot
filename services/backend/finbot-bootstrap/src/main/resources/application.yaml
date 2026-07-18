@@ -64,9 +64,19 @@ finbot:
     maximum-attempts: ${FINBOT_EXCHANGE_ACCOUNT_MAXIMUM_ATTEMPTS:3}
     initial-backoff: ${FINBOT_EXCHANGE_ACCOUNT_INITIAL_BACKOFF:PT0.5S}
   crawler:
+    user-agent: ${FINBOT_CRAWLER_USER_AGENT:FinBot/2.0 (contact: finbot@omnnu.xyz)}
     maximum-concurrent: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT:16}
+    maximum-concurrent-per-source: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT_PER_SOURCE:2}
     maximum-concurrent-per-host: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT_PER_HOST:2}
     permit-wait-timeout: ${FINBOT_CRAWLER_PERMIT_WAIT_TIMEOUT:PT10S}
+    minimum-host-delay: ${FINBOT_CRAWLER_MINIMUM_HOST_DELAY:PT0.25S}
+  firecrawl:
+    maximum-calls-per-source-per-day: ${FINBOT_FIRECRAWL_MAXIMUM_CALLS_PER_SOURCE_PER_DAY:100}
+    circuit-failure-threshold: ${FINBOT_FIRECRAWL_CIRCUIT_FAILURE_THRESHOLD:3}
+    circuit-cooldown: ${FINBOT_FIRECRAWL_CIRCUIT_COOLDOWN:PT15M}
+  ingestion:
+    stale-run-after: ${FINBOT_INGESTION_STALE_RUN_AFTER:PT30M}
+    recovery-interval: ${FINBOT_INGESTION_RECOVERY_INTERVAL:PT5M}
   worker:
     instance-name: ${HOSTNAME:finbot-local}
     poll-delay: ${FINBOT_WORKER_POLL_DELAY:PT2S}

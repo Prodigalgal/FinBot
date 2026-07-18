@@ -5,11 +5,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.ingestion.CollectedPayload;
 import io.omnnu.finbot.application.ingestion.ContentEnvelopeBuilder;
+import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
 import io.omnnu.finbot.application.ingestion.SourceCollectionException;
 import io.omnnu.finbot.domain.ingestion.InformationSource;
 import io.omnnu.finbot.domain.ingestion.SourceMode;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -23,14 +26,17 @@ final class JsonSourceCollector implements SourceCollectorAdapter {
     private final CrawlerTransport transport;
     private final ObjectMapper objectMapper;
     private final ContentEnvelopeBuilder envelopeBuilder;
+    private final RuntimeSecretStore runtimeSecrets;
 
     JsonSourceCollector(
             CrawlerTransport transport,
             ObjectMapper objectMapper,
-            JsonContentEnvelopeBuilder envelopeBuilder) {
+            JsonContentEnvelopeBuilder envelopeBuilder,
+            RuntimeSecretStore runtimeSecrets) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.envelopeBuilder = Objects.requireNonNull(envelopeBuilder, "envelopeBuilder");
+        this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
     }
 
     @Override
@@ -48,8 +54,10 @@ final class JsonSourceCollector implements SourceCollectorAdapter {
                     true);
         }
         var route = source.outboundRoute() == null ? OutboundRoute.PUBLIC_DATA : source.outboundRoute();
+        var requestEndpoint = credentialEndpoint(source, endpoint);
         var response = transport.get(new CrawlerTransport.Request(
-                endpoint,
+                source.sourceId().value(),
+                requestEndpoint,
                 route,
                 Map.of(
                         "Accept", "application/json, application/*+json;q=0.9",
@@ -66,7 +74,7 @@ final class JsonSourceCollector implements SourceCollectorAdapter {
                 endpoint,
                 endpoint,
                 query,
-                title(rawContent),
+                title(source, rawContent),
                 response.statusCode(),
                 response.contentType(),
                 rawContent,
@@ -80,6 +88,31 @@ final class JsonSourceCollector implements SourceCollectorAdapter {
                 null,
                 response.fetchedAt());
         return List.of(payload.withEnvelope(envelopeBuilder.build(payload)));
+    }
+
+    private URI credentialEndpoint(InformationSource source, URI endpoint) {
+        var provider = source.provider() == null ? "" : source.provider().strip().toLowerCase(java.util.Locale.ROOT);
+        if (!provider.equals("fred") && !provider.equals("eia")) {
+            return endpoint;
+        }
+        if (source.credentialEnvironmentVariable() == null) {
+            throw new SourceCollectionException(
+                    "JSON_CREDENTIAL_NOT_CONFIGURED",
+                    provider.toUpperCase(java.util.Locale.ROOT) + " JSON API requires an API key binding",
+                    true);
+        }
+        var key = runtimeSecrets.resolve(
+                        RuntimeSecretScope.INFORMATION_SOURCE,
+                        source.sourceId().value(),
+                        "API_KEY",
+                        source.credentialEnvironmentVariable())
+                .filter(value -> !value.isBlank())
+                .orElseThrow(() -> new SourceCollectionException(
+                        "JSON_CREDENTIAL_MISSING",
+                        provider.toUpperCase(java.util.Locale.ROOT) + " JSON API key is unavailable",
+                        true));
+        var separator = endpoint.getQuery() == null || endpoint.getQuery().isBlank() ? "?" : "&";
+        return URI.create(endpoint + separator + "api_key=" + URLEncoder.encode(key.strip(), StandardCharsets.UTF_8));
     }
 
     private void validateJson(String rawContent) {
@@ -99,7 +132,7 @@ final class JsonSourceCollector implements SourceCollectorAdapter {
         }
     }
 
-    private String title(String rawContent) {
+    private String title(InformationSource source, String rawContent) {
         try {
             var root = objectMapper.readTree(rawContent);
             for (var field : List.of("title", "name", "headline")) {
@@ -111,6 +144,6 @@ final class JsonSourceCollector implements SourceCollectorAdapter {
         } catch (JsonProcessingException ignored) {
             // validateJson already produced the user-facing parse error.
         }
-        return null;
+        return source.displayName();
     }
 }

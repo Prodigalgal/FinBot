@@ -23,7 +23,7 @@ class LiquibaseChangelogValidationTest {
         try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, database)) {
             liquibase.validate();
             var changeSets = liquibase.getDatabaseChangeLog().getChangeSets();
-            assertEquals(45, changeSets.size());
+            assertEquals(46, changeSets.size());
             assertEquals("001-foundation", changeSets.getFirst().getId());
             assertEquals("002-platform-foundation", changeSets.get(1).getId());
             assertEquals("003-background-operations", changeSets.get(2).getId());
@@ -61,7 +61,8 @@ class LiquibaseChangelogValidationTest {
             assertEquals("033-information-source-management", changeSets.get(34).getId());
             assertEquals("041-firecrawl-default-disabled", changeSets.get(42).getId());
             assertEquals("042-default-source-catalog-manifest", changeSets.get(43).getId());
-            assertEquals("043-source-fetch-redirect-count", changeSets.getLast().getId());
+            assertEquals("043-source-fetch-redirect-count", changeSets.get(44).getId());
+            assertEquals("044-free-structured-source-catalog-v2", changeSets.getLast().getId());
             assertTrue(changeSets.getFirst().getChanges().size() >= 1);
         }
     }
