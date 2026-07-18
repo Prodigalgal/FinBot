@@ -103,7 +103,8 @@ final class HtmlSourceCollector implements SourceCollectorAdapter {
                         "collector", "first_party_html",
                         "proxy_route", response.proxyRoute(),
                         "source_tier", source.tier().name(),
-                        "fetch_attempts", Integer.toString(response.attempts())),
+                        "fetch_attempts", Integer.toString(response.attempts()),
+                        "fetch_redirects", Integer.toString(response.redirectCount())),
                 null,
                 response.fetchedAt());
         return payload.withEnvelope(envelopeBuilder.build(payload));

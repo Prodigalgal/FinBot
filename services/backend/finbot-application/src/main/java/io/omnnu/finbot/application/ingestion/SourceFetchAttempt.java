@@ -16,6 +16,7 @@ public record SourceFetchAttempt(
         String contentType,
         int responseBytes,
         int retryCount,
+        int redirectCount,
         String outcome,
         String errorCode,
         String parserVersion,
@@ -37,7 +38,7 @@ public record SourceFetchAttempt(
         if (statusCode != null && (statusCode < 100 || statusCode > 599)) {
             throw new IllegalArgumentException("statusCode is invalid");
         }
-        if (responseBytes < 0 || retryCount < 0) {
+        if (responseBytes < 0 || retryCount < 0 || redirectCount < 0) {
             throw new IllegalArgumentException("fetch attempt counters are invalid");
         }
         startedAt = Objects.requireNonNull(startedAt, "startedAt");

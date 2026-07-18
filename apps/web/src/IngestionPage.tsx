@@ -96,6 +96,7 @@ export function IngestionPage() {
   return <Stack spacing={3}>
     {error !== null && <ErrorBlock error={error} />}{message && <Alert severity="success">{message}</Alert>}
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25 }}><Metric label="原始证据" value={workspace.rawEvidenceCount} /><Metric label="规范化文档" value={workspace.normalizedDocumentCount} /><Metric label="AI 候选与验证" value={workspace.aiReviewCount} /><Metric label="最终压缩结果" value={workspace.compressionCount} /></Box>
+    <Alert severity="info">默认信源目录 {workspace.sourceCatalogVersion} · {workspace.sourceCatalogSize} 项 · manifest {workspace.sourceCatalogManifestHash.slice(0, 12)}…</Alert>
     <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5}>
       <TextField select label="信息源" value={sourceId} onChange={(event) => setSourceId(event.target.value)} sx={{ minWidth: 260 }}>{workspace.sources.map((source) => <MenuItem key={source.sourceId} value={source.sourceId}>{source.displayName} · {source.mode}</MenuItem>)}</TextField>
       <TextField fullWidth label="采集查询" value={queryText} onChange={(event) => setQueryText(event.target.value)} inputProps={{ maxLength: 1000 }} />

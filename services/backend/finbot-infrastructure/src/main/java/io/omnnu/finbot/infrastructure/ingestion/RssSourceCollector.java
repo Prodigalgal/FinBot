@@ -85,7 +85,8 @@ final class RssSourceCollector implements SourceCollectorAdapter {
                 contentType,
                 response.fetchedAt(),
                 response.proxyRoute(),
-                response.attempts());
+                response.attempts(),
+                response.redirectCount());
     }
 
     private List<CollectedPayload> parseFeed(
@@ -96,7 +97,8 @@ final class RssSourceCollector implements SourceCollectorAdapter {
             String contentType,
             Instant fetchedAt,
             String proxyRoute,
-            int attempts) {
+            int attempts,
+            int redirectCount) {
         try {
             var factory = secureDocumentBuilderFactory();
             var document = factory.newDocumentBuilder().parse(new ByteArrayInputStream(
@@ -131,7 +133,8 @@ final class RssSourceCollector implements SourceCollectorAdapter {
                                 "feed_url", feedUrl.toString(),
                                 "source_tier", source.tier().name(),
                                 "proxy_route", proxyRoute,
-                                "fetch_attempts", Integer.toString(attempts)),
+                                "fetch_attempts", Integer.toString(attempts),
+                                "fetch_redirects", Integer.toString(redirectCount)),
                         parsePublishedAt(firstText(entry, "pubDate", "published", "updated", "date")),
                         fetchedAt));
                 if (result.size() >= source.maximumResults()) {

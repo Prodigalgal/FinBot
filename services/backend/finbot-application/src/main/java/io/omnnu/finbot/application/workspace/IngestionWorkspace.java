@@ -11,11 +11,20 @@ public record IngestionWorkspace(
         List<SourceStatus> sources,
         List<CollectionRun> recentRuns,
         List<EvidenceAiReviewSummary> recentAiReviews,
+        String sourceCatalogVersion,
+        String sourceCatalogManifestHash,
+        int sourceCatalogSize,
         Instant generatedAt) {
     public IngestionWorkspace {
         sources = List.copyOf(sources);
         recentRuns = List.copyOf(recentRuns);
         recentAiReviews = List.copyOf(recentAiReviews);
+        sourceCatalogVersion = java.util.Objects.requireNonNull(sourceCatalogVersion, "sourceCatalogVersion");
+        sourceCatalogManifestHash = java.util.Objects.requireNonNull(
+                sourceCatalogManifestHash, "sourceCatalogManifestHash");
+        if (sourceCatalogSize < 1) {
+            throw new IllegalArgumentException("sourceCatalogSize must be positive");
+        }
     }
 
     public record SourceStatus(

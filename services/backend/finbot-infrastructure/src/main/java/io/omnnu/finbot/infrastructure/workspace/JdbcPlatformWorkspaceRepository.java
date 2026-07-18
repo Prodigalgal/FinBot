@@ -102,6 +102,16 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                         resultSet.getLong("compression_count"),
                         resultSet.getLong("ai_review_count")))
                 .single();
+        var sourceCatalog = jdbcClient.sql("""
+                select catalog_version, manifest_hash, source_count
+                from information_source_catalog_manifest
+                where catalog_id = 'catalog_default_sources'
+                """)
+                .query((resultSet, rowNumber) -> new SourceCatalogManifest(
+                        resultSet.getString("catalog_version"),
+                        resultSet.getString("manifest_hash"),
+                        resultSet.getInt("source_count")))
+                .single();
         var sources = jdbcClient.sql("""
                 select source.source_id, source.display_name, source.source_mode, source.source_tier,
                        source.category, source.proxy_route_type, source.credential_env,
@@ -175,7 +185,8 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 .list();
         return new IngestionWorkspace(
                 totals.rawEvidence(), totals.documents(), totals.compressions(), totals.aiReviews(),
-                sources, runs, reviews, generatedAt);
+                sources, runs, reviews,
+                sourceCatalog.version(), sourceCatalog.manifestHash(), sourceCatalog.sourceCount(), generatedAt);
     }
 
     private List<String> strings(String json) {
@@ -1037,6 +1048,9 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
     }
 
     private record IngestionTotals(long rawEvidence, long documents, long compressions, long aiReviews) {
+    }
+
+    private record SourceCatalogManifest(String version, String manifestHash, int sourceCount) {
     }
 
     private record DependencyStatus(String status, String error, Instant occurredAt) {

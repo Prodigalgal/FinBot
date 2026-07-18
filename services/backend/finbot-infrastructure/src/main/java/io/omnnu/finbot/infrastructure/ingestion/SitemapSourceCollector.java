@@ -87,7 +87,8 @@ final class SitemapSourceCollector implements SourceCollectorAdapter {
                         "proxy_route", response.proxyRoute(),
                         "source_tier", source.tier().name(),
                         "location_count", Integer.toString(urls.size()),
-                        "fetch_attempts", Integer.toString(response.attempts())),
+                        "fetch_attempts", Integer.toString(response.attempts()),
+                        "fetch_redirects", Integer.toString(response.redirectCount())),
                 null,
                 response.fetchedAt(),
                 new ContentEnvelope(

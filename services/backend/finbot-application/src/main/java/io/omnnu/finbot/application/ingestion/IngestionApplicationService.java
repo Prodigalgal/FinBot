@@ -389,6 +389,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
             String errorCode) {
         var metadata = payload.metadata();
         var attemptCount = parsePositive(metadata.get("fetch_attempts"));
+        var redirectCount = parseNonNegative(metadata.get("fetch_redirects"));
         return new SourceFetchAttempt(
                 idGenerator.next("fetch_"),
                 collectionId,
@@ -399,6 +400,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 payload.contentType(),
                 payload.rawContent().getBytes(java.nio.charset.StandardCharsets.UTF_8).length,
                 Math.max(0, attemptCount - 1),
+                redirectCount,
                 outcome,
                 errorCode,
                 metadata.getOrDefault("collector", "unknown"),
@@ -428,6 +430,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 null,
                 0,
                 0,
+                0,
                 exception.blocked() ? "BLOCKED" : "FAILED",
                 exception.errorCode(),
                 "none",
@@ -440,6 +443,14 @@ public final class IngestionApplicationService implements IngestionUseCase {
             return value == null ? 1 : Math.max(1, Integer.parseInt(value));
         } catch (NumberFormatException exception) {
             return 1;
+        }
+    }
+
+    private static int parseNonNegative(String value) {
+        try {
+            return value == null ? 0 : Math.max(0, Integer.parseInt(value));
+        } catch (NumberFormatException exception) {
+            return 0;
         }
     }
 

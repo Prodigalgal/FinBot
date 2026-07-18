@@ -94,6 +94,20 @@ class SearchDiscoverySourceCollectorTest {
         }
     }
 
+    @Test
+    void rejectsAnUnregisteredSearchProviderBeforeAnyNetworkRequest() {
+        var collector = collector(URI.create("http://127.0.0.1:1"));
+
+        var exception = assertThrows(
+                SourceCollectionException.class,
+                () -> collector.collect(
+                        source("unknown-search", URI.create("http://search.test/search"), null),
+                        "oil inventory"));
+
+        assertEquals("SEARCH_DISCOVERY_PROVIDER_UNSUPPORTED", exception.errorCode());
+        assertTrue(exception.blocked());
+    }
+
     private static SearchDiscoverySourceCollector collector(URI proxyUri) {
         return collector(proxyUri, new EmptyRuntimeSecretStore());
     }
@@ -108,13 +122,13 @@ class SearchDiscoverySourceCollectorTest {
                 proxyUri,
                 "IPV4",
                 proxyUri.toString());
-        return new SearchDiscoverySourceCollector(
+        return new SearchDiscoverySourceCollector(List.of(new JsonSearchDiscoveryProvider(
                 new CrawlerTransport(
                         new RoutedHttpClientFactory(resolver, Runnable::run),
                         new CrawlerConcurrencyLimiter(16, 2, Duration.ofSeconds(1)),
                         Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC)),
                 new ObjectMapper(),
-                runtimeSecrets);
+                runtimeSecrets)));
     }
 
     private static void respond(HttpExchange exchange, AtomicReference<String> observedTarget)

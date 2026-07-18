@@ -81,3 +81,7 @@ databaseChangeLog:
       file: db/changelog/releases/040-isolated-crawler-proxy-profiles.sql
   - include:
       file: db/changelog/releases/041-firecrawl-default-disabled.sql
+  - include:
+      file: db/changelog/releases/042-default-source-catalog-manifest.sql
+  - include:
+      file: db/changelog/releases/043-source-fetch-redirect-count.sql

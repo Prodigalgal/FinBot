@@ -2,6 +2,7 @@ package io.omnnu.finbot.infrastructure.ingestion;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -21,6 +22,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class CrawlerTransportTest {
@@ -86,6 +88,137 @@ class CrawlerTransportTest {
         } finally {
             proxy.stop(0);
         }
+    }
+
+    @Test
+    void followsBoundedGetRedirectsAndReportsNetworkAttempts() throws IOException {
+        var requests = new AtomicInteger();
+        var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxy.createContext("/", exchange -> {
+            requests.incrementAndGet();
+            if ("/start".equals(exchange.getRequestURI().getPath())) {
+                try (exchange) {
+                    exchange.getResponseHeaders().set("Location", "http://target.test/final");
+                    exchange.sendResponseHeaders(302, -1);
+                }
+                return;
+            }
+            var body = "ok".getBytes(StandardCharsets.UTF_8);
+            try (exchange) {
+                exchange.getResponseHeaders().set("Content-Type", "text/plain");
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+        });
+        proxy.start();
+        try {
+            var transport = transportThrough(proxy);
+
+            var response = transport.get(request(URI.create("http://target.test/start"), 1));
+
+            assertEquals(2, requests.get());
+            assertEquals(2, response.attempts());
+            assertEquals(1, response.redirectCount());
+            assertEquals("http://target.test/final", response.requestedUrl().toString());
+            assertFalse(response.responseHeaders().containsKey("location"));
+        } finally {
+            proxy.stop(0);
+        }
+    }
+
+    @Test
+    void blocksRedirectsToPrivateTargetsBeforeOpeningAnotherConnection() throws IOException {
+        var requests = new AtomicInteger();
+        var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxy.createContext("/", exchange -> {
+            requests.incrementAndGet();
+            try (exchange) {
+                exchange.getResponseHeaders().set("Location", "http://127.0.0.1/internal");
+                exchange.sendResponseHeaders(302, -1);
+            }
+        });
+        proxy.start();
+        try {
+            var transport = transportThrough(proxy);
+
+            var exception = assertThrows(
+                    SourceCollectionException.class,
+                    () -> transport.get(request(URI.create("http://target.test/start"), 1)));
+
+            assertEquals("TEST_CRAWLER_SSRF_BLOCKED", exception.errorCode());
+            assertEquals(1, requests.get());
+        } finally {
+            proxy.stop(0);
+        }
+    }
+
+    @Test
+    void removesCredentialsWhenRedirectingToAnotherOrigin() throws IOException {
+        var finalAuthorization = new AtomicReference<String>();
+        var finalSubscriptionToken = new AtomicReference<String>();
+        var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxy.createContext("/", exchange -> {
+            if ("/start".equals(exchange.getRequestURI().getPath())) {
+                try (exchange) {
+                    exchange.getResponseHeaders().set("Location", "http://other.test/final");
+                    exchange.sendResponseHeaders(302, -1);
+                }
+                return;
+            }
+            finalAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            finalSubscriptionToken.set(exchange.getRequestHeaders().getFirst("X-Subscription-Token"));
+            var body = "ok".getBytes(StandardCharsets.UTF_8);
+            try (exchange) {
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+        });
+        proxy.start();
+        try {
+            var request = new CrawlerTransport.Request(
+                    URI.create("http://target.test/start"),
+                    OutboundRoute.WEB_CRAWL,
+                    Map.of(
+                            "Accept", "text/plain",
+                            "Authorization", "Bearer secret",
+                            "X-Subscription-Token", "secret-token"),
+                    Duration.ofSeconds(5),
+                    1_024,
+                    1,
+                    true,
+                    "TEST_CRAWLER",
+                    "Test crawler");
+
+            transportThrough(proxy).get(request);
+
+            assertNull(finalAuthorization.get());
+            assertNull(finalSubscriptionToken.get());
+        } finally {
+            proxy.stop(0);
+        }
+    }
+
+    private static CrawlerTransport transportThrough(HttpServer proxy) {
+        var proxyUri = URI.create("http://127.0.0.1:" + proxy.getAddress().getPort());
+        ProxyRouteResolver resolver = route -> new ProxyRouteDecision(
+                route, true, false, proxyUri, "IPV4", proxyUri.toString());
+        return new CrawlerTransport(
+                new RoutedHttpClientFactory(resolver, Runnable::run),
+                new CrawlerConcurrencyLimiter(2, 1, Duration.ofSeconds(1)),
+                Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC));
+    }
+
+    private static CrawlerTransport.Request request(URI target, int maximumAttempts) {
+        return new CrawlerTransport.Request(
+                target,
+                OutboundRoute.WEB_CRAWL,
+                Map.of("Accept", "text/plain"),
+                Duration.ofSeconds(5),
+                1_024,
+                maximumAttempts,
+                true,
+                "TEST_CRAWLER",
+                "Test crawler");
     }
 
     private static void respond(HttpExchange exchange, int requestNumber) throws IOException {

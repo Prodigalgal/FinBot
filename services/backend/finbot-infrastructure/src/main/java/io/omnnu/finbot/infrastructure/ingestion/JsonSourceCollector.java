@@ -75,7 +75,8 @@ final class JsonSourceCollector implements SourceCollectorAdapter {
                         "collector", "first_party_json",
                         "proxy_route", response.proxyRoute(),
                         "source_tier", source.tier().name(),
-                        "fetch_attempts", Integer.toString(response.attempts())),
+                        "fetch_attempts", Integer.toString(response.attempts()),
+                        "fetch_redirects", Integer.toString(response.redirectCount())),
                 null,
                 response.fetchedAt());
         return List.of(payload.withEnvelope(envelopeBuilder.build(payload)));

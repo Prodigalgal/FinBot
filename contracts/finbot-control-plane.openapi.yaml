@@ -364,7 +364,11 @@ paths:
       operationId: getIngestionWorkspace
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Ingestion evidence, source health, AI review, and immutable catalog status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestionWorkspace"
         default:
           $ref: "#/components/responses/Problem"
   /network:
@@ -1701,6 +1705,262 @@ components:
           type:
             - string
             - "null"
+    IngestionWorkspace:
+      type: object
+      additionalProperties: false
+      required:
+        - rawEvidenceCount
+        - normalizedDocumentCount
+        - compressionCount
+        - aiReviewCount
+        - sources
+        - recentRuns
+        - recentAiReviews
+        - sourceCatalogVersion
+        - sourceCatalogManifestHash
+        - sourceCatalogSize
+        - generatedAt
+      properties:
+        rawEvidenceCount:
+          type: integer
+          format: int64
+          minimum: 0
+        normalizedDocumentCount:
+          type: integer
+          format: int64
+          minimum: 0
+        compressionCount:
+          type: integer
+          format: int64
+          minimum: 0
+        aiReviewCount:
+          type: integer
+          format: int64
+          minimum: 0
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngestionSourceStatus"
+        recentRuns:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngestionCollectionRun"
+        recentAiReviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngestionAiReview"
+        sourceCatalogVersion:
+          type: string
+          pattern: ^v[0-9]+(\.[0-9]+){0,2}$
+        sourceCatalogManifestHash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        sourceCatalogSize:
+          type: integer
+          minimum: 1
+        generatedAt:
+          type: string
+          format: date-time
+    IngestionSourceStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - displayName
+        - mode
+        - tier
+        - category
+        - outboundRoute
+        - credentialSupported
+        - credentialConfigured
+        - credentialSource
+        - credentialFingerprint
+        - credentialVersion
+        - enabled
+        - version
+        - latestStatus
+        - fetchedCount
+        - insertedCount
+        - duplicateCount
+        - errorCode
+        - errorMessage
+        - lastCollectedAt
+      properties:
+        sourceId:
+          type: string
+        displayName:
+          type: string
+        mode:
+          type: string
+        tier:
+          type: string
+        category:
+          type: string
+        outboundRoute:
+          type:
+            - string
+            - "null"
+        credentialSupported:
+          type: boolean
+        credentialConfigured:
+          type: boolean
+        credentialSource:
+          type: string
+          enum:
+            - DATABASE_OVERRIDE
+            - ENVIRONMENT_FALLBACK
+            - UNCONFIGURED
+            - NOT_REQUIRED
+        credentialFingerprint:
+          type:
+            - string
+            - "null"
+        credentialVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        enabled:
+          type: boolean
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        latestStatus:
+          type:
+            - string
+            - "null"
+        fetchedCount:
+          type: integer
+          minimum: 0
+        insertedCount:
+          type: integer
+          minimum: 0
+        duplicateCount:
+          type: integer
+          minimum: 0
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        lastCollectedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+    IngestionCollectionRun:
+      type: object
+      additionalProperties: false
+      required:
+        - collectionId
+        - workflowRunId
+        - sourceId
+        - sourceName
+        - query
+        - status
+        - fetchedCount
+        - insertedCount
+        - duplicateCount
+        - errorCode
+        - errorMessage
+        - startedAt
+        - completedAt
+      properties:
+        collectionId:
+          type: string
+        workflowRunId:
+          type:
+            - string
+            - "null"
+        sourceId:
+          type: string
+        sourceName:
+          type: string
+        query:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+        fetchedCount:
+          type: integer
+          minimum: 0
+        insertedCount:
+          type: integer
+          minimum: 0
+        duplicateCount:
+          type: integer
+          minimum: 0
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+    IngestionAiReview:
+      type: object
+      additionalProperties: false
+      required:
+        - reviewId
+        - workflowRunId
+        - documentId
+        - nodeId
+        - stage
+        - status
+        - summary
+        - citations
+        - errorCode
+        - errorMessage
+        - createdAt
+      properties:
+        reviewId:
+          type: string
+        workflowRunId:
+          type: string
+        documentId:
+          type: string
+        nodeId:
+          type: string
+        stage:
+          type: string
+          enum:
+            - CLEANING
+            - COMPRESSION
+            - VALIDATION
+        status:
+          type: string
+        summary:
+          type:
+            - string
+            - "null"
+        citations:
+          type: array
+          items:
+            type: string
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        createdAt:
+          type: string
+          format: date-time
     AiProvider:
       type: object
       additionalProperties: false

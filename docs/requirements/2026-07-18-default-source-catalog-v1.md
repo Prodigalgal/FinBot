@@ -48,7 +48,8 @@ T4 长尾发现：Global Search
 
 ## 版本和变更规则
 
-- v1 默认目录由 Liquibase seed 和本文件共同定义；seed 使用 `ON CONFLICT DO NOTHING`，不覆盖管理员运行时修改。
+- v1 默认目录由 Liquibase seed、本文件和 `information_source_catalog_manifest` 共同定义；数据库 manifest 固化版本 `v1`、11 个 source ID 和 SHA-256 `d072d9c03dda10d7005a43906e50dbc0a4eda3d4df3b6bb40a18f868f9ed53c6`。seed 使用 `ON CONFLICT DO NOTHING`，不覆盖管理员运行时修改。
+- manifest 表只追加新版本，不更新或删除既有版本；采集工作台和 OpenAPI 返回当前默认目录版本、条目数与哈希，便于发布验收和回滚核对。
 - 增加默认来源必须更新目录版本、资产映射、采集协议、健康探测和测试 fixture。
 - 删除默认来源先停用并观察至少一个轮询周期，不能直接删除历史证据。
 - Firecrawl 是独立采集渠道；其 `FIRECRAWL_*` 操作模式只在管理员打开“显示 Firecrawl 渠道”后可配置，默认目录不启用。

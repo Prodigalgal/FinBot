@@ -269,11 +269,11 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 insert into source_fetch_attempt (
                   attempt_id, collection_id, source_id, requested_url, route_type,
                   status_code, content_type, response_bytes, retry_count, outcome,
-                  error_code, parser_version, started_at, completed_at
+                  redirect_count, error_code, parser_version, started_at, completed_at
                 ) values (
                   :attemptId, :collectionId, :sourceId, :requestedUrl, :routeType,
                   :statusCode, :contentType, :responseBytes, :retryCount, :outcome,
-                  :errorCode, :parserVersion, :startedAt, :completedAt
+                  :redirectCount, :errorCode, :parserVersion, :startedAt, :completedAt
                 ) on conflict (attempt_id) do nothing
                 """)
                 .param("attemptId", attempt.attemptId())
@@ -286,6 +286,7 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("responseBytes", attempt.responseBytes())
                 .param("retryCount", attempt.retryCount())
                 .param("outcome", attempt.outcome())
+                .param("redirectCount", attempt.redirectCount())
                 .param("errorCode", safe(attempt.errorCode(), 80))
                 .param("parserVersion", safe(attempt.parserVersion(), 120))
                 .param("startedAt", timestamp(attempt.startedAt()))

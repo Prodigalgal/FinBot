@@ -13,12 +13,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.stereotype.Component;
 
 @Component
 public final class CrawlerTransport {
+    private static final int MAXIMUM_REDIRECTS = 5;
     private final RoutedHttpClientFactory httpClients;
     private final CrawlerConcurrencyLimiter concurrencyLimiter;
     private final Clock clock;
@@ -35,7 +37,50 @@ public final class CrawlerTransport {
     @SuppressWarnings("try")
     public Response get(Request request) {
         Objects.requireNonNull(request, "request");
-        validateTarget(request);
+        var target = request.target();
+        var headers = request.headers();
+        var redirects = 0;
+        var totalAttempts = 0;
+        while (true) {
+            validateTarget(target, request);
+            var response = execute(request, target, headers);
+            totalAttempts += response.attempts();
+            if (!isRedirect(response.statusCode())) {
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new SourceCollectionException(
+                            request.errorPrefix() + "_HTTP_" + response.statusCode(),
+                            request.safeName() + " returned HTTP " + response.statusCode(),
+                            response.statusCode() == 401 || response.statusCode() == 403);
+                }
+                return new Response(
+                        response.requestedUrl(),
+                        response.statusCode(),
+                        response.contentType(),
+                        response.body(),
+                        response.responseHeaders(),
+                        null,
+                        response.proxyRoute(),
+                        totalAttempts,
+                        redirects,
+                        response.fetchedAt());
+            }
+            if (redirects >= MAXIMUM_REDIRECTS) {
+                throw new SourceCollectionException(
+                        request.errorPrefix() + "_REDIRECT_LIMIT_EXCEEDED",
+                        request.safeName() + " exceeded the redirect safety limit",
+                        true);
+            }
+            var nextTarget = redirectTarget(target, response, request);
+            if (!sameOrigin(target, nextTarget)) {
+                headers = safeRedirectHeaders(headers);
+            }
+            target = nextTarget;
+            redirects++;
+        }
+    }
+
+    @SuppressWarnings("try")
+    private Response execute(Request request, URI target, Map<String, String> headers) {
         for (var attempt = 1; attempt <= request.maximumAttempts(); attempt++) {
             var route = httpClients.route(request.route());
             if (request.requireProxy() && !route.proxied()) {
@@ -44,13 +89,13 @@ public final class CrawlerTransport {
                         request.safeName() + " requires a proxied route",
                         true);
             }
-            var builder = HttpRequest.newBuilder(request.target())
+            var builder = HttpRequest.newBuilder(target)
                     .timeout(request.timeout())
                     .GET();
-            request.headers().forEach(builder::header);
+            headers.forEach(builder::header);
             try {
                 Response response;
-                try (var permit = concurrencyLimiter.acquire(request.target())) {
+                try (var permit = concurrencyLimiter.acquire(target)) {
                     var httpResponse = httpClients.clientForRequest(route).send(
                             builder.build(),
                             HttpResponse.BodyHandlers.ofInputStream());
@@ -63,26 +108,25 @@ public final class CrawlerTransport {
                                     false);
                         }
                         response = new Response(
-                                request.target(),
+                                target,
                                 httpResponse.statusCode(),
                                 httpResponse.headers().firstValue("content-type")
                                         .orElse("application/octet-stream"),
                                 body,
                                 sanitizedHeaders(httpResponse),
+                                httpResponse.headers().firstValue("location").orElse(null),
                                 route.redactedEndpoint(),
                                 attempt,
+                                0,
                                 clock.instant());
                     }
                 }
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                if (!isRedirect(response.statusCode())
+                        && (response.statusCode() < 200 || response.statusCode() >= 300)) {
                     if (retryable(response.statusCode()) && attempt < request.maximumAttempts()) {
                         pauseBeforeRetry(request, retryDelay(response, attempt));
                         continue;
                     }
-                    throw new SourceCollectionException(
-                            request.errorPrefix() + "_HTTP_" + response.statusCode(),
-                            request.safeName() + " returned HTTP " + response.statusCode(),
-                            response.statusCode() == 401 || response.statusCode() == 403);
                 }
                 return response;
             } catch (InterruptedException exception) {
@@ -104,6 +148,67 @@ public final class CrawlerTransport {
             }
         }
         throw new IllegalStateException("Crawler transport retry loop completed without a result");
+    }
+
+    private static boolean isRedirect(int statusCode) {
+        return statusCode == 301 || statusCode == 302 || statusCode == 303
+                || statusCode == 307 || statusCode == 308;
+    }
+
+    private static Map<String, String> safeRedirectHeaders(Map<String, String> headers) {
+        var result = new HashMap<String, String>();
+        headers.forEach((name, value) -> {
+            var normalized = name.toLowerCase(Locale.ROOT);
+            if (!normalized.equals("authorization")
+                    && !normalized.equals("proxy-authorization")
+                    && !normalized.equals("cookie")
+                    && !normalized.equals("x-api-key")
+                    && !normalized.equals("x-subscription-token")) {
+                result.put(name, value);
+            }
+        });
+        return Map.copyOf(result);
+    }
+
+    private static boolean sameOrigin(URI left, URI right) {
+        return left.getScheme().equalsIgnoreCase(right.getScheme())
+                && left.getHost().equalsIgnoreCase(right.getHost())
+                && effectivePort(left) == effectivePort(right);
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() >= 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
+
+    private static URI redirectTarget(URI currentTarget, Response response, Request request) {
+        var location = response.redirectLocation();
+        if (location == null || location.isBlank()) {
+            throw new SourceCollectionException(
+                    request.errorPrefix() + "_REDIRECT_INVALID",
+                    request.safeName() + " returned a redirect without a valid location",
+                    true);
+        }
+        final URI target;
+        try {
+            target = currentTarget.resolve(location.strip());
+        } catch (IllegalArgumentException exception) {
+            throw new SourceCollectionException(
+                    request.errorPrefix() + "_REDIRECT_INVALID",
+                    request.safeName() + " returned an invalid redirect location",
+                    true);
+        }
+        if ("https".equalsIgnoreCase(currentTarget.getScheme())
+                && !"https".equalsIgnoreCase(target.getScheme())) {
+            throw new SourceCollectionException(
+                    request.errorPrefix() + "_REDIRECT_DOWNGRADE_BLOCKED",
+                    request.safeName() + " attempted to redirect from HTTPS to a non-HTTPS target",
+                    true);
+        }
+        validateTarget(target, request);
+        return target;
     }
 
     private static boolean retryable(int statusCode) {
@@ -141,8 +246,7 @@ public final class CrawlerTransport {
         return Map.copyOf(result);
     }
 
-    private static void validateTarget(Request request) {
-        var target = request.target();
+    private static void validateTarget(URI target, Request request) {
         var host = target.getHost();
         if (host == null || target.getUserInfo() != null || target.getFragment() != null
                 || !("http".equalsIgnoreCase(target.getScheme())
@@ -221,8 +325,10 @@ public final class CrawlerTransport {
             String contentType,
             byte[] body,
             Map<String, String> responseHeaders,
+            String redirectLocation,
             String proxyRoute,
             int attempts,
+            int redirectCount,
             Instant fetchedAt) {
         public Response {
             body = body.clone();

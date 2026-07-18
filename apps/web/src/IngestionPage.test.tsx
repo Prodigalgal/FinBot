@@ -67,6 +67,9 @@ const workspace: IngestionWorkspace = {
   sources: [workspaceSource(source)],
   recentRuns: [],
   recentAiReviews: [],
+  sourceCatalogVersion: 'v1',
+  sourceCatalogManifestHash: 'd072d9c03dda10d7005a43906e50dbc0a4eda3d4df3b6bb40a18f868f9ed53c6',
+  sourceCatalogSize: 11,
   generatedAt: '2026-07-16T14:00:00Z',
 };
 
@@ -120,6 +123,7 @@ it('creates a user-managed RSS source from the management dialog', async () => {
     .mockResolvedValue([source, createdSource]);
   const user = userEvent.setup();
   render(<IngestionPage />);
+  expect(await screen.findByText(/默认信源目录 v1 · 11 项/)).toBeInTheDocument();
   await user.click(await screen.findByRole('button', { name: '新增信源' }));
   await user.type(screen.getByLabelText(/^名称/), '用户 RSS');
   await user.type(screen.getByLabelText(/^RSS Feed URL/), 'https://news.example.com/feed.xml');

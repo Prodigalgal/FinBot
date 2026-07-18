@@ -589,6 +589,16 @@ class LiquibasePostgresIntegrationTest {
                           , (select count(*) from information_schema.views
                              where table_schema = 'public'
                                and table_name = 'trading_activity_projection') as activity_view_count
+                          , (select catalog_version from information_source_catalog_manifest
+                             where catalog_id = 'catalog_default_sources') as source_catalog_version
+                          , (select manifest_hash from information_source_catalog_manifest
+                             where catalog_id = 'catalog_default_sources') as source_catalog_hash
+                          , (select source_count from information_source_catalog_manifest
+                             where catalog_id = 'catalog_default_sources') as source_catalog_manifest_count
+                          , (select count(*) from information_schema.columns
+                             where table_schema = 'public'
+                               and table_name = 'source_fetch_attempt'
+                               and column_name = 'redirect_count') as fetch_redirect_column_count
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
@@ -649,6 +659,12 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(3, result.getInt("experiment_assignment_column_count"));
                 assertEquals(1, result.getInt("network_idempotency_column_count"));
                 assertEquals(1, result.getInt("activity_view_count"));
+                assertEquals("v1", result.getString("source_catalog_version"));
+                assertEquals(
+                        "d072d9c03dda10d7005a43906e50dbc0a4eda3d4df3b6bb40a18f868f9ed53c6",
+                        result.getString("source_catalog_hash"));
+                assertEquals(11, result.getInt("source_catalog_manifest_count"));
+                assertEquals(1, result.getInt("fetch_redirect_column_count"));
             }
         }
     }
@@ -704,7 +720,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(43, result.getInt("changeset_count"));
+                assertEquals(45, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

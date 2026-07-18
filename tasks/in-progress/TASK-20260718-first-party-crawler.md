@@ -11,10 +11,10 @@
 ## 当前已完成
 
 - 已核对现有 `FirecrawlSourceCollector`、`RssSourceCollector`、`RoutingSourceCollectionGateway`、`JsoupEvidenceNormalizer` 和 `IngestionApplicationService`。
-- 已确认 `raw_evidence`、`normalized_document`、`source_collection_run` 可以作为迁移后的不可变研究事实存储。
+- 已确认 `raw_evidence`、`normalized_document`、`source_collection_run` 可以作为迁移后的不可变研究事实存储；默认目录通过 `information_source_catalog_manifest` 固化版本和哈希。
 - 已形成需求文档：[`2026-07-18-first-party-crawling-architecture.md`](../../docs/requirements/2026-07-18-first-party-crawling-architecture.md)。
 - 已形成架构决策：[`022-first-party-crawling-core.md`](../../docs/decisions/022-first-party-crawling-core.md)。
-- 已完成 `HTML_DOCUMENT`、`SEARCH_DISCOVERY`、`JSON_API`、`SITEMAP`、`WEB_CRAWL` 路由、统一 `CrawlerTransport`、`ContentEnvelope`/稳定 block ID、`normalized_document.content_blocks`、多 Agent 合法 block 引用门禁及 UI 引用展示、全局/单主机背压、RSS 请求级代理与响应上限、运行时 SSRF 拒绝、Firecrawl fail-closed 和默认关闭、Liquibase 035-041、SearXNG/Brave 兼容 JSON 适配器和 Java/Web/OpenAPI/Proxy 单测。
+- 已完成 `HTML_DOCUMENT`、`SEARCH_DISCOVERY`、`JSON_API`、`SITEMAP`、`WEB_CRAWL` 路由、统一 `CrawlerTransport`、`SearchDiscoveryProvider`、`ContentEnvelope`/稳定 block ID、`normalized_document.content_blocks`、多 Agent 合法 block 引用门禁及 UI 引用展示、全局/单主机背压、RSS 请求级代理与响应上限、运行时 SSRF 拒绝、受限重定向和跨 origin 凭据剥离、Firecrawl fail-closed 和默认关闭、Liquibase 035-043、SearXNG/Brave 兼容 JSON 适配器和 Java/Web/OpenAPI/Proxy 单测。
 
 ## 下一阶段实现顺序
 

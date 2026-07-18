@@ -560,6 +560,9 @@ export interface IngestionWorkspace {
     stage: string; status: string; summary: string | null; errorCode: string | null;
     citations: string[]; errorMessage: string | null; createdAt: string;
   }>;
+  sourceCatalogVersion: string;
+  sourceCatalogManifestHash: string;
+  sourceCatalogSize: number;
   generatedAt: string;
 }
 
