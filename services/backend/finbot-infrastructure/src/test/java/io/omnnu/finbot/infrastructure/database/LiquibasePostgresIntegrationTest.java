@@ -636,6 +636,31 @@ class LiquibasePostgresIntegrationTest {
                              where provider = 'searxng_internal' and enabled = true
                                and deleted_at is null) as searxng_source_count
                           , (select count(*) from information_source
+                             where provider = 'searxng_internal'
+                               and endpoint_base_url like '%engine_shortcuts=%'
+                               and deleted_at is null) as searxng_shortcut_source_count
+                          , (select count(*) from information_source
+                             where provider = 'searxng_internal'
+                               and endpoint_base_url like '%&engines=%'
+                               and deleted_at is null) as searxng_legacy_engine_source_count
+                          , (select count(*) from information_source
+                             where source_id in (
+                               'source_reuters_search','source_ap_search','source_searxng_news_search'
+                             ) and endpoint_base_url =
+                               'http://finbot-searxng:8080/search?categories=news&language=en&engine_shortcuts=gon%2Cbin%2Cddn%2Cbrnews%2Cqwn%2Cspn%2Cyhn'
+                               and deleted_at is null) as searxng_news_shortcut_mapping_count
+                          , (select count(*) from information_source
+                             where source_id = 'source_searxng_global_search'
+                               and endpoint_base_url =
+                               'http://finbot-searxng:8080/search?categories=general&language=auto&engine_shortcuts=go%2Cbi%2Cddg%2Cbr%2Cqw%2Csp%2Cyh'
+                               and deleted_at is null) as searxng_global_shortcut_mapping_count
+                          , (select count(*) from information_source
+                             where source_id in (
+                               'source_searxng_cn_mainstream','source_searxng_cn_finance'
+                             ) and endpoint_base_url =
+                               'http://finbot-searxng:8080/search?categories=general%2Cnews&language=zh-CN&engine_shortcuts=bd%2C360so%2Csogou%2Csogouw'
+                               and deleted_at is null) as searxng_china_shortcut_mapping_count
+                          , (select count(*) from information_source
                              where category in ('broad_news','finance_news','crypto_news','asia_news')
                                and enabled = true and deleted_at is null) as international_news_source_count
                           , (select count(*) from information_source
@@ -730,6 +755,11 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(2, result.getInt("ai_web_search_binding_count"));
                 assertEquals(2, result.getInt("disabled_ai_web_search_count"));
                 assertEquals(6, result.getInt("searxng_source_count"));
+                assertEquals(6, result.getInt("searxng_shortcut_source_count"));
+                assertEquals(0, result.getInt("searxng_legacy_engine_source_count"));
+                assertEquals(3, result.getInt("searxng_news_shortcut_mapping_count"));
+                assertEquals(1, result.getInt("searxng_global_shortcut_mapping_count"));
+                assertEquals(2, result.getInt("searxng_china_shortcut_mapping_count"));
                 assertEquals(12, result.getInt("international_news_source_count"));
                 assertEquals(11, result.getInt("china_news_source_count"));
                 assertEquals(8, result.getInt("exchange_news_source_count"));
@@ -790,7 +820,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                assertEquals(48, result.getInt("changeset_count"));
+                    assertEquals(49, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

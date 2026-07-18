@@ -7,6 +7,7 @@ import io.omnnu.finbot.application.ingestion.SourceCollectionException;
 import io.omnnu.finbot.domain.ingestion.InformationSource;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -23,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -30,8 +32,11 @@ import org.springframework.stereotype.Component;
 @Component
 final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
     private static final int MAXIMUM_RESPONSE_BYTES = 4 * 1024 * 1024;
+    private static final int MAXIMUM_ENGINE_SHORTCUTS = 16;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
     private static final String USER_AGENT = "FinBot/2.0 (+https://github.com/omnnu/FinBot)";
+    private static final String ENGINE_SHORTCUTS_PARAMETER = "engine_shortcuts";
+    private static final Pattern ENGINE_SHORTCUT_PATTERN = Pattern.compile("[a-z0-9][a-z0-9_-]{0,31}");
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -58,8 +63,9 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
     @Override
     public List<CollectedPayload> search(InformationSource source, String query) {
         var endpoint = requireEndpoint(source);
+        var searchEndpoint = searchEndpoint(endpoint);
         var effectiveQuery = source.defaultQuery(query);
-        var requestUri = requestUri(endpoint, effectiveQuery);
+        var requestUri = requestUri(searchEndpoint.uri(), searchEndpoint.compile(effectiveQuery));
         var response = fetch(requestUri);
         var root = parse(response.body());
         var results = root.path("results");
@@ -89,6 +95,7 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
                     Map.of(
                             "collector", "searxng_search",
                             "search_provider", "searxng_internal",
+                            "search_engine_shortcuts", searchEndpoint.serializedShortcuts(),
                             "proxy_route", "searxng_web_crawl_proxy",
                             "source_tier", source.tier().name(),
                             "result_kind", "search_snippet",
@@ -116,6 +123,77 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
                     null);
         }
         return endpoint;
+    }
+
+    private static SearchEndpoint searchEndpoint(URI endpoint) {
+        var rawQuery = endpoint.getRawQuery();
+        if (rawQuery == null || rawQuery.isBlank()) {
+            return new SearchEndpoint(endpoint, List.of());
+        }
+        try {
+            var retainedParameters = new ArrayList<String>();
+            List<String> engineShortcuts = null;
+            for (var rawParameter : rawQuery.split("&", -1)) {
+                if (rawParameter.isBlank()) {
+                    continue;
+                }
+                var equalsIndex = rawParameter.indexOf('=');
+                var rawName = equalsIndex < 0 ? rawParameter : rawParameter.substring(0, equalsIndex);
+                var rawValue = equalsIndex < 0 ? "" : rawParameter.substring(equalsIndex + 1);
+                var name = URLDecoder.decode(rawName, StandardCharsets.UTF_8);
+                if ("engines".equals(name)) {
+                    throw configurationFailure(
+                            "SearXNG endpoint must use engine_shortcuts instead of the unsupported engines parameter");
+                }
+                if (!ENGINE_SHORTCUTS_PARAMETER.equals(name)) {
+                    retainedParameters.add(rawParameter);
+                    continue;
+                }
+                if (engineShortcuts != null) {
+                    throw configurationFailure("SearXNG endpoint contains duplicate engine_shortcuts parameters");
+                }
+                engineShortcuts = parseEngineShortcuts(URLDecoder.decode(rawValue, StandardCharsets.UTF_8));
+            }
+            if (engineShortcuts == null) {
+                return new SearchEndpoint(endpoint, List.of());
+            }
+            return new SearchEndpoint(withRawQuery(endpoint, retainedParameters), engineShortcuts);
+        } catch (SourceCollectionException exception) {
+            throw exception;
+        } catch (IllegalArgumentException exception) {
+            throw configurationFailure("SearXNG endpoint contains invalid percent encoding");
+        }
+    }
+
+    private static List<String> parseEngineShortcuts(String configuredValue) {
+        if (configuredValue.isBlank()) {
+            throw configurationFailure("SearXNG engine_shortcuts must not be empty");
+        }
+        var shortcuts = new ArrayList<String>();
+        var uniqueShortcuts = new HashSet<String>();
+        for (var configuredShortcut : configuredValue.split(",", -1)) {
+            var shortcut = configuredShortcut.strip();
+            if (!ENGINE_SHORTCUT_PATTERN.matcher(shortcut).matches()) {
+                throw configurationFailure("SearXNG engine_shortcuts contains an invalid shortcut");
+            }
+            if (!uniqueShortcuts.add(shortcut)) {
+                throw configurationFailure("SearXNG engine_shortcuts contains a duplicate shortcut");
+            }
+            shortcuts.add(shortcut);
+            if (shortcuts.size() > MAXIMUM_ENGINE_SHORTCUTS) {
+                throw configurationFailure("SearXNG engine_shortcuts exceeds the configured limit");
+            }
+        }
+        return List.copyOf(shortcuts);
+    }
+
+    private static URI withRawQuery(URI endpoint, List<String> retainedParameters) {
+        var endpointValue = endpoint.toASCIIString();
+        var queryIndex = endpointValue.indexOf('?');
+        var baseEndpoint = queryIndex < 0 ? endpointValue : endpointValue.substring(0, queryIndex);
+        return URI.create(retainedParameters.isEmpty()
+                ? baseEndpoint
+                : baseEndpoint + "?" + String.join("&", retainedParameters));
     }
 
     private SearchResponse fetch(URI requestUri) {
@@ -301,6 +379,32 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
             boolean blocked,
             Integer statusCode) {
         return new SourceCollectionException(code, message, blocked, statusCode);
+    }
+
+    private static SourceCollectionException configurationFailure(String message) {
+        return failure("SEARXNG_ENDPOINT_CONFIGURATION_INVALID", message, true, null);
+    }
+
+    private record SearchEndpoint(URI uri, List<String> engineShortcuts) {
+        private SearchEndpoint {
+            uri = Objects.requireNonNull(uri, "uri");
+            engineShortcuts = List.copyOf(engineShortcuts);
+        }
+
+        private String compile(String query) {
+            if (engineShortcuts.isEmpty()) {
+                return query;
+            }
+            var compiledQuery = new StringBuilder();
+            for (var shortcut : engineShortcuts) {
+                compiledQuery.append('!').append(shortcut).append(' ');
+            }
+            return compiledQuery.append(query).toString();
+        }
+
+        private String serializedShortcuts() {
+            return String.join(",", engineShortcuts);
+        }
     }
 
     private record SearchResponse(

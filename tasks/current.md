@@ -11,10 +11,10 @@
 
 ## S3：自研信息采集内核
 
-- 状态：first-party 核心已完成并在上一版本生产运行；多领域国内外目录 v3、SearXNG 与 AI Web Search 已在源码落地，正在执行全量门禁与生产发布（2026-07-18）。
+- 状态：first-party 核心、多领域国内外目录 v3、SearXNG 与 AI Web Search 已生产运行；来源级 SearXNG engine shortcut 路由修正正在发布（2026-07-18）。
 - 目标：由 FinBot 自己完成请求、代理路由、静态协议解析、抽取、规范化和观测；Firecrawl 与 first-party 是独立渠道，默认关闭 Firecrawl，不能作为 first-party 失败后的隐式 fallback。
-- 已完成：固定 v1/v2 历史并追加 Liquibase 045/046 v3（61 个来源、国内外综合新闻、科技/金融/农业/医疗/能源/安全/科研、8 个交易所公告）；manifest append-only；`HTML_DOCUMENT`、`RSS`、`JSON_API`、`SITEMAP`、`SEARCH_DISCOVERY` 与 `AI_WEB_SEARCH`；内部 SearXNG 多引擎单副本及强制 `WEB_CRAWL` 代理；Grok/Gemini 搜索 binding、引用校验和 token 审计；统一 `CrawlerTransport`；ContentEnvelope/稳定 `blockId`；多 Agent 清洗/压缩引用门禁；全局/来源/单主机背压；SSRF、fail-closed、重试/重定向与凭据隔离；来源运行健康、采集中断恢复；Web 来源筛选和 AI binding 编辑；Java/Web/OpenAPI/Kustomize 测试。
-- 当前边界：上一生产版本已完成真实 PostgreSQL、K8S、ArgoCD 与代理控制面 smoke；本次 v3 尚待生产验证。SearXNG `/healthz` 不能替代真实结果 smoke；代理无健康出口时搜索必须明确失败。Firecrawl 私有四节点保持 fail-closed 且默认关闭；GDELT/SEC 的上游限流或出口阻断会显示为明确的 `429/403`，不会被伪装成成功；本阶段不引入浏览器渲染，不改变研究和交易工作流。
+- 已完成：固定 v1/v2 历史并追加 Liquibase 045/046 v3（61 个来源、国内外综合新闻、科技/金融/农业/医疗/能源/安全/科研、8 个交易所公告）及 047 SearXNG engine shortcut 路由修正；manifest append-only；`HTML_DOCUMENT`、`RSS`、`JSON_API`、`SITEMAP`、`SEARCH_DISCOVERY` 与 `AI_WEB_SEARCH`；内部 SearXNG 多引擎单副本及强制 `WEB_CRAWL` 代理；Grok/Gemini 搜索 binding、引用校验和 token 审计；统一 `CrawlerTransport`；ContentEnvelope/稳定 `blockId`；多 Agent 清洗/压缩引用门禁；全局/来源/单主机背压；SSRF、fail-closed、重试/重定向与凭据隔离；来源运行健康、采集中断恢复；Web 来源筛选和 AI binding 编辑；Java/Web/OpenAPI/Kustomize 测试。
+- 当前边界：v3 已完成真实 PostgreSQL、K8S、ArgoCD 与代理控制面 smoke；047 仍需 CI PostgreSQL、生产迁移和国内/国际 shortcut 结果验证。SearXNG `/healthz` 不能替代真实结果 smoke；代理无健康出口时搜索必须明确失败。Firecrawl 私有四节点保持 fail-closed 且默认关闭；GDELT/SEC 的上游限流或出口阻断会显示为明确的 `429/403`，不会被伪装成成功；本阶段不引入浏览器渲染，不改变研究和交易工作流。
 - 运行态修复：`ACCOUNT_SYNC` 交易所只读请求已增加重新签名、HTTP/1.1、有限退避、连接失效清理；可选交易所代理失败后按 `allow_direct` 受控直连，Firecrawl/Web Crawl 仍 fail-closed。
 - 需求：[`../docs/requirements/2026-07-18-first-party-crawling-architecture.md`](../docs/requirements/2026-07-18-first-party-crawling-architecture.md)。
 - 默认目录 v2：[`../docs/requirements/2026-07-18-default-source-catalog-v2.md`](../docs/requirements/2026-07-18-default-source-catalog-v2.md)。

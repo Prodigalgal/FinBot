@@ -91,3 +91,5 @@ databaseChangeLog:
       file: db/changelog/releases/045-ai-web-search-source.sql
   - include:
       file: db/changelog/releases/046-multi-domain-source-catalog-v3.sql
+  - include:
+      file: db/changelog/releases/047-searxng-engine-shortcut-routing.sql

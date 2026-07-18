@@ -1,6 +1,7 @@
 package io.omnnu.finbot.infrastructure.ingestion;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -63,9 +64,12 @@ class SearxngSearchDiscoveryProviderTest {
 
             assertEquals(1, payloads.size());
             assertEquals("searxng_search", payloads.getFirst().metadata().get("collector"));
+            assertEquals("bi,ddg", payloads.getFirst().metadata().get("search_engine_shortcuts"));
             assertEquals("https://news.example/health", payloads.getFirst().canonicalUrl().toString());
+            assertEquals("global news；研究焦点：healthcare", payloads.getFirst().query());
             assertTrue(observedQuery.get().contains("format=json"));
-            assertTrue(observedQuery.get().contains("q=global+news"));
+            assertTrue(observedQuery.get().contains("q=%21bi+%21ddg+global+news"));
+            assertFalse(observedQuery.get().contains("engine_shortcuts"));
             assertEquals("127.0.0.1", observedForwardedFor.get());
         } finally {
             server.stop(0);
@@ -87,7 +91,65 @@ class SearxngSearchDiscoveryProviderTest {
         assertEquals("SEARXNG_ENDPOINT_NOT_ALLOWED", exception.errorCode());
     }
 
+    @Test
+    void rejectsInvalidEngineShortcutBeforeNetworkAccess() {
+        var provider = new SearxngSearchDiscoveryProvider(
+                HttpClient.newHttpClient(),
+                new ObjectMapper(),
+                Clock.systemUTC(),
+                "finbot-searxng");
+
+        var exception = assertThrows(
+                SourceCollectionException.class,
+                () -> provider.search(source(URI.create(
+                        "http://finbot-searxng/search?categories=news&engine_shortcuts=bi%2C%21ddg")), "news"));
+
+        assertEquals("SEARXNG_ENDPOINT_CONFIGURATION_INVALID", exception.errorCode());
+    }
+
+    @Test
+    void rejectsLegacyEnginesParameterInsteadOfSilentlyIgnoringIt() {
+        var provider = new SearxngSearchDiscoveryProvider(
+                HttpClient.newHttpClient(),
+                new ObjectMapper(),
+                Clock.systemUTC(),
+                "finbot-searxng");
+
+        var exception = assertThrows(
+                SourceCollectionException.class,
+                () -> provider.search(source(URI.create(
+                        "http://finbot-searxng/search?categories=news&engines=bing")), "news"));
+
+        assertEquals("SEARXNG_ENDPOINT_CONFIGURATION_INVALID", exception.errorCode());
+    }
+
+    @Test
+    void rejectsDuplicateAndExcessiveEngineShortcutsBeforeNetworkAccess() {
+        var provider = new SearxngSearchDiscoveryProvider(
+                HttpClient.newHttpClient(),
+                new ObjectMapper(),
+                Clock.systemUTC(),
+                "finbot-searxng");
+
+        var duplicate = assertThrows(
+                SourceCollectionException.class,
+                () -> provider.search(source(URI.create(
+                        "http://finbot-searxng/search?engine_shortcuts=bi%2Cbi")), "news"));
+        var excessive = assertThrows(
+                SourceCollectionException.class,
+                () -> provider.search(source(URI.create(
+                        "http://finbot-searxng/search?engine_shortcuts=e0%2Ce1%2Ce2%2Ce3%2Ce4%2Ce5%2Ce6%2Ce7%2Ce8%2Ce9%2Ce10%2Ce11%2Ce12%2Ce13%2Ce14%2Ce15%2Ce16")), "news"));
+
+        assertEquals("SEARXNG_ENDPOINT_CONFIGURATION_INVALID", duplicate.errorCode());
+        assertEquals("SEARXNG_ENDPOINT_CONFIGURATION_INVALID", excessive.errorCode());
+    }
+
     private static InformationSource source(String host) {
+        return source(URI.create(
+                "http://" + host + "/search?categories=news&engine_shortcuts=bi%2Cddg"));
+    }
+
+    private static InformationSource source(URI endpoint) {
         return new InformationSource(
                 new SourceId("source_searxng_test"),
                 "SearXNG test",
@@ -102,7 +164,7 @@ class SearxngSearchDiscoveryProviderTest {
                 List.of(),
                 List.of(),
                 List.of("global news"),
-                URI.create("http://" + host + "/search?categories=news"),
+                endpoint,
                 null,
                 OutboundRoute.PUBLIC_DATA,
                 10,
