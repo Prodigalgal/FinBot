@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { AUTH_REQUIRED_EVENT, ApiError, api } from './api';
 import { solveProofOfWork } from './authPow';
+import { SecretTextField } from './SecretTextField';
 import type { AuthChallenge } from './types';
 
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -98,7 +99,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           </Stack>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField label="用户名" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required disabled={busy} />
-          <TextField label="密码" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required disabled={busy} />
+          <SecretTextField label="密码" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required disabled={busy} />
           <Stack direction="row" spacing={1} alignItems="stretch">
             <Box sx={{ flex: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1 }}>
               <Typography variant="caption" color="text.secondary">数学验证码</Typography>

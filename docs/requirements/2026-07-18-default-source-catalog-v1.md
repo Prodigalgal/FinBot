@@ -32,7 +32,7 @@ T4 长尾发现：Global Search
 ```
 
 - T1 默认启用，优先 RSS、JSON 或已知页面，不通过通用搜索发现。
-- T2 使用搜索 Provider 先收集带 URL 的搜索摘要；后续正文抓取由 first-party crawler 独立调度，搜索 Provider 不可用时才使用显式 Firecrawl fallback。
+- T2 使用搜索 Provider 先收集带 URL 的搜索摘要；后续正文抓取由 first-party crawler 独立调度，Firecrawl 仅作为单独配置的可选渠道。
 - T3 只产生线索，不单独升级为事实；必须经过官方或一线新闻交叉验证。
 - T4 只补充召回率，不能直接进入最终研究结论。
 
@@ -43,7 +43,7 @@ T4 长尾发现：Global Search
 - 稳定 `source_id`、显示名、tier、category、trustWeight 和资产范围。
 - 明确 `collectorProtocol`、发现策略、seed/feed/query 中至少一种入口。
 - 明确 `OutboundRoute`、轮询周期、最大结果数和最大目标数。
-- 明确是否允许 AI 清洗、是否允许 Firecrawl fallback 和 fallback 原因。
+- 明确是否允许 AI 清洗，以及是否启用 Firecrawl 渠道和对应操作。
 - 采集结果必须进入统一 `raw_evidence`，再由工作流中的 AI 清洗、验证和压缩节点处理。
 
 ## 版本和变更规则
@@ -51,5 +51,5 @@ T4 长尾发现：Global Search
 - v1 默认目录由 Liquibase seed 和本文件共同定义；seed 使用 `ON CONFLICT DO NOTHING`，不覆盖管理员运行时修改。
 - 增加默认来源必须更新目录版本、资产映射、采集协议、健康探测和测试 fixture。
 - 删除默认来源先停用并观察至少一个轮询周期，不能直接删除历史证据。
-- `FIRECRAWL_SCRAPE` 只作为迁移期旧数据值；已知页面迁移完成后不得再新建该模式。
+- Firecrawl 是独立采集渠道；其 `FIRECRAWL_*` 操作模式只在管理员打开“显示 Firecrawl 渠道”后可配置，默认目录不启用。
 - `SEARCH_DISCOVERY` 默认源在没有配置搜索 endpoint 时保持停用，避免把未配置的第三方搜索误报为可用。
