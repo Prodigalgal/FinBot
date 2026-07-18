@@ -2,7 +2,7 @@
 
 ## 状态
 
-实现阶段：first-party 协议、ContentEnvelope、生产控制面和目录 v1/v2/v3 已落地，国内外新闻、内部 SearXNG 与 AI Web Search 已生产发布；047 已将来源级引擎配置编译为 SearXNG 官方支持的 `!shortcut` 查询语法，048 根据真实 smoke 增加显式可用引擎冗余；不设置 14 天影子比较门禁。
+生产验收完成：first-party 协议、ContentEnvelope、生产控制面和目录 v1/v2/v3 已落地，国内外新闻、内部 SearXNG 与 AI Web Search 已生产发布；047 已将来源级引擎配置编译为 SearXNG 官方支持的 `!shortcut` 查询语法，048 已增加显式可用引擎冗余，长 source ID 异步采集已修复；不设置 14 天影子比较门禁。
 
 ## 目标
 
@@ -18,14 +18,14 @@
 - 已完成免费结构化目录 v2：SEC/GDELT/World Bank/BLS/CFTC/FRED/EIA 策略、Bybit JSON、White House RSS；FRED/EIA 通用 Key 绑定和请求时注入；GDELT/SEC `WEB_CRAWL` 出口、CFTC 降序查询；manifest append-only 历史和可回滚迁移；来源运行健康、采集恢复、Firecrawl 独立预算/熔断、来源/主机并发和礼貌延迟；对应 Java/Web/OpenAPI 测试及在线协议核验。
 - 已完成目录 v3 源码：61 个来源；国际综合新闻 12 项、国内直接新闻 9 项、国内定向发现 2 项、交易所公告 8 项；CISA/NVD/arXiv/WHO/FDA/USDA/NOAA/USGS/NASA 等垂直来源；单副本 SearXNG 多引擎配置、内部 allowlist、强制代理和 NetworkPolicy；`AI_WEB_SEARCH` Provider/Model binding、调用审计、结构化引用门禁及 UI 编辑。
 - 已完成 SearXNG 引擎路由修正：校验最多 16 个来源级 engine shortcut、拒绝会被忽略的遗留 `engines=`、编译 `!shortcut` 查询前缀、保留原业务 query 和 `search_engine_shortcuts` 证据元数据；047 使用精确旧 endpoint 作为更新条件，避免覆盖管理员修改。
-- 生产真实 smoke 发现新闻专用引擎与 Baidu/Sogou 会同时受解析错误、CAPTCHA 或限流影响；048 为国际新闻组显式加入 `bi,ddg`，为国内组显式加入 `bi,ddg` 且保留国内引擎，候选配置分别返回 13 和 10 条公网结果。
-- 生产控制面 smoke 发现长 source ID 被错误拼入最长 40 字符的 idempotency scope，导致异步 `/collect` 返回 400；已改为固定 `manual-ingestion` scope，并将 source ID 纳入被 SHA-256 的 client key，保持来源隔离语义。
+- 生产真实 smoke 发现新闻专用引擎与 Baidu/Sogou 会同时受解析错误、CAPTCHA 或限流影响；048 为国际新闻组显式加入 `bi,ddg`，为国内组显式加入 `bi,ddg` 且保留国内引擎，最终分别返回 16 和 10 条公网结果。
+- 生产控制面 smoke 发现长 source ID 被错误拼入最长 40 字符的 idempotency scope，导致异步 `/collect` 返回 400；已改为固定 `manual-ingestion` scope，并将 source ID 纳入被 SHA-256 的 client key，生产异步任务均首次尝试 `COMPLETED`。
 
 ## 下一阶段实现顺序
 
-1. 在 CI PostgreSQL 服务中执行 Liquibase 048 完整升级门禁，断言 6 个 SearXNG 来源映射正确且遗留 `engines` 为 0。
-2. 发布到 K8S/ArgoCD，验证 048 已登记、Backend 新版本 Ready、NetworkPolicy 与代理健康。
-3. 使用最终数据库 shortcut 配置重复国内、国际和新闻真实 JSON 搜索 smoke；GDELT/SEC 或搜索引擎的 429/403 必须以健康状态和 attempt 记录呈现。
+1. 持续观测各 engine 的有效结果率、CAPTCHA、解析错误和限流，不以 `/healthz` 代替结果健康。
+2. Provider 工具协议测活后再按需启用 Grok/Gemini AI Web Search 默认来源，继续保持独立 token 与引用审计。
+3. 扩充行业和地区来源时优先官方 API/RSS；新增搜索 engine 必须先通过代理出口真实结果 smoke。
 4. 保留 Firecrawl 独立渠道及三个显式操作模式；默认关闭，任何渠道失败不得隐式切换，不以日历等待作为条件。
 
 ## 非目标
