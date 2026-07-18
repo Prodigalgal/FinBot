@@ -35,6 +35,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 @RestController
 @RequestMapping("/api/v2")
 public final class IngestionController {
+    private static final String MANUAL_INGESTION_IDEMPOTENCY_SCOPE = "manual-ingestion";
+
     private final IngestionUseCase ingestionUseCase;
     private final BackgroundTaskCoordinator taskCoordinator;
 
@@ -116,8 +118,8 @@ public final class IngestionController {
         var task = taskCoordinator.enqueue(new EnqueueTaskCommand(
                 BackgroundTaskType.INGESTION,
                 IdempotencyKeys.scoped(
-                        "manual-ingestion:" + typedSourceId.value(),
-                        clientIdempotencyKey),
+                        MANUAL_INGESTION_IDEMPOTENCY_SCOPE,
+                        typedSourceId.value() + ':' + clientIdempotencyKey),
                 new IngestionTaskPayload(workflowRunId, typedSourceId, normalizedQuery),
                 70,
                 3,
