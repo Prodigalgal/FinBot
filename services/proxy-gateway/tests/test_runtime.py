@@ -18,6 +18,50 @@ def test_runtime_rejects_insecure_tls_by_default(monkeypatch: pytest.MonkeyPatch
     assert configuration.allow_insecure_tls is False
 
 
+def test_disabled_runtime_bootstraps_without_nodes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROXY_ENABLED", "false")
+    monkeypatch.delenv("PROXY_NODES", raising=False)
+    monkeypatch.delenv("PROXY_SUBSCRIPTION_URL", raising=False)
+
+    configuration = RuntimeConfiguration.from_environment()
+
+    assert configuration.enabled is False
+    assert configuration.inline_nodes is None
+    assert configuration.subscription_url is None
+
+
+def test_disabled_runtime_is_service_ready_without_egress(tmp_path: Path) -> None:
+    executable = tmp_path / "sing-box"
+    executable.write_text("test", encoding="utf-8")
+    configuration = RuntimeConfiguration(
+        subscription_url=None,
+        inline_nodes=None,
+        preferred_names=(),
+        maximum_nodes=4,
+        refresh_seconds=1800,
+        fetch_timeout_seconds=20,
+        proxy_port=8080,
+        node_port_start=10000,
+        health_port=8081,
+        sing_box_path=executable,
+        runtime_directory=tmp_path,
+        allow_insecure_tls=False,
+        target_probe=None,
+        enabled=False,
+    )
+    state = GatewayState()
+    gateway = ProxyGateway(configuration, state)
+
+    gateway._refresh(configuration)
+
+    snapshot = state.snapshot()
+    assert snapshot["enabled"] is False
+    assert snapshot["serviceReady"] is True
+    assert snapshot["ready"] is False
+    assert snapshot["nodeCount"] == 0
+    assert snapshot["lastError"] is None
+
+
 def test_health_snapshot_exposes_insecure_tls_policy() -> None:
     state = GatewayState()
 

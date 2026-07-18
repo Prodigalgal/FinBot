@@ -129,6 +129,21 @@ class ProxyGatewayControlServiceTest {
     }
 
     @Test
+    void periodicReconciliationExplicitlyDisablesInactiveGateway() {
+        var disabled = profile(false, 3);
+        var gateway = new CapturingGateway();
+        var service = service(
+                new FakeRepository(disabled, true),
+                new EmptyMutatingStore(),
+                gateway);
+
+        service.reconcileAll().getFirst().toCompletableFuture().join();
+
+        assertFalse(gateway.configuration.enabled());
+        assertEquals(ProxyGatewayApplyMode.RECONCILE, gateway.mode);
+    }
+
+    @Test
     void mapsForcedReloadFailureToDependencyUnavailable() {
         var failedGateway = new CapturingGateway() {
             @Override

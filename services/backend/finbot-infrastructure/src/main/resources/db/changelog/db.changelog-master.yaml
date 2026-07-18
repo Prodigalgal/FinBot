@@ -79,3 +79,5 @@ databaseChangeLog:
       file: db/changelog/releases/039-source-fetch-attempt.sql
   - include:
       file: db/changelog/releases/040-isolated-crawler-proxy-profiles.sql
+  - include:
+      file: db/changelog/releases/041-firecrawl-default-disabled.sql

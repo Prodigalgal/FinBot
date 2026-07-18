@@ -43,11 +43,8 @@ spec:
                 secretKeyRef:
                   name: finbot-secrets
                   key: FINBOT_JAVA_SERVICE_TOKEN
-            - name: PROXY_NODES
-              valueFrom:
-                secretKeyRef:
-                  name: finbot-secrets
-                  key: FIRECRAWL_PROXY_NODES
+            - name: PROXY_ENABLED
+              value: "false"
             - name: PROXY_MAXIMUM_NODES
               value: "32"
             - name: PROXY_NODE_PORT_START

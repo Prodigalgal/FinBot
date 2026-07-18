@@ -8,10 +8,12 @@ public record ProxyGatewayRuntimeConfiguration(
         List<String> preferredNames,
         int maximumNodes,
         int refreshSeconds,
-        boolean allowInsecureTls) {
+        boolean allowInsecureTls,
+        boolean enabled) {
     public ProxyGatewayRuntimeConfiguration {
         preferredNames = List.copyOf(preferredNames);
-        if ((subscriptionUrl == null || subscriptionUrl.isBlank())
+        if (enabled
+                && (subscriptionUrl == null || subscriptionUrl.isBlank())
                 && (inlineNodes == null || inlineNodes.isBlank())) {
             throw new IllegalArgumentException("Proxy gateway requires a subscription URL or inline nodes");
         }

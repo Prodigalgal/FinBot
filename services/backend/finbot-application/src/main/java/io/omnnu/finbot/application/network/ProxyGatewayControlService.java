@@ -41,14 +41,13 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
 
     @Override
     public CompletionStage<ProxyGatewayRuntimeStatus> status(String gatewayId) {
-        var profile = enabledProfile(gatewayId);
+        var profile = profile(gatewayId);
         return gateway.status(profile).exceptionally(exception -> unavailableStatus(profile, exception));
     }
 
     @Override
     public List<CompletionStage<Void>> reconcileAll() {
         return profiles.list().stream()
-                .filter(ProxyGatewayProfile::enabled)
                 .map(this::reconcileSafely)
                 .toList();
     }
@@ -110,10 +109,16 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
     }
 
     private ProxyGatewayProfile enabledProfile(String gatewayId) {
+        var profile = profile(gatewayId);
+        if (!profile.enabled()) {
+            throw new IllegalArgumentException("Proxy gateway does not exist or is disabled");
+        }
+        return profile;
+    }
+
+    private ProxyGatewayProfile profile(String gatewayId) {
         return profiles.find(Objects.requireNonNull(gatewayId, "gatewayId").strip())
-                .filter(ProxyGatewayProfile::enabled)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Proxy gateway does not exist or is disabled"));
+                .orElseThrow(() -> new IllegalArgumentException("Proxy gateway does not exist"));
     }
 
     private ProxyGatewayRuntimeConfiguration configuration(ProxyGatewayProfile profile) {
@@ -123,7 +128,8 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
                 profile.preferredNames(),
                 profile.maximumNodes(),
                 profile.refreshSeconds(),
-                profile.allowInsecureTls());
+                profile.allowInsecureTls(),
+                profile.enabled());
     }
 
     private static ProxyGatewayRuntimeStatus unavailableStatus(

@@ -45,13 +45,13 @@ flowchart TB
         Backend --> PG[("PostgreSQL 18<br/>finbot_v2")]
         Longhorn["Longhorn PVC / Snapshot"] --- PG
 
-        Backend --> FireProxy["Firecrawl Proxy Pod<br/>fail-closed"]
+        Backend -. "显式启用后" .-> FireProxy["Firecrawl Proxy Pod<br/>默认 disabled / fail-closed"]
         Backend -. "按路由启用" .-> ExchangeProxy["Exchange Proxy Pod<br/>备用"]
         Monitor["ServiceMonitor / PrometheusRule"] -. "metrics / alerts" .-> Backend
         Policies["7 NetworkPolicy<br/>default deny"] -. "隔离" .-> Backend
     end
 
-    FireProxy --> IPv4Pool["Firecrawl IPv4 代理池"]
+    FireProxy -. "显式启用后" .-> IPv4Pool["Firecrawl 私有四节点池"]
     IPv4Pool --> Sources["官方站点 / 新闻 / Firecrawl keyless"]
     Backend --> AI["MiMo2API / Sub2API<br/>DeepSeek 配置保留、运行停用"]
     Backend --> Gate["Gate TestNet"]

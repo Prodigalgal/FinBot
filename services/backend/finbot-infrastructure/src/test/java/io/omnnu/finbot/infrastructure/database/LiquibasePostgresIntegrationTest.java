@@ -542,6 +542,15 @@ class LiquibasePostgresIntegrationTest {
                            where source_id = 'source_x_market_search') as x_mode,
                           (select enabled from information_source
                            where source_id = 'source_x_market_search') as x_enabled,
+                          (select enabled from proxy_gateway_profile
+                           where gateway_id = 'proxygateway_firecrawl')
+                            as firecrawl_gateway_enabled,
+                          (select count(*) from information_source
+                           where source_mode in (
+                             'FIRECRAWL_SCRAPE', 'FIRECRAWL_SEARCH',
+                             'FIRECRAWL_SEARCH_THEN_SCRAPE'
+                           ) and enabled = true and deleted_at is null)
+                            as enabled_firecrawl_source_count,
                           (select count(*) from trade_execution_ai_stage
                            where version = 2
                              and user_prompt_template like '%UNSPECIFIED%')
@@ -631,6 +640,8 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals("WEB_CRAWL", result.getString("x_route"));
                 assertEquals("SEARCH_DISCOVERY", result.getString("x_mode"));
                 assertFalse(result.getBoolean("x_enabled"));
+                assertFalse(result.getBoolean("firecrawl_gateway_enabled"));
+                assertEquals(0, result.getInt("enabled_firecrawl_source_count"));
                 assertEquals(2, result.getInt("execution_contract_stage_count"));
                 assertEquals(9, result.getInt("projection_value_column_count"));
                 assertEquals(6, result.getInt("new_control_column_count"));
@@ -693,7 +704,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(42, result.getInt("changeset_count"));
+                    assertEquals(43, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

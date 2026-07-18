@@ -86,7 +86,8 @@ class JdkProxyGatewayControlGatewayTest {
                     List.of("JP"),
                     16,
                     1800,
-                    false);
+                    false,
+                    true);
             gateway.apply(profile, configuration, ProxyGatewayApplyMode.FORCE_RELOAD)
                     .toCompletableFuture()
                     .join();

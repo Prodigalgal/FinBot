@@ -38,12 +38,14 @@ class RuntimeConfiguration:
     runtime_directory: Path
     allow_insecure_tls: bool
     target_probe: TargetProbeConfiguration | None
+    enabled: bool = True
 
     @classmethod
     def from_environment(cls) -> RuntimeConfiguration:
         subscription_url = os.getenv("PROXY_SUBSCRIPTION_URL", "").strip() or None
         inline_nodes = os.getenv("PROXY_NODES", "").strip() or None
-        if subscription_url is None and inline_nodes is None:
+        enabled = _boolean("PROXY_ENABLED", True)
+        if enabled and subscription_url is None and inline_nodes is None:
             raise RuntimeError("PROXY_SUBSCRIPTION_URL or PROXY_NODES is required")
         maximum_nodes = _integer("PROXY_MAXIMUM_NODES", 32, minimum=1, maximum=128)
         refresh_seconds = _integer(
@@ -75,12 +77,16 @@ class RuntimeConfiguration:
             runtime_directory=Path(os.getenv("PROXY_RUNTIME_DIRECTORY", "/tmp/finbot-proxy")),
             allow_insecure_tls=_boolean("PROXY_ALLOW_INSECURE_TLS", False),
             target_probe=_target_probe_from_environment(),
+            enabled=enabled,
         )
 
     def with_dynamic_payload(self, payload: dict[str, Any]) -> RuntimeConfiguration:
         subscription_url = _optional_payload_string(payload, "subscriptionUrl")
         inline_nodes = _optional_payload_string(payload, "inlineNodes")
-        if subscription_url is None and inline_nodes is None:
+        enabled = payload.get("enabled", self.enabled)
+        if not isinstance(enabled, bool):
+            raise ValueError("enabled must be a boolean")
+        if enabled and subscription_url is None and inline_nodes is None:
             raise ValueError("subscriptionUrl or inlineNodes is required")
         preferred_names = _string_list(payload, "preferredNames", maximum_items=32)
         maximum_nodes = _payload_integer(payload, "maximumNodes", minimum=1, maximum=128)
@@ -104,6 +110,7 @@ class RuntimeConfiguration:
             runtime_directory=self.runtime_directory,
             allow_insecure_tls=allow_insecure_tls,
             target_probe=self.target_probe,
+            enabled=enabled,
         )
 
 
@@ -128,6 +135,7 @@ class GatewayState:
         self._rejected_insecure_node_count = 0
         self._enabled_insecure_node_count = 0
         self._allow_insecure_tls = False
+        self._enabled = True
         self._generation = 0
         self._refresh_attempt = 0
         self._last_refresh_epoch_seconds: float | None = None
@@ -153,6 +161,7 @@ class GatewayState:
         with self._lock:
             self._service_ready = True
             self._ready = bool(healthy_node_indices)
+            self._enabled = True
             self._node_count = node_count
             self._eligible_node_count = (
                 node_count if eligible_node_count is None else eligible_node_count
@@ -187,6 +196,26 @@ class GatewayState:
             self._last_error = _safe_error(error)
             self._refresh_condition.notify_all()
 
+    def disabled(self) -> None:
+        with self._lock:
+            self._service_ready = True
+            self._ready = False
+            self._enabled = False
+            self._node_count = 0
+            self._eligible_node_count = 0
+            self._healthy_node_count = 0
+            self._unhealthy_node_count = 0
+            self._healthy_node_indices = ()
+            self._probe_failure_counts = {}
+            self._validation_enabled = False
+            self._validation_target = None
+            self._last_validation_epoch_seconds = None
+            self._last_error = None
+            self._generation += 1
+            self._refresh_attempt += 1
+            self._last_refresh_epoch_seconds = time.time()
+            self._refresh_condition.notify_all()
+
     def process_stopped(self) -> None:
         with self._lock:
             self._ready = False
@@ -214,6 +243,7 @@ class GatewayState:
     def _snapshot(self) -> dict[str, Any]:
         return {
             "status": "ready" if self._ready else "not-ready",
+            "enabled": self._enabled,
             "ready": self._ready,
             "serviceReady": self._service_ready,
             "nodeCount": self._node_count,
@@ -307,6 +337,7 @@ class ProxyGateway:
             "maximumNodes": configuration.maximum_nodes,
             "refreshSeconds": configuration.refresh_seconds,
             "allowInsecureTls": configuration.allow_insecure_tls,
+            "enabled": configuration.enabled,
             "_previousRefreshAttempt": previous_refresh_attempt,
         }
 
@@ -315,6 +346,11 @@ class ProxyGateway:
             return self._configuration
 
     def _refresh(self, configuration: RuntimeConfiguration) -> None:
+        if not configuration.enabled:
+            self._round_robin.clear_targets()
+            self._stop_process()
+            self._state.disabled()
+            return
         subscription = self._load_nodes(configuration)
         selection = select_nodes(
             subscription,
@@ -513,7 +549,7 @@ def serve_health(
                     return
             else:
                 snapshot = state.snapshot()
-            if response["reloadRequired"] and (
+            if response["reloadRequired"] and response["enabled"] and (
                 not snapshot["ready"] or snapshot["lastError"] is not None
             ):
                 self._reply(
