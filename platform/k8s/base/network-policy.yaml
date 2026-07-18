@@ -225,6 +225,13 @@ spec:
           protocol: TCP
         - port: 8081
           protocol: TCP
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: finbot-searxng
+      ports:
+        - port: 8080
+          protocol: TCP
   egress:
     - to:
         - namespaceSelector:

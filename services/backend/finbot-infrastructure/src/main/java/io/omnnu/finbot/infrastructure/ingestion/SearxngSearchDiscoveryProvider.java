@@ -125,6 +125,7 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
                         .timeout(REQUEST_TIMEOUT)
                         .header("Accept", "application/json")
                         .header("User-Agent", USER_AGENT)
+                        .header("X-Forwarded-For", "127.0.0.1")
                         .GET()
                         .build();
                 var response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());

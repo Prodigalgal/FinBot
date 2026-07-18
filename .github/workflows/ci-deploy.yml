@@ -129,7 +129,8 @@ jobs:
             "$searxng_image"
           trap 'docker logs finbot-searxng-config-check || true; docker rm --force finbot-searxng-config-check 2>/dev/null || true' EXIT
           for attempt in {1..40}; do
-            if curl --fail --silent http://127.0.0.1:18080/healthz >/dev/null; then
+            if curl --fail --silent --header 'X-Forwarded-For: 127.0.0.1' \
+              http://127.0.0.1:18080/healthz >/dev/null; then
               exit 0
             fi
             if [ "$attempt" = 40 ]; then
@@ -144,6 +145,34 @@ jobs:
           test -s /tmp/finbot-rendered.yaml
           ! grep -q 'python -m finbot.cli.serve_' /tmp/finbot-rendered.yaml
           ! grep -q '/api/v1/' /tmp/finbot-rendered.yaml
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          resources = list(yaml.safe_load_all(Path("/tmp/finbot-rendered.yaml").read_text()))
+          policies = {
+              resource["metadata"]["name"]: resource
+              for resource in resources
+              if resource and resource.get("kind") == "NetworkPolicy"
+          }
+
+          def ingress_allows(policy_name: str, source_name: str, port: int) -> bool:
+              for rule in policies[policy_name]["spec"].get("ingress", []):
+                  sources = rule.get("from", [])
+                  ports = rule.get("ports", [])
+                  source_matches = any(
+                      source.get("podSelector", {}).get("matchLabels", {}).get(
+                          "app.kubernetes.io/name"
+                      ) == source_name
+                      for source in sources
+                  )
+                  if source_matches and any(value.get("port") == port for value in ports):
+                      return True
+              return False
+
+          assert ingress_allows("finbot-proxy-gateways", "finbot-searxng", 8080)
+          assert not ingress_allows("finbot-quant", "finbot-searxng", 8080)
+          PY
 
       - name: Install browser runtime
         working-directory: apps/web

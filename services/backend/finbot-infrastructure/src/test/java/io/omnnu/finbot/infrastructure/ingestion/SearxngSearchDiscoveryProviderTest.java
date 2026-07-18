@@ -30,9 +30,11 @@ class SearxngSearchDiscoveryProviderTest {
     @Test
     void queriesAllowlistedInternalServiceAndMapsResults() throws Exception {
         var observedQuery = new AtomicReference<String>();
+        var observedForwardedFor = new AtomicReference<String>();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             observedQuery.set(exchange.getRequestURI().getRawQuery());
+            observedForwardedFor.set(exchange.getRequestHeaders().getFirst("X-Forwarded-For"));
             var body = """
                     {"results":[
                       {"url":"https://news.example/health","title":"Health update",
@@ -64,6 +66,7 @@ class SearxngSearchDiscoveryProviderTest {
             assertEquals("https://news.example/health", payloads.getFirst().canonicalUrl().toString());
             assertTrue(observedQuery.get().contains("format=json"));
             assertTrue(observedQuery.get().contains("q=global+news"));
+            assertEquals("127.0.0.1", observedForwardedFor.get());
         } finally {
             server.stop(0);
         }
