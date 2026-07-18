@@ -67,7 +67,9 @@ class BackgroundWorkerRuntimeTest {
         var coordinator = mock(BackgroundTaskCoordinator.class);
         var task = task("task_lost_lease", BackgroundTaskType.INSTANT_RESEARCH);
         var handlerStarted = new CountDownLatch(1);
+        var handlerCancelled = new CountDownLatch(1);
         var handlerResult = new CompletableFuture<Void>();
+        handlerResult.whenComplete((ignored, failure) -> handlerCancelled.countDown());
         var handler = handler(BackgroundTaskType.INSTANT_RESEARCH, handlerStarted, handlerResult);
         when(coordinator.count(BackgroundTaskStatus.PENDING)).thenReturn(1L);
         when(coordinator.claim(any(), any(), any())).thenReturn(Optional.of(task));
@@ -87,6 +89,7 @@ class BackgroundWorkerRuntimeTest {
 
             runtime.heartbeat();
 
+            assertTrue(handlerCancelled.await(1, TimeUnit.SECONDS));
             assertTrue(handlerResult.isCancelled());
             verify(coordinator, after(250).never()).complete(any(), any());
             verify(coordinator, never()).fail(any(), any(), any(), any(), any());
