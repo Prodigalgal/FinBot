@@ -64,7 +64,7 @@ finbot:
     maximum-attempts: ${FINBOT_EXCHANGE_ACCOUNT_MAXIMUM_ATTEMPTS:3}
     initial-backoff: ${FINBOT_EXCHANGE_ACCOUNT_INITIAL_BACKOFF:PT0.5S}
   crawler:
-    user-agent: ${FINBOT_CRAWLER_USER_AGENT:FinBot/2.0 (contact: finbot@omnnu.xyz)}
+    user-agent: "${FINBOT_CRAWLER_USER_AGENT:FinBot/2.0 (contact: finbot@omnnu.xyz)}"
     maximum-concurrent: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT:16}
     maximum-concurrent-per-source: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT_PER_SOURCE:2}
     maximum-concurrent-per-host: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT_PER_HOST:2}
