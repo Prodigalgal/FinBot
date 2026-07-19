@@ -39,7 +39,7 @@ RUN git init . \
     && git fetch --depth 1 origin "refs/tags/v${XRAY_VERSION}:refs/tags/v${XRAY_VERSION}" \
     && git checkout --detach "refs/tags/v${XRAY_VERSION}" \
     && test "$(git rev-parse HEAD)" = "${XRAY_COMMIT}" \
-    && test "$(git describe --tags --exact-match)" = "v${XRAY_VERSION}" \
+    && git tag --points-at HEAD | grep -Fx "v${XRAY_VERSION}" \
     && cd /tmp \
     && go work init /source/xray \
     && go work edit -replace=golang.org/x/crypto=golang.org/x/crypto@v0.53.0 \
