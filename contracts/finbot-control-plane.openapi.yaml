@@ -338,6 +338,82 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+  /crawler/header-profiles:
+    get:
+      operationId: getCrawlerHeaderProfiles
+      responses:
+        "200":
+          description: Reusable crawler request header profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CrawlerHeaderProfileResponse"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createCrawlerHeaderProfile
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrawlerHeaderProfileMutationRequest"
+      responses:
+        "201":
+          description: Crawler header profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrawlerHeaderProfileResponse"
+        default:
+          $ref: "#/components/responses/Problem"
+  /crawler/header-profiles/{profileId}:
+    delete:
+      operationId: deleteCrawlerHeaderProfile
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^header_[a-z0-9_-]{4,72}$
+        - $ref: "#/components/parameters/ExpectedVersion"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Crawler header profile archived
+        "409":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: updateCrawlerHeaderProfile
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^header_[a-z0-9_-]{4,72}$
+        - $ref: "#/components/parameters/ExpectedVersion"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrawlerHeaderProfileMutationRequest"
+      responses:
+        "200":
+          description: Crawler header profile updated and hot-applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrawlerHeaderProfileResponse"
+        "409":
+          $ref: "#/components/responses/Problem"
   /evidence/documents:
     get:
       operationId: getEvidenceDocuments
@@ -1557,6 +1633,7 @@ components:
         - maximumResults
         - maximumScrapeTargets
         - enabled
+        - crawlerHeaderProfileId
         - aiWebSearchBinding
       properties:
         displayName:
@@ -1645,6 +1722,9 @@ components:
             - EXCHANGE_BYBIT
             - PUBLIC_DATA
             - null
+        crawlerHeaderProfileId:
+          type: string
+          pattern: ^header_[a-z0-9_-]{4,72}$
         maximumResults:
           type: integer
           minimum: 1
@@ -1710,6 +1790,64 @@ components:
               type: integer
               format: int64
               minimum: 0
+    CrawlerHeaderProfileMutationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - displayName
+        - userAgent
+        - additionalHeaders
+        - enabled
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 120
+        userAgent:
+          type: string
+          minLength: 1
+          maxLength: 500
+        accept:
+          type:
+            - string
+            - "null"
+          maxLength: 2048
+        acceptLanguage:
+          type:
+            - string
+            - "null"
+          maxLength: 500
+        additionalHeaders:
+          type: object
+          maxProperties: 16
+          additionalProperties:
+            type: string
+            minLength: 1
+            maxLength: 2048
+        enabled:
+          type: boolean
+    CrawlerHeaderProfileResponse:
+      allOf:
+        - $ref: "#/components/schemas/CrawlerHeaderProfileMutationRequest"
+        - type: object
+          required:
+            - profileId
+            - usageCount
+            - version
+            - updatedAt
+          properties:
+            profileId:
+              type: string
+              pattern: ^header_[a-z0-9_-]{4,72}$
+            usageCount:
+              type: integer
+              minimum: 0
+            version:
+              type: integer
+              minimum: 0
+            updatedAt:
+              type: string
+              format: date-time
       unevaluatedProperties: false
     SourceUrlList:
       type: array

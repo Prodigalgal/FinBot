@@ -25,7 +25,6 @@ import org.springframework.stereotype.Component;
 final class HtmlSourceCollector implements SourceCollectorAdapter {
     private static final int MAXIMUM_RESPONSE_BYTES = 10 * 1024 * 1024;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(45);
-    private static final String USER_AGENT = "FinBot/2.0 (+https://github.com/omnnu/FinBot)";
     private static final Pattern CHARSET = Pattern.compile(
             "(?i)charset\\s*=\\s*[\\\"']?([a-zA-Z0-9._-]+)");
 
@@ -71,9 +70,7 @@ final class HtmlSourceCollector implements SourceCollectorAdapter {
                 source.sourceId().value(),
                 targetUrl,
                 source.outboundRoute(),
-                Map.of(
-                        "Accept", "text/html,application/xhtml+xml;q=0.9,application/json;q=0.7",
-                        "User-Agent", USER_AGENT),
+                Map.of("Accept", "text/html,application/xhtml+xml;q=0.9,application/json;q=0.7"),
                 REQUEST_TIMEOUT,
                 MAXIMUM_RESPONSE_BYTES,
                 3,

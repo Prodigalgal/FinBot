@@ -32,25 +32,27 @@ import org.springframework.stereotype.Component;
 final class FirecrawlSourceCollector implements SourceCollectorAdapter {
     private static final int MAXIMUM_RESPONSE_BYTES = 10 * 1024 * 1024;
     private static final int MAXIMUM_ATTEMPTS = 3;
-    private static final String USER_AGENT = "FinBot/2.0 (+https://github.com/omnnu/FinBot)";
 
     private final RoutedHttpClientFactory httpClients;
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final RuntimeSecretStore runtimeSecrets;
     private final FirecrawlChannelGuard channelGuard;
+    private final CrawlerRequestHeaderPolicy headerPolicy;
 
     FirecrawlSourceCollector(
             RoutedHttpClientFactory httpClients,
             ObjectMapper objectMapper,
             Clock clock,
             RuntimeSecretStore runtimeSecrets,
-            FirecrawlChannelGuard channelGuard) {
+            FirecrawlChannelGuard channelGuard,
+            CrawlerRequestHeaderPolicy headerPolicy) {
         this.httpClients = Objects.requireNonNull(httpClients, "httpClients");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.runtimeSecrets = Objects.requireNonNull(runtimeSecrets, "runtimeSecrets");
         this.channelGuard = Objects.requireNonNull(channelGuard, "channelGuard");
+        this.headerPolicy = Objects.requireNonNull(headerPolicy, "headerPolicy");
     }
 
     @Override
@@ -96,9 +98,8 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
             InformationSource source,
             String query,
             boolean scrapeResults) {
-        var effectiveQuery = source.defaultQuery(query);
         var body = objectMapper.createObjectNode()
-                .put("query", effectiveQuery)
+                .put("query", query)
                 .put("limit", source.maximumResults())
                 .put("timeout", 60_000);
         body.putArray("sources").add("web").add("news");
@@ -107,7 +108,7 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
         if (!scrapeResults) {
             return results.stream()
                     .limit(source.maximumResults())
-                    .map(result -> searchPayload(source, effectiveQuery, response, result))
+                    .map(result -> searchPayload(source, query, response, result))
                     .filter(Objects::nonNull)
                     .toList();
         }
@@ -206,16 +207,26 @@ final class FirecrawlSourceCollector implements SourceCollectorAdapter {
             InformationSource source,
             String path,
             ObjectNode body) {
-        var requestBuilder = HttpRequest.newBuilder(endpoint(source, path))
-                .timeout(Duration.ofSeconds(75))
-                .header("Accept", "application/json")
-                .header("Content-Type", "application/json")
-                .header("User-Agent", USER_AGENT)
-                .POST(HttpRequest.BodyPublishers.ofString(json(body), StandardCharsets.UTF_8));
+        var headers = new java.util.HashMap<String, String>();
+        headers.put("Accept", "application/json");
+        headers.put("Content-Type", "application/json");
         var credential = credential(source);
         if (credential != null) {
-            requestBuilder.header("Authorization", "Bearer " + credential);
+            headers.put("Authorization", "Bearer " + credential);
         }
+        final Map<String, String> requestHeaders;
+        try {
+            requestHeaders = headerPolicy.prepare(source.sourceId(), headers);
+        } catch (IllegalArgumentException exception) {
+            throw new SourceCollectionException(
+                    "FIRECRAWL_REQUEST_HEADERS_INVALID",
+                    "Firecrawl request headers are invalid",
+                    true);
+        }
+        var requestBuilder = HttpRequest.newBuilder(endpoint(source, path))
+                .timeout(Duration.ofSeconds(75))
+                .POST(HttpRequest.BodyPublishers.ofString(json(body), StandardCharsets.UTF_8));
+        requestHeaders.forEach(requestBuilder::header);
         try {
             for (var attempt = 1; attempt <= MAXIMUM_ATTEMPTS; attempt++) {
                 try {

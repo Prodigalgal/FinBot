@@ -80,13 +80,12 @@ final class PublicSearxngSearchDiscoveryProvider implements SearchDiscoveryProvi
                     null);
         }
 
-        var effectiveQuery = source.defaultQuery(query);
         SourceCollectionException lastFailure = null;
         var attempted = 0;
         for (var instance : rotatedCandidates(available)) {
             attempted++;
             try {
-                var result = searchInstance(source, effectiveQuery, directory, instance, attempted);
+                var result = searchInstance(source, query, directory, instance, attempted);
                 instanceCooldowns.remove(instance.key());
                 poolBlockedUntil = Instant.EPOCH;
                 return result;

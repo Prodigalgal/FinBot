@@ -33,11 +33,10 @@ final class AiWebSearchSourceCollector implements SourceCollectorAdapter {
                     "AI web search source has no provider and model binding",
                     true);
         }
-        var effectiveQuery = source.defaultQuery(query);
         var result = gateway.search(
                 source.sourceId(),
                 binding,
-                effectiveQuery,
+                query,
                 source.maximumResults());
         var payloads = new ArrayList<CollectedPayload>();
         for (var citation : result.citations()) {
@@ -67,7 +66,7 @@ final class AiWebSearchSourceCollector implements SourceCollectorAdapter {
             payloads.add(new CollectedPayload(
                     citation.url(),
                     citation.url(),
-                    effectiveQuery,
+                    query,
                     title,
                     200,
                     "text/plain; charset=utf-8",

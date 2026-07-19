@@ -34,7 +34,6 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
     private static final int MAXIMUM_RESPONSE_BYTES = 4 * 1024 * 1024;
     private static final int MAXIMUM_ENGINE_SHORTCUTS = 16;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
-    private static final String USER_AGENT = "FinBot/2.0 (+https://github.com/omnnu/FinBot)";
     private static final String ENGINE_SHORTCUTS_PARAMETER = "engine_shortcuts";
     private static final Pattern ENGINE_SHORTCUT_PATTERN = Pattern.compile("[a-z0-9][a-z0-9_-]{0,31}");
 
@@ -42,16 +41,19 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final Set<String> allowedHosts;
+    private final CrawlerRequestHeaderPolicy headerPolicy;
 
     SearxngSearchDiscoveryProvider(
             @Qualifier("searxngHttpClient") HttpClient httpClient,
             ObjectMapper objectMapper,
             Clock clock,
+            CrawlerRequestHeaderPolicy headerPolicy,
             @Value("${FINBOT_SEARXNG_ALLOWED_HOSTS:finbot-searxng,finbot-searxng.finbot.svc,finbot-searxng.finbot.svc.cluster.local}")
                     String allowedHosts) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.headerPolicy = Objects.requireNonNull(headerPolicy, "headerPolicy");
         this.allowedHosts = allowedHosts(allowedHosts);
     }
 
@@ -64,9 +66,8 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
     public List<CollectedPayload> search(InformationSource source, String query) {
         var endpoint = requireEndpoint(source);
         var searchEndpoint = searchEndpoint(endpoint);
-        var effectiveQuery = source.defaultQuery(query);
-        var requestUri = requestUri(searchEndpoint.uri(), searchEndpoint.compile(effectiveQuery));
-        var response = fetch(requestUri);
+        var requestUri = requestUri(searchEndpoint.uri(), searchEndpoint.compile(query));
+        var response = fetch(source, requestUri);
         var root = parse(response.body());
         var results = root.path("results");
         if (!results.isArray()) {
@@ -76,6 +77,15 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
                     false,
                     response.statusCode());
         }
+        var unresponsiveEngines = SearxngResponseMetadata.unresponsiveEngines(
+                root.path("unresponsive_engines"));
+        if (results.isEmpty() && !unresponsiveEngines.isBlank()) {
+            throw failure(
+                    "SEARXNG_ENGINES_UNRESPONSIVE",
+                    "SearXNG returned no results because configured engines were unavailable",
+                    true,
+                    response.statusCode());
+        }
         var payloads = new ArrayList<CollectedPayload>();
         for (var result : results) {
             var url = safeUri(text(result, "url"));
@@ -83,24 +93,27 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
             if (url == null || content == null) {
                 continue;
             }
+            var metadata = new java.util.HashMap<String, String>();
+            metadata.put("collector", "searxng_search");
+            metadata.put("search_provider", "searxng_internal");
+            metadata.put("search_engine_shortcuts", searchEndpoint.serializedShortcuts());
+            metadata.put("search_result_engines", SearxngResponseMetadata.resultEngines(result));
+            metadata.put("search_unresponsive_engines", unresponsiveEngines);
+            metadata.put("proxy_route", "searxng_web_crawl_proxy");
+            metadata.put("source_tier", source.tier().name());
+            metadata.put("result_kind", "search_snippet");
+            metadata.put("fetch_attempts", Integer.toString(response.attempts()));
+            metadata.put("fetch_redirects", "0");
             payloads.add(new CollectedPayload(
                     endpoint,
                     url,
-                    effectiveQuery,
+                    query,
                     Objects.requireNonNullElse(text(result, "title"), url.getHost()),
                     response.statusCode(),
                     response.contentType(),
                     content,
                     Map.of("content-type", response.contentType()),
-                    Map.of(
-                            "collector", "searxng_search",
-                            "search_provider", "searxng_internal",
-                            "search_engine_shortcuts", searchEndpoint.serializedShortcuts(),
-                            "proxy_route", "searxng_web_crawl_proxy",
-                            "source_tier", source.tier().name(),
-                            "result_kind", "search_snippet",
-                            "fetch_attempts", Integer.toString(response.attempts()),
-                            "fetch_redirects", "0"),
+                    Map.copyOf(metadata),
                     publishedAt(result),
                     response.fetchedAt()));
             if (payloads.size() >= source.maximumResults()) {
@@ -196,16 +209,23 @@ final class SearxngSearchDiscoveryProvider implements SearchDiscoveryProvider {
                 : baseEndpoint + "?" + String.join("&", retainedParameters));
     }
 
-    private SearchResponse fetch(URI requestUri) {
+    private SearchResponse fetch(InformationSource source, URI requestUri) {
         for (var attempt = 1; attempt <= 3; attempt++) {
             try {
-                var request = HttpRequest.newBuilder(requestUri)
+                var builder = HttpRequest.newBuilder(requestUri)
                         .timeout(REQUEST_TIMEOUT)
-                        .header("Accept", "application/json")
-                        .header("User-Agent", USER_AGENT)
-                        .header("X-Forwarded-For", "127.0.0.1")
-                        .GET()
-                        .build();
+                        .GET();
+                try {
+                    headerPolicy.prepare(source.sourceId(), Map.of("Accept", "application/json"))
+                            .forEach(builder::header);
+                } catch (IllegalArgumentException exception) {
+                    throw failure(
+                            "SEARXNG_REQUEST_HEADERS_INVALID",
+                            "SearXNG 请求头配置无效",
+                            true,
+                            null);
+                }
+                var request = builder.build();
                 var response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
                 if (response.body().length > MAXIMUM_RESPONSE_BYTES) {
                     throw failure(

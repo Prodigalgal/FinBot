@@ -23,7 +23,7 @@ class LiquibaseChangelogValidationTest {
         try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, database)) {
             liquibase.validate();
             var changeSets = liquibase.getDatabaseChangeLog().getChangeSets();
-            assertEquals(51, changeSets.size());
+            assertEquals(52, changeSets.size());
             assertEquals("001-foundation", changeSets.getFirst().getId());
             assertEquals("002-platform-foundation", changeSets.get(1).getId());
             assertEquals("003-background-operations", changeSets.get(2).getId());
@@ -67,7 +67,8 @@ class LiquibaseChangelogValidationTest {
             assertEquals("046-multi-domain-source-catalog-v3", changeSets.get(47).getId());
             assertEquals("047-searxng-engine-shortcut-routing", changeSets.get(48).getId());
             assertEquals("048-searxng-resilient-engine-routing", changeSets.get(49).getId());
-            assertEquals("049-public-searxng-instance-pool", changeSets.getLast().getId());
+            assertEquals("049-public-searxng-instance-pool", changeSets.get(50).getId());
+            assertEquals("050-crawler-header-profiles", changeSets.getLast().getId());
             assertTrue(changeSets.getFirst().getChanges().size() >= 1);
         }
     }

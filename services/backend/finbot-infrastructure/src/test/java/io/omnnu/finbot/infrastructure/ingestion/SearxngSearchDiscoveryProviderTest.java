@@ -32,14 +32,18 @@ class SearxngSearchDiscoveryProviderTest {
     void queriesAllowlistedInternalServiceAndMapsResults() throws Exception {
         var observedQuery = new AtomicReference<String>();
         var observedForwardedFor = new AtomicReference<String>();
+        var observedUserAgent = new AtomicReference<String>();
+        var observedLanguage = new AtomicReference<String>();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             observedQuery.set(exchange.getRequestURI().getRawQuery());
             observedForwardedFor.set(exchange.getRequestHeaders().getFirst("X-Forwarded-For"));
+            observedUserAgent.set(exchange.getRequestHeaders().getFirst("User-Agent"));
+            observedLanguage.set(exchange.getRequestHeaders().getFirst("Accept-Language"));
             var body = """
-                    {"results":[
+                    {"unresponsive_engines":[["brave","HTTP 429"]],"results":[
                       {"url":"https://news.example/health","title":"Health update",
-                       "content":"Official health evidence","publishedDate":"2026-07-18T07:00:00Z"},
+                       "content":"Official health evidence","engines":["bing","duckduckgo"],"publishedDate":"2026-07-18T07:00:00Z"},
                       {"url":"javascript:alert(1)","title":"Discarded","content":"Unsafe"}
                     ]}
                     """.getBytes(StandardCharsets.UTF_8);
@@ -58,19 +62,24 @@ class SearxngSearchDiscoveryProviderTest {
                     client,
                     new ObjectMapper(),
                     Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                    headerPolicy(),
                     "searxng.test");
 
-            var payloads = provider.search(source("searxng.test"), "healthcare");
+            var payloads = provider.search(source("searxng.test"), source("searxng.test").defaultQuery("healthcare"));
 
             assertEquals(1, payloads.size());
             assertEquals("searxng_search", payloads.getFirst().metadata().get("collector"));
             assertEquals("bi,ddg", payloads.getFirst().metadata().get("search_engine_shortcuts"));
+            assertEquals("bing,duckduckgo", payloads.getFirst().metadata().get("search_result_engines"));
+            assertEquals("brave:HTTP 429", payloads.getFirst().metadata().get("search_unresponsive_engines"));
             assertEquals("https://news.example/health", payloads.getFirst().canonicalUrl().toString());
             assertEquals("global news；研究焦点：healthcare", payloads.getFirst().query());
             assertTrue(observedQuery.get().contains("format=json"));
             assertTrue(observedQuery.get().contains("q=%21bi+%21ddg+global+news"));
             assertFalse(observedQuery.get().contains("engine_shortcuts"));
-            assertEquals("127.0.0.1", observedForwardedFor.get());
+            assertEquals(null, observedForwardedFor.get());
+            assertEquals("FinBot/2.0 (contact: test@example.com)", observedUserAgent.get());
+            assertEquals("zh-CN,en;q=0.8", observedLanguage.get());
         } finally {
             server.stop(0);
         }
@@ -82,6 +91,7 @@ class SearxngSearchDiscoveryProviderTest {
                 HttpClient.newHttpClient(),
                 new ObjectMapper(),
                 Clock.systemUTC(),
+                headerPolicy(),
                 "finbot-searxng");
 
         var exception = assertThrows(
@@ -97,6 +107,7 @@ class SearxngSearchDiscoveryProviderTest {
                 HttpClient.newHttpClient(),
                 new ObjectMapper(),
                 Clock.systemUTC(),
+                headerPolicy(),
                 "finbot-searxng");
 
         var exception = assertThrows(
@@ -113,6 +124,7 @@ class SearxngSearchDiscoveryProviderTest {
                 HttpClient.newHttpClient(),
                 new ObjectMapper(),
                 Clock.systemUTC(),
+                headerPolicy(),
                 "finbot-searxng");
 
         var exception = assertThrows(
@@ -129,6 +141,7 @@ class SearxngSearchDiscoveryProviderTest {
                 HttpClient.newHttpClient(),
                 new ObjectMapper(),
                 Clock.systemUTC(),
+                headerPolicy(),
                 "finbot-searxng");
 
         var duplicate = assertThrows(
@@ -147,6 +160,10 @@ class SearxngSearchDiscoveryProviderTest {
     private static InformationSource source(String host) {
         return source(URI.create(
                 "http://" + host + "/search?categories=news&engine_shortcuts=bi%2Cddg"));
+    }
+
+    private static CrawlerRequestHeaderPolicy headerPolicy() {
+        return CrawlerTestHeaders.policy();
     }
 
     private static InformationSource source(URI endpoint) {

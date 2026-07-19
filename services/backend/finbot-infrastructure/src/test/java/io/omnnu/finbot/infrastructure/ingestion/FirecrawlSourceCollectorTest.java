@@ -52,7 +52,8 @@ class FirecrawlSourceCollectorTest {
                     new ObjectMapper(),
                     Clock.fixed(Instant.parse("2026-07-16T14:00:00Z"), ZoneOffset.UTC),
                     new EmptyRuntimeSecretStore(),
-                    guard());
+                    guard(),
+                    CrawlerTestHeaders.policy());
 
             var payloads = collector.collect(source(), "market update");
 
@@ -93,7 +94,8 @@ class FirecrawlSourceCollectorTest {
                     new ObjectMapper(),
                     Clock.fixed(Instant.parse("2026-07-16T14:00:00Z"), ZoneOffset.UTC),
                     new EmptyRuntimeSecretStore(),
-                    guard());
+                    guard(),
+                    CrawlerTestHeaders.policy());
 
             var payloads = collector.collect(source(), "market update");
 

@@ -28,6 +28,61 @@ import org.junit.jupiter.api.Test;
 
 class CrawlerTransportTest {
     @Test
+    void appliesProfileHeadersAndRejectsCallerIdentityOverrides() throws IOException {
+        var observedUserAgent = new AtomicReference<String>();
+        var observedAccept = new AtomicReference<String>();
+        var observedLanguage = new AtomicReference<String>();
+        var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxy.createContext("/headers", exchange -> {
+            observedUserAgent.set(exchange.getRequestHeaders().getFirst("User-Agent"));
+            observedAccept.set(exchange.getRequestHeaders().getFirst("Accept"));
+            observedLanguage.set(exchange.getRequestHeaders().getFirst("Accept-Language"));
+            respond(exchange, 2);
+        });
+        proxy.start();
+        try {
+            var transport = transportThrough(proxy);
+            var response = transport.get(new CrawlerTransport.Request(
+                    "source_test_crawler",
+                    URI.create("http://target.test/headers"),
+                    OutboundRoute.WEB_CRAWL,
+                    Map.of("Accept", "application/json", "User-Agent", "Mozilla/5.0"),
+                    Duration.ofSeconds(5),
+                    1_024,
+                    1,
+                    true,
+                    "TEST_CRAWLER",
+                    "Test crawler"));
+
+            assertEquals(200, response.statusCode());
+            assertEquals("FinBot/2.0 (contact: test@example.com)", observedUserAgent.get());
+            assertEquals("application/json", observedAccept.get());
+            assertEquals("zh-CN,en;q=0.8", observedLanguage.get());
+        } finally {
+            proxy.stop(0);
+        }
+    }
+
+    @Test
+    void rejectsForwardedIdentityHeadersBeforeOpeningTheRoute() {
+        var exception = assertThrows(
+                SourceCollectionException.class,
+                () -> transportThrough(null).get(new CrawlerTransport.Request(
+                        "source_test_crawler",
+                        URI.create("http://target.test/headers"),
+                        OutboundRoute.WEB_CRAWL,
+                        Map.of("X-Forwarded-For", "198.51.100.1"),
+                        Duration.ofSeconds(5),
+                        1_024,
+                        1,
+                        true,
+                        "TEST_CRAWLER",
+                        "Test crawler")));
+
+        assertEquals("TEST_CRAWLER_REQUEST_HEADERS_INVALID", exception.errorCode());
+    }
+
+    @Test
     void blocksTargetsThatResolveToLoopbackBeforeOpeningTheRoute() {
         var transport = new CrawlerTransport(
                 new RoutedHttpClientFactory(
@@ -37,7 +92,7 @@ class CrawlerTransportTest {
                 new CrawlerConcurrencyLimiter(2, 1, 1, Duration.ofSeconds(1)),
                 new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                 Clock.systemUTC(),
-                "FinBot test contact=test@example.com");
+                CrawlerTestHeaders.policy());
 
         var exception = assertThrows(SourceCollectionException.class, () -> transport.get(
                 new CrawlerTransport.Request(
@@ -73,7 +128,7 @@ class CrawlerTransportTest {
                     new CrawlerConcurrencyLimiter(2, 1, 1, Duration.ofSeconds(1)),
                     new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                     Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                    "FinBot test contact=test@example.com");
+                    CrawlerTestHeaders.policy());
 
             var response = transport.get(new CrawlerTransport.Request(
                     "source_test_crawler",
@@ -247,7 +302,9 @@ class CrawlerTransportTest {
     }
 
     private static CrawlerTransport transportThrough(HttpServer proxy) {
-        var proxyUri = URI.create("http://127.0.0.1:" + proxy.getAddress().getPort());
+        var proxyUri = proxy == null
+                ? URI.create("http://127.0.0.1:1")
+                : URI.create("http://127.0.0.1:" + proxy.getAddress().getPort());
         ProxyRouteResolver resolver = route -> new ProxyRouteDecision(
                 route, true, false, proxyUri, "IPV4", proxyUri.toString());
         return new CrawlerTransport(
@@ -255,7 +312,7 @@ class CrawlerTransportTest {
                 new CrawlerConcurrencyLimiter(2, 1, 1, Duration.ofSeconds(1)),
                 new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                 Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                "FinBot test contact=test@example.com");
+                CrawlerTestHeaders.policy());
     }
 
     private static CrawlerTransport.Request request(URI target, int maximumAttempts) {

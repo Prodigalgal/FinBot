@@ -48,7 +48,7 @@ class RssSourceCollectorTest {
                             new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
                             new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                             Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                            "FinBot test contact=test@example.com"));
+                            CrawlerTestHeaders.policy()));
 
             var payloads = collector.collect(source(), "");
 
@@ -80,7 +80,7 @@ class RssSourceCollectorTest {
                             new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
                             new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                             Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                            "FinBot test contact=test@example.com"));
+                            CrawlerTestHeaders.policy()));
 
             var exception = assertThrows(SourceCollectionException.class,
                     () -> collector.collect(source(OutboundRoute.WEB_CRAWL, server.getAddress().getPort()), ""));

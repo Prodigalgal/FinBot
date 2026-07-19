@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from './api';
 import { SecretTextField } from './SecretTextField';
-import type { AiModel, AiProvider, ConfigurationSnapshot, EvidenceDocument, IngestionWorkspace, ReasoningEffort, SourceHealth, SourceMutation, SourceRecord, TaskRecord } from './types';
+import type { AiModel, AiProvider, ConfigurationSnapshot, CrawlerHeaderProfile, CrawlerHeaderProfileMutation, EvidenceDocument, IngestionWorkspace, ReasoningEffort, SourceHealth, SourceMutation, SourceRecord, TaskRecord } from './types';
 import { EmptyBlock, ErrorBlock, LoadingBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
 
 const SOURCE_TEST_POLL_INTERVAL_MILLISECONDS = 2_000;
@@ -53,6 +53,7 @@ export function IngestionPage() {
   const [workspace, setWorkspace] = useState<IngestionWorkspace | null>(null);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [sourceCatalog, setSourceCatalog] = useState<SourceRecord[]>([]);
+  const [headerProfiles, setHeaderProfiles] = useState<CrawlerHeaderProfile[]>([]);
   const [configuration, setConfiguration] = useState<ConfigurationSnapshot | null>(null);
   const [documents, setDocuments] = useState<EvidenceDocument[]>([]);
   const [sourceHealth, setSourceHealth] = useState<SourceHealth | null>(null);
@@ -68,13 +69,15 @@ export function IngestionPage() {
   const [error, setError] = useState<unknown>(null);
   const [message, setMessage] = useState('');
   const [editorSource, setEditorSource] = useState<SourceRecord | 'new' | null>(null);
+  const [headerEditor, setHeaderEditor] = useState<CrawlerHeaderProfile | 'new' | null>(null);
   const refresh = useCallback(async (preferredSourceId?: string) => {
     try {
-      const [nextWorkspace, nextTasks, nextSources, nextConfiguration] = await Promise.all([api.ingestionWorkspace(150), api.tasks(undefined, 200), api.sources(), api.configuration()]);
+      const [nextWorkspace, nextTasks, nextSources, nextConfiguration, nextHeaderProfiles] = await Promise.all([api.ingestionWorkspace(150), api.tasks(undefined, 200), api.sources(), api.configuration(), api.crawlerHeaderProfiles()]);
       setWorkspace(nextWorkspace);
       setSourceCatalog(nextSources);
       setConfiguration(nextConfiguration);
       setTasks(nextTasks.filter((task) => task.taskType === 'INGESTION'));
+      setHeaderProfiles(nextHeaderProfiles);
       setSourceId((current) => {
         const candidate = preferredSourceId || current;
         return nextWorkspace.sources.some((source) => source.sourceId === candidate)
@@ -141,6 +144,22 @@ export function IngestionPage() {
     try { await api.setSourceEnabled(nextSourceId, enabled, expectedVersion); setMessage(enabled ? '信息源已启用' : '信息源已停用'); await refresh(); }
     catch (cause) { setError(cause); } finally { setBusy(false); }
   };
+  const saveHeaderProfile = async (definition: CrawlerHeaderProfileMutation) => {
+    setBusy(true); setError(null); setMessage('');
+    try {
+      if (headerEditor === 'new') await api.createCrawlerHeaderProfile(definition);
+      else await api.updateCrawlerHeaderProfile(headerEditor!.profileId, headerEditor!.version, definition);
+      setHeaderEditor(null);
+      setMessage(headerEditor === 'new' ? '爬虫请求头配置已创建' : '爬虫请求头配置已热更新，下一次采集生效');
+      await refresh();
+    } catch (cause) { setError(cause); } finally { setBusy(false); }
+  };
+  const deleteHeaderProfile = async (profile: CrawlerHeaderProfile) => {
+    if (!window.confirm(`确认删除“${profile.displayName}”？使用中的配置必须先解绑。`)) return;
+    setBusy(true); setError(null); setMessage('');
+    try { await api.deleteCrawlerHeaderProfile(profile.profileId, profile.version); setMessage('爬虫请求头配置已归档'); await refresh(); }
+    catch (cause) { setError(cause); } finally { setBusy(false); }
+  };
   const putSourceCredential = async (source: IngestionWorkspace['sources'][number]) => {
     if (credentialValue.trim().length < 8) return;
     setBusy(true); setError(null); setMessage('');
@@ -189,6 +208,7 @@ export function IngestionPage() {
         {sourceHealth.latestErrorCode && <Typography variant="caption" color="error">{sourceHealth.latestErrorCode}{sourceHealth.safeMessage ? `：${sourceHealth.safeMessage}` : ''}</Typography>}
       </Stack>
     </Alert>}
+    <Box><SectionTitle title={`爬虫请求头配置（${headerProfiles.length}）`} action={<Button startIcon={<AddIcon />} onClick={() => setHeaderEditor('new')}>新增配置</Button>} /><Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>配置</TableCell><TableCell>User-Agent</TableCell><TableCell>语言 / 自定义头</TableCell><TableCell>使用中</TableCell><TableCell>状态</TableCell><TableCell align="right">操作</TableCell></TableRow></TableHead><TableBody>{headerProfiles.map((profile) => <TableRow key={profile.profileId}><TableCell><Typography fontWeight={700}>{profile.displayName}</Typography><Typography variant="caption" color="text.secondary">{profile.profileId} · v{profile.version}</Typography></TableCell><TableCell sx={{ maxWidth: 320, overflowWrap: 'anywhere' }}>{profile.userAgent}</TableCell><TableCell>{profile.acceptLanguage || '默认语言'} · {Object.keys(profile.additionalHeaders).length} 个附加头</TableCell><TableCell>{profile.usageCount} 个信源</TableCell><TableCell><Chip size="small" color={profile.enabled ? 'success' : 'default'} label={profile.enabled ? '已启用' : '已停用'} /></TableCell><TableCell align="right" sx={{ whiteSpace: 'nowrap' }}><Tooltip title="编辑请求头配置"><span><IconButton size="small" disabled={busy} onClick={() => setHeaderEditor(profile)}><EditOutlinedIcon fontSize="small" /></IconButton></span></Tooltip><Tooltip title={profile.usageCount > 0 ? '请先解绑使用中的信源' : '删除请求头配置'}><span><IconButton size="small" color="error" disabled={busy || profile.usageCount > 0 || profile.profileId === 'header_default'} onClick={() => void deleteHeaderProfile(profile)}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell></TableRow>)}</TableBody></Table>{headerProfiles.length === 0 && <EmptyBlock>尚无请求头配置</EmptyBlock>}</Paper></Box>
     {selectedSource?.credentialSupported && <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Box sx={{ minWidth: { md: 240 } }}><Typography fontWeight={700}>{selectedSource.displayName}凭据</Typography><Typography variant="caption" color="text.secondary">{sourceCredentialLabel(selectedSource.credentialSource)}{selectedSource.credentialFingerprint ? ` · 指纹 ${selectedSource.credentialFingerprint}` : ''}</Typography></Box><SecretTextField fullWidth autoComplete="new-password" label="新 API Key" value={credentialValue} onChange={(event) => setCredentialValue(event.target.value)} helperText="保存后下一次采集立即使用；旧值不会回显" /><Button disabled={busy || credentialValue.trim().length < 8} onClick={() => void putSourceCredential(selectedSource)}>设置凭据</Button><Button color="error" disabled={busy || selectedSource.credentialSource !== 'DATABASE_OVERRIDE'} onClick={() => void clearSourceCredential(selectedSource)}>清除热配置</Button></Stack></Paper>}
     <Box><SectionTitle title={`信息源状态（${filteredSources.length}/${workspace.sources.length}）`} action={<Button startIcon={<AddIcon />} onClick={() => setEditorSource('new')}>新增信源</Button>} />
       <Paper variant="outlined" sx={{ p: 1.5, mb: 1 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25}>
@@ -197,12 +217,13 @@ export function IngestionPage() {
         <TextField select size="small" label="类型" value={sourceMode} onChange={(event) => setSourceMode(event.target.value)} sx={{ minWidth: 180 }}><MenuItem value="">全部</MenuItem>{sourceModes.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
         <TextField select size="small" label="启用状态" value={sourceEnabled} onChange={(event) => setSourceEnabledFilter(event.target.value)} sx={{ minWidth: 130 }}><MenuItem value="">全部</MenuItem><MenuItem value="enabled">已启用</MenuItem><MenuItem value="disabled">已停用</MenuItem></TextField>
       </Stack></Paper>
-      <Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>信息源</TableCell><TableCell>层级 / 分类</TableCell><TableCell>路由 / 凭据</TableCell><TableCell>启用</TableCell><TableCell align="right">获取 / 新增 / 重复</TableCell><TableCell>最近状态</TableCell><TableCell>最近运行</TableCell><TableCell align="right">操作</TableCell></TableRow></TableHead><TableBody>{filteredSources.map((source) => { const sourceConfiguration = sourceCatalog.find((item) => item.sourceId === source.sourceId); const aiBinding = sourceConfiguration?.aiWebSearchBinding; const provider = configuration?.providers.find((item) => item.profileId === aiBinding?.providerProfileId); return <TableRow key={source.sourceId} hover selected={source.sourceId === sourceId} onClick={() => { setSourceId(source.sourceId); setCredentialValue(''); }} sx={{ cursor: 'pointer' }}><TableCell><Typography variant="body2" fontWeight={700}>{source.displayName}</Typography><Typography variant="caption" color="text.secondary">{source.sourceId}</Typography></TableCell><TableCell>{source.tier} · {source.category}</TableCell><TableCell><Typography variant="body2">{aiBinding ? 'AI_PROVIDER' : source.outboundRoute || 'DIRECT'}</Typography><Typography variant="caption" color={source.credentialConfigured ? 'text.secondary' : 'error'}>{aiBinding ? `${provider?.displayName || aiBinding.providerProfileId} · ${aiBinding.modelName}` : sourceCredentialLabel(source.credentialSource)}</Typography></TableCell><TableCell><Switch size="small" checked={source.enabled} disabled={busy} inputProps={{ 'aria-label': `${source.displayName}启用状态` }} onClick={(event) => event.stopPropagation()} onChange={(event) => void setSourceEnabled(source.sourceId, event.target.checked, source.version)} /></TableCell><TableCell align="right">{source.fetchedCount} / {source.insertedCount} / {source.duplicateCount}</TableCell><TableCell><Chip size="small" color={statusColor(source.latestStatus)} label={statusLabel(source.latestStatus || 'NO_DATA')} />{source.errorMessage && <Typography variant="caption" color="error" display="block">{source.errorCode}: {source.errorMessage}</Typography>}</TableCell><TableCell>{formatTime(source.lastCollectedAt)}</TableCell><TableCell align="right" sx={{ whiteSpace: 'nowrap' }}><Tooltip title="编辑信源"><span><IconButton size="small" disabled={!sourceConfiguration || busy} onClick={(event) => { event.stopPropagation(); if (sourceConfiguration) setEditorSource(sourceConfiguration); }}><EditOutlinedIcon fontSize="small" /></IconButton></span></Tooltip><Tooltip title="删除信源"><span><IconButton size="small" color="error" disabled={!sourceConfiguration || busy} onClick={(event) => { event.stopPropagation(); if (sourceConfiguration) void deleteSource(sourceConfiguration); }}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell></TableRow>; })}</TableBody></Table>{filteredSources.length === 0 && <EmptyBlock>没有符合条件的信息源</EmptyBlock>}</Paper></Box>
+      <Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>信息源</TableCell><TableCell>层级 / 分类</TableCell><TableCell>路由 / 凭据 / 请求头</TableCell><TableCell>启用</TableCell><TableCell align="right">获取 / 新增 / 重复</TableCell><TableCell>最近状态</TableCell><TableCell>最近运行</TableCell><TableCell align="right">操作</TableCell></TableRow></TableHead><TableBody>{filteredSources.map((source) => { const sourceConfiguration = sourceCatalog.find((item) => item.sourceId === source.sourceId); const aiBinding = sourceConfiguration?.aiWebSearchBinding; const provider = configuration?.providers.find((item) => item.profileId === aiBinding?.providerProfileId); const headerProfile = headerProfiles.find((profile) => profile.profileId === sourceConfiguration?.crawlerHeaderProfileId); return <TableRow key={source.sourceId} hover selected={source.sourceId === sourceId} onClick={() => { setSourceId(source.sourceId); setCredentialValue(''); }} sx={{ cursor: 'pointer' }}><TableCell><Typography variant="body2" fontWeight={700}>{source.displayName}</Typography><Typography variant="caption" color="text.secondary">{source.sourceId}</Typography></TableCell><TableCell>{source.tier} · {source.category}</TableCell><TableCell><Typography variant="body2">{aiBinding ? 'AI_PROVIDER' : source.outboundRoute || 'DIRECT'}</Typography><Typography variant="caption" color={source.credentialConfigured ? 'text.secondary' : 'error'} display="block">{aiBinding ? `${provider?.displayName || aiBinding.providerProfileId} · ${aiBinding.modelName}` : sourceCredentialLabel(source.credentialSource)}</Typography><Typography variant="caption" color="text.secondary" display="block">请求头 · {headerProfile?.displayName || sourceConfiguration?.crawlerHeaderProfileId || '未绑定'}</Typography></TableCell><TableCell><Switch size="small" checked={source.enabled} disabled={busy} inputProps={{ 'aria-label': `${source.displayName}启用状态` }} onClick={(event) => event.stopPropagation()} onChange={(event) => void setSourceEnabled(source.sourceId, event.target.checked, source.version)} /></TableCell><TableCell align="right">{source.fetchedCount} / {source.insertedCount} / {source.duplicateCount}</TableCell><TableCell><Chip size="small" color={statusColor(source.latestStatus)} label={statusLabel(source.latestStatus || 'NO_DATA')} />{source.errorMessage && <Typography variant="caption" color="error" display="block">{source.errorCode}: {source.errorMessage}</Typography>}</TableCell><TableCell>{formatTime(source.lastCollectedAt)}</TableCell><TableCell align="right" sx={{ whiteSpace: 'nowrap' }}><Tooltip title="编辑信源"><span><IconButton size="small" disabled={!sourceConfiguration || busy} onClick={(event) => { event.stopPropagation(); if (sourceConfiguration) setEditorSource(sourceConfiguration); }}><EditOutlinedIcon fontSize="small" /></IconButton></span></Tooltip><Tooltip title="删除信源"><span><IconButton size="small" color="error" disabled={!sourceConfiguration || busy} onClick={(event) => { event.stopPropagation(); if (sourceConfiguration) void deleteSource(sourceConfiguration); }}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell></TableRow>; })}</TableBody></Table>{filteredSources.length === 0 && <EmptyBlock>没有符合条件的信息源</EmptyBlock>}</Paper></Box>
     <Box><SectionTitle title="阶段运行与重试" action={<TextField select size="small" label="状态" value={status} onChange={(event) => setStatus(event.target.value)} sx={{ minWidth: 150 }}><MenuItem value="">全部</MenuItem>{['RUNNING', 'COMPLETED', 'PARTIAL', 'BLOCKED', 'FAILED'].map((value) => <MenuItem key={value} value={value}>{statusLabel(value)}</MenuItem>)}</TextField>} /><Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>开始</TableCell><TableCell>来源 / 查询</TableCell><TableCell align="right">获取</TableCell><TableCell align="right">新增</TableCell><TableCell align="right">重复</TableCell><TableCell>状态 / 错误</TableCell></TableRow></TableHead><TableBody>{runs.map((run) => <TableRow key={run.collectionId}><TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTime(run.startedAt)}</TableCell><TableCell><Typography variant="body2" fontWeight={700}>{run.sourceName}</Typography><Typography variant="caption" color="text.secondary">{run.query || '-'} · {run.workflowRunId || '手动采集'}</Typography></TableCell><TableCell align="right">{run.fetchedCount}</TableCell><TableCell align="right">{run.insertedCount}</TableCell><TableCell align="right">{run.duplicateCount}</TableCell><TableCell><Chip size="small" color={statusColor(run.status)} label={statusLabel(run.status)} />{run.errorMessage && <Typography variant="caption" color="error" display="block">{run.errorCode}: {run.errorMessage}</Typography>}</TableCell></TableRow>)}</TableBody></Table>{runs.length === 0 && <EmptyBlock>当前筛选没有采集运行</EmptyBlock>}</Paper></Box>
     <Box><SectionTitle title="多 AI 清洗与压缩审计" /><Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>时间</TableCell><TableCell>阶段 / 席位</TableCell><TableCell>文档 / 运行</TableCell><TableCell>结果摘要 / 原文引用</TableCell><TableCell>状态</TableCell></TableRow></TableHead><TableBody>{workspace.recentAiReviews.map((review) => <TableRow key={review.reviewId}><TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTime(review.createdAt)}</TableCell><TableCell><Typography variant="body2" fontWeight={700}>{reviewStageLabel(review.stage)}</Typography><Typography variant="caption" color="text.secondary">{review.nodeId}</Typography></TableCell><TableCell><Typography variant="caption" display="block">{review.documentId}</Typography><Typography variant="caption" color="text.secondary">{review.workflowRunId}</Typography></TableCell><TableCell sx={{ minWidth: 320, maxWidth: 620 }}><Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{review.summary || review.errorMessage || '-'}</Typography>{review.citations.some((citation) => /^b\d+$/.test(citation)) && <Stack direction="row" spacing={.5} useFlexGap flexWrap="wrap" sx={{ mt: .75 }}>{review.citations.filter((citation) => /^b\d+$/.test(citation)).map((citation) => <Chip key={citation} size="small" variant="outlined" label={citation} />)}</Stack>}{review.errorCode && <Typography variant="caption" color="error">{review.errorCode}</Typography>}</TableCell><TableCell><Chip size="small" color={statusColor(review.status)} label={statusLabel(review.status)} /></TableCell></TableRow>)}</TableBody></Table>{workspace.recentAiReviews.length === 0 && <EmptyBlock>尚无多 AI 证据处理记录</EmptyBlock>}</Paper></Box>
     <Box><SectionTitle title="规范化证据" /><Stack spacing={1}>{documents.map((document) => <Paper key={document.documentId} variant="outlined" sx={{ p: 1.5 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between"><Box sx={{ minWidth: 0 }}><Stack direction="row" spacing={1} alignItems="center"><Typography fontWeight={700}>{document.title || '无标题证据'}</Typography><Chip size="small" label={`${document.sourceTier} · ${(Number(document.trustWeight) * 100).toFixed(0)}%`} /></Stack><Typography variant="body2" color="text.secondary" sx={{ mt: .5 }}>{document.excerpt}</Typography><Typography variant="caption" color="text.secondary">{document.category} · {formatTime(document.publishedAt || document.fetchedAt)} · {document.documentId}</Typography></Box>{document.canonicalUrl && <Link href={document.canonicalUrl} target="_blank" rel="noreferrer" sx={{ flexShrink: 0 }}><OpenInNewIcon fontSize="small" /></Link>}</Stack></Paper>)}{documents.length === 0 && <EmptyBlock>该来源尚无规范化证据</EmptyBlock>}</Stack></Box>
     <Box><SectionTitle title="持久化后台任务" /><Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>创建</TableCell><TableCell>摘要</TableCell><TableCell>尝试</TableCell><TableCell>状态</TableCell><TableCell>错误</TableCell></TableRow></TableHead><TableBody>{tasks.slice(0, 50).map((task) => <TableRow key={task.taskId}><TableCell>{formatTime(task.createdAt)}</TableCell><TableCell>{task.payloadSummary}<br /><Typography variant="caption">{task.taskId}</Typography></TableCell><TableCell>{task.attemptCount}/{task.maximumAttempts}</TableCell><TableCell><Chip size="small" color={statusColor(task.status)} label={statusLabel(task.status)} /></TableCell><TableCell><Typography variant="caption" color="error">{task.errorMessage || '-'}</Typography></TableCell></TableRow>)}</TableBody></Table></Paper></Box>
-    <SourceEditorDialog open={editorSource !== null} source={editorSource === 'new' ? null : editorSource} providers={configuration?.providers || []} models={configuration?.models || []} busy={busy} onClose={() => setEditorSource(null)} onSave={saveSource} />
+    <SourceEditorDialog open={editorSource !== null} source={editorSource === 'new' ? null : editorSource} providers={configuration?.providers || []} models={configuration?.models || []} headerProfiles={headerProfiles} busy={busy} onClose={() => setEditorSource(null)} onSave={saveSource} />
+    <CrawlerHeaderProfileDialog open={headerEditor !== null} profile={headerEditor === 'new' ? null : headerEditor} busy={busy} onClose={() => setHeaderEditor(null)} onSave={saveHeaderProfile} />
   </Stack>;
 }
 
@@ -211,10 +232,10 @@ const DEFAULT_SOURCE: SourceMutation = {
   trustWeight: 0.7, pollIntervalSeconds: 900, priority: 'P2', assetScope: [],
   feedUrls: [], seedUrls: [], searchQueries: [], endpointBaseUrl: null,
   credentialSupported: false, outboundRoute: 'PUBLIC_DATA', maximumResults: 10,
-  maximumScrapeTargets: 3, enabled: true, aiWebSearchBinding: null,
+  crawlerHeaderProfileId: 'header_default', maximumScrapeTargets: 3, enabled: true, aiWebSearchBinding: null,
 };
 
-function SourceEditorDialog({ open, source, providers, models, busy, onClose, onSave }: { open: boolean; source: SourceRecord | null; providers: AiProvider[]; models: AiModel[]; busy: boolean; onClose: () => void; onSave: (source: SourceMutation) => Promise<void> }) {
+function SourceEditorDialog({ open, source, providers, models, headerProfiles, busy, onClose, onSave }: { open: boolean; source: SourceRecord | null; providers: AiProvider[]; models: AiModel[]; headerProfiles: CrawlerHeaderProfile[]; busy: boolean; onClose: () => void; onSave: (source: SourceMutation) => Promise<void> }) {
   const [draft, setDraft] = useState<SourceMutation>(DEFAULT_SOURCE);
   const [showFirecrawlChannel, setShowFirecrawlChannel] = useState(false);
   useEffect(() => { if (open) { setDraft(source ? sourceMutation(source) : DEFAULT_SOURCE); setShowFirecrawlChannel(Boolean(source?.mode.startsWith('FIRECRAWL'))); } }, [open, source]);
@@ -254,6 +275,7 @@ function SourceEditorDialog({ open, source, providers, models, busy, onClose, on
     <TextField type="number" label="信任权重" value={draft.trustWeight} onChange={(event) => set('trustWeight', Number(event.target.value))} inputProps={{ min: 0, max: 1, step: .05 }} />
     <TextField type="number" label="轮询间隔（秒）" value={draft.pollIntervalSeconds} onChange={(event) => set('pollIntervalSeconds', Number(event.target.value))} inputProps={{ min: 10, max: 2592000 }} />
     <TextField select label="出站路由" value={draft.outboundRoute || ''} onChange={(event) => set('outboundRoute', event.target.value || null)} disabled={firecrawl || htmlDocument || aiWebSearch}>{['PUBLIC_DATA', 'WEB_CRAWL', 'FIRECRAWL', 'EXCHANGE_GATE', 'EXCHANGE_BYBIT'].map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
+    <TextField select label="爬虫请求头配置" value={draft.crawlerHeaderProfileId} onChange={(event) => set('crawlerHeaderProfileId', event.target.value)} helperText="配置可复用；更新后下一次请求立即生效"><MenuItem value="header_default">系统默认</MenuItem>{headerProfiles.filter((profile) => profile.profileId !== 'header_default' && (profile.enabled || profile.profileId === draft.crawlerHeaderProfileId)).map((profile) => <MenuItem key={profile.profileId} value={profile.profileId}>{profile.displayName}{profile.usageCount > 0 ? ` · ${profile.usageCount} 个信源` : ''}</MenuItem>)}</TextField>
     <TextField type="url" label="Endpoint Base URL" value={draft.endpointBaseUrl || ''} onChange={(event) => set('endpointBaseUrl', event.target.value || null)} required={!htmlDocument && draft.mode !== 'RSS' && !aiWebSearch} disabled={aiWebSearch} helperText={sitemap ? '仅解析 sitemap.xml 地址，文章正文由后续 HTML_DOCUMENT 来源采集' : undefined} />
     {aiWebSearch && <><TextField select label="AI 厂商" value={draft.aiWebSearchBinding?.providerProfileId || ''} onChange={(event) => { const providerProfileId = event.target.value; const model = models.find((candidate) => candidate.enabled && candidate.providerProfileId === providerProfileId); const provider = providers.find((candidate) => candidate.profileId === providerProfileId); set('aiWebSearchBinding', model ? { providerProfileId, modelName: model.modelName, reasoningEffort: model.defaultReasoningEffort, tool: provider?.profileId.includes('gemini') ? 'GOOGLE_SEARCH' : 'WEB_SEARCH' } : null); }}>{enabledProviders.map((provider) => <MenuItem key={provider.profileId} value={provider.profileId}>{provider.displayName}</MenuItem>)}</TextField>
       <TextField select label="AI 模型" value={draft.aiWebSearchBinding?.modelName || ''} onChange={(event) => { const model = providerModels.find((candidate) => candidate.modelName === event.target.value); if (draft.aiWebSearchBinding && model) set('aiWebSearchBinding', { ...draft.aiWebSearchBinding, modelName: model.modelName, reasoningEffort: model.defaultReasoningEffort }); }}>{providerModels.map((model) => <MenuItem key={model.modelProfileId} value={model.modelName}>{model.modelName}</MenuItem>)}</TextField>
@@ -269,7 +291,54 @@ function SourceEditorDialog({ open, source, providers, models, busy, onClose, on
   </Box></DialogContent><DialogActions><Button onClick={onClose} disabled={busy}>取消</Button><Button variant="contained" disabled={busy || !sourceDraftValid(draft)} onClick={() => void onSave(draft)}>保存</Button></DialogActions></Dialog>;
 }
 
+const DEFAULT_HEADER_PROFILE: CrawlerHeaderProfileMutation = {
+  displayName: '',
+  userAgent: 'FinBot/2.0 (contact: finbot@omnnu.xyz)',
+  accept: null,
+  acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8',
+  additionalHeaders: {},
+  enabled: true,
+};
+
+function CrawlerHeaderProfileDialog({ open, profile, busy, onClose, onSave }: { open: boolean; profile: CrawlerHeaderProfile | null; busy: boolean; onClose: () => void; onSave: (profile: CrawlerHeaderProfileMutation) => Promise<void> }) {
+  const [draft, setDraft] = useState<CrawlerHeaderProfileMutation>(DEFAULT_HEADER_PROFILE);
+  const [additionalHeadersText, setAdditionalHeadersText] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    const next = profile ? headerProfileMutation(profile) : DEFAULT_HEADER_PROFILE;
+    setDraft(next);
+    setAdditionalHeadersText(Object.entries(next.additionalHeaders).map(([name, value]) => `${name}: ${value}`).join('\n'));
+  }, [open, profile]);
+  const parsedHeaders = parseAdditionalHeaders(additionalHeadersText);
+  const valid = Boolean(draft.displayName.trim()
+    && draft.userAgent.startsWith('FinBot/')
+    && (draft.userAgent.includes('contact:') || draft.userAgent.includes('+http'))
+    && parsedHeaders);
+  const save = () => parsedHeaders && onSave({ ...draft, additionalHeaders: parsedHeaders });
+  return <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="md" fullWidth><DialogTitle>{profile ? '编辑爬虫请求头配置' : '新增爬虫请求头配置'}</DialogTitle><DialogContent dividers><Stack spacing={1.5} sx={{ pt: .5 }}>
+    {profile && profile.usageCount > 0 && <Alert severity="warning">本次保存会热更新 {profile.usageCount} 个已绑定信息源；停用前必须先解绑。</Alert>}
+    <TextField required label="配置名称" value={draft.displayName} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} inputProps={{ maxLength: 120 }} />
+    <TextField required label="User-Agent" value={draft.userAgent} onChange={(event) => setDraft((current) => ({ ...current, userAgent: event.target.value }))} inputProps={{ maxLength: 500 }} error={Boolean(draft.userAgent) && (!draft.userAgent.startsWith('FinBot/') || (!draft.userAgent.includes('contact:') && !draft.userAgent.includes('+http')))} helperText="必须以 FinBot/ 开头，并包含 contact: 或项目 URL" />
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
+      <TextField label="Accept 覆盖" value={draft.accept || ''} onChange={(event) => setDraft((current) => ({ ...current, accept: event.target.value || null }))} inputProps={{ maxLength: 2048 }} />
+      <TextField label="Accept-Language" value={draft.acceptLanguage || ''} onChange={(event) => setDraft((current) => ({ ...current, acceptLanguage: event.target.value || null }))} inputProps={{ maxLength: 500 }} />
+    </Box>
+    <TextField label="安全附加请求头（每行 Name: Value）" value={additionalHeadersText} onChange={(event) => setAdditionalHeadersText(event.target.value)} multiline minRows={4} error={parsedHeaders === null} />
+    <FormControlLabel control={<Switch checked={draft.enabled} disabled={Boolean(profile?.usageCount) || profile?.profileId === 'header_default'} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} />} label={profile?.profileId === 'header_default' ? '系统默认必须启用' : '启用配置'} />
+  </Stack></DialogContent><DialogActions><Button onClick={onClose} disabled={busy}>取消</Button><Button variant="contained" disabled={busy || !valid} onClick={() => void save()}>保存并热更新</Button></DialogActions></Dialog>;
+}
+
 function sourceMutation(source: SourceRecord): SourceMutation { const { sourceId: _sourceId, version: _version, ...definition } = source; return definition; }
+function headerProfileMutation(profile: CrawlerHeaderProfile): CrawlerHeaderProfileMutation { const { profileId: _profileId, usageCount: _usageCount, version: _version, updatedAt: _updatedAt, ...definition } = profile; return definition; }
+function parseAdditionalHeaders(value: string): Record<string, string> | null {
+  const result: Record<string, string> = {};
+  for (const line of value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)) {
+    const separator = line.indexOf(':');
+    if (separator <= 0 || !line.slice(separator + 1).trim()) return null;
+    result[line.slice(0, separator).trim()] = line.slice(separator + 1).trim();
+  }
+  return result;
+}
 function splitLines(value: string): string[] { return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean); }
 function splitValues(value: string): string[] { return value.split(/[\r\n,]+/).map((item) => item.trim()).filter(Boolean); }
 const REASONING_EFFORTS: ReasoningEffort[] = ['PROVIDER_DEFAULT', 'NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH', 'XHIGH', 'MAX'];

@@ -81,4 +81,22 @@ public record CollectedPayload(
                 fetchedAt,
                 value);
     }
+
+    public CollectedPayload withAdditionalMetadata(Map<String, String> values) {
+        var combined = new java.util.HashMap<>(metadata);
+        combined.putAll(Objects.requireNonNull(values, "values"));
+        return new CollectedPayload(
+                requestedUrl,
+                canonicalUrl,
+                query,
+                title,
+                statusCode,
+                contentType,
+                rawContent,
+                responseHeaders,
+                Map.copyOf(combined),
+                publishedAt,
+                fetchedAt,
+                envelope);
+    }
 }

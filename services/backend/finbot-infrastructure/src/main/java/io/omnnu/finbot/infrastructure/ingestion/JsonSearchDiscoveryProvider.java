@@ -26,7 +26,6 @@ import org.springframework.stereotype.Component;
 final class JsonSearchDiscoveryProvider implements SearchDiscoveryProvider {
     private static final int MAXIMUM_RESPONSE_BYTES = 2 * 1024 * 1024;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(45);
-    private static final String USER_AGENT = "FinBot/2.0 (+https://github.com/omnnu/FinBot)";
 
     private final CrawlerTransport transport;
     private final ObjectMapper objectMapper;
@@ -59,9 +58,8 @@ final class JsonSearchDiscoveryProvider implements SearchDiscoveryProvider {
                     true);
         }
         var provider = normalize(source.provider());
-        var effectiveQuery = source.defaultQuery(query);
-        var response = fetch(source, endpoint, effectiveQuery, provider);
-        return parseResults(source, endpoint, effectiveQuery, provider, response);
+        var response = fetch(source, endpoint, query, provider);
+        return parseResults(source, endpoint, query, provider, response);
     }
 
     private SearchResponse fetch(
@@ -73,7 +71,6 @@ final class JsonSearchDiscoveryProvider implements SearchDiscoveryProvider {
         var requestUri = requestUri(endpoint, query, source.maximumResults(), provider);
         var headers = new java.util.HashMap<String, String>();
         headers.put("Accept", "application/json");
-        headers.put("User-Agent", USER_AGENT);
         if (credential != null) {
             headers.put("X-Subscription-Token", credential);
             headers.put("Authorization", "Bearer " + credential);

@@ -27,6 +27,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
     private static final String INFORMATION_SOURCE_KEYS_JSON =
             "FINBOT_INFORMATION_SOURCE_KEYS_JSON";
     private final IngestionRepository repository;
+    private final CrawlerHeaderProfileRepository headerProfiles;
     private final SourceCollectionGateway collectionGateway;
     private final EvidenceNormalizer evidenceNormalizer;
     private final SourceRuntimeHealthGateway runtimeHealthGateway;
@@ -36,6 +37,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
 
     public IngestionApplicationService(
             IngestionRepository repository,
+            CrawlerHeaderProfileRepository headerProfiles,
             SourceCollectionGateway collectionGateway,
             EvidenceNormalizer evidenceNormalizer,
             SourceRuntimeHealthGateway runtimeHealthGateway,
@@ -43,6 +45,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
             Clock clock,
             Executor executor) {
         this.repository = Objects.requireNonNull(repository, "repository");
+        this.headerProfiles = Objects.requireNonNull(headerProfiles, "headerProfiles");
         this.collectionGateway = Objects.requireNonNull(collectionGateway, "collectionGateway");
         this.evidenceNormalizer = Objects.requireNonNull(evidenceNormalizer, "evidenceNormalizer");
         this.runtimeHealthGateway = Objects.requireNonNull(runtimeHealthGateway, "runtimeHealthGateway");
@@ -170,10 +173,17 @@ public final class IngestionApplicationService implements IngestionUseCase {
         }, executor);
     }
 
-    private static InformationSource source(
+    private InformationSource source(
             SourceId sourceId,
             SourceDefinition definition,
             long version) {
+        var headerProfile = headerProfiles.findProfile(definition.crawlerHeaderProfileId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Crawler header profile does not exist: " + definition.crawlerHeaderProfileId().value()));
+        if (!headerProfile.enabled()) {
+            throw new IllegalArgumentException(
+                    "Crawler header profile is disabled: " + definition.crawlerHeaderProfileId().value());
+        }
         var source = new InformationSource(
                 sourceId,
                 definition.displayName(),
@@ -191,6 +201,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 definition.endpointBaseUrl(),
                 definition.credentialSupported() ? INFORMATION_SOURCE_KEYS_JSON : null,
                 definition.outboundRoute(),
+                definition.crawlerHeaderProfileId(),
                 definition.maximumResults(),
                 definition.maximumScrapeTargets(),
                 definition.enabled(),
@@ -243,7 +254,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
         var sources = repository.listSources(true);
         var futures = sources.stream()
                 .map(source -> CompletableFuture.supplyAsync(
-                        () -> collectOne(workflowRunId, source, source.defaultQuery(requestSummary)),
+                        () -> collectOne(workflowRunId, source, requestSummary),
                         executor))
                 .toList();
         awaitAll(futures);
@@ -275,13 +286,14 @@ public final class IngestionApplicationService implements IngestionUseCase {
             WorkflowRunId workflowRunId,
             InformationSource source,
             String query) {
+        var effectiveQuery = source.defaultQuery(query);
         var collectionId = new CollectionRunId(idGenerator.next("collection_"));
         var startedAt = clock.instant();
         repository.startCollection(new SourceCollectionRun(
                 collectionId,
                 workflowRunId,
                 source.sourceId(),
-                query,
+                effectiveQuery,
                 CollectionStatus.RUNNING,
                 0,
                 0,
@@ -291,7 +303,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 startedAt,
                 null));
         try {
-            var payloads = collectionGateway.collect(source, query);
+            var payloads = collectionGateway.collect(source, effectiveQuery);
             var inserted = 0;
             var duplicates = 0;
             var excerpts = new ArrayList<EvidenceExcerpt>();

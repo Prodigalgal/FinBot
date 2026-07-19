@@ -22,6 +22,7 @@ import io.omnnu.finbot.domain.ingestion.AiWebSearchBinding;
 import io.omnnu.finbot.domain.ingestion.AiWebSearchTool;
 import io.omnnu.finbot.domain.ingestion.CollectionRunId;
 import io.omnnu.finbot.domain.ingestion.CollectionStatus;
+import io.omnnu.finbot.domain.ingestion.CrawlerHeaderProfileId;
 import io.omnnu.finbot.domain.ingestion.DocumentId;
 import io.omnnu.finbot.domain.ingestion.EvidenceId;
 import io.omnnu.finbot.domain.ingestion.InformationSource;
@@ -50,7 +51,7 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
             trust_weight, poll_interval_seconds, priority, asset_scope::text as asset_scope,
             feed_urls::text as feed_urls, seed_urls::text as seed_urls,
             search_queries::text as search_queries, endpoint_base_url,
-            credential_env, proxy_route_type, maximum_results,
+            credential_env, proxy_route_type, crawler_header_profile_id, maximum_results,
             maximum_scrape_targets, enabled, version,
             (select binding.provider_profile_id
                from information_source_ai_web_search binding
@@ -138,19 +139,22 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
     public Optional<InformationSource> createSource(
             InformationSource source,
             Instant createdAt) {
+        if (!lockActiveHeaderProfile(source.crawlerHeaderProfileId())) {
+            return Optional.empty();
+        }
         var inserted = jdbcClient.sql("""
                 insert into information_source (
                   source_id, display_name, source_mode, source_tier, category, provider,
                   trust_weight, poll_interval_seconds, priority, asset_scope, feed_urls,
                   seed_urls, search_queries, endpoint_base_url, credential_env,
-                  proxy_route_type, maximum_results, maximum_scrape_targets, enabled,
+                  proxy_route_type, crawler_header_profile_id, maximum_results, maximum_scrape_targets, enabled,
                   version, created_at, updated_at
                 ) values (
                   :sourceId, :displayName, :sourceMode, :sourceTier, :category, :provider,
                   :trustWeight, :pollIntervalSeconds, :priority, cast(:assetScope as jsonb),
                   cast(:feedUrls as jsonb), cast(:seedUrls as jsonb),
                   cast(:searchQueries as jsonb), :endpointBaseUrl, :credentialEnv,
-                  :proxyRouteType, :maximumResults, :maximumScrapeTargets, :enabled,
+                  :proxyRouteType, :crawlerHeaderProfileId, :maximumResults, :maximumScrapeTargets, :enabled,
                   0, :createdAt, :createdAt
                 ) on conflict (source_id) do nothing
                 """)
@@ -172,6 +176,7 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("proxyRouteType", source.outboundRoute() == null
                         ? null
                         : source.outboundRoute().name())
+                .param("crawlerHeaderProfileId", source.crawlerHeaderProfileId().value())
                 .param("maximumResults", source.maximumResults())
                 .param("maximumScrapeTargets", source.maximumScrapeTargets())
                 .param("enabled", source.enabled())
@@ -190,6 +195,9 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
             InformationSource source,
             long expectedVersion,
             Instant updatedAt) {
+        if (!lockActiveHeaderProfile(source.crawlerHeaderProfileId())) {
+            return Optional.empty();
+        }
         var changed = jdbcClient.sql("""
                 update information_source
                 set display_name = :displayName,
@@ -207,6 +215,7 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                     endpoint_base_url = :endpointBaseUrl,
                     credential_env = :credentialEnv,
                     proxy_route_type = :proxyRouteType,
+                    crawler_header_profile_id = :crawlerHeaderProfileId,
                     maximum_results = :maximumResults,
                     maximum_scrape_targets = :maximumScrapeTargets,
                     enabled = :enabled,
@@ -234,6 +243,7 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("proxyRouteType", source.outboundRoute() == null
                         ? null
                         : source.outboundRoute().name())
+                .param("crawlerHeaderProfileId", source.crawlerHeaderProfileId().value())
                 .param("maximumResults", source.maximumResults())
                 .param("maximumScrapeTargets", source.maximumScrapeTargets())
                 .param("enabled", source.enabled())
@@ -691,6 +701,7 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 resultSet.getString("proxy_route_type") == null
                         ? null
                         : OutboundRoute.valueOf(resultSet.getString("proxy_route_type")),
+                new CrawlerHeaderProfileId(resultSet.getString("crawler_header_profile_id")),
                 resultSet.getInt("maximum_results"),
                 resultSet.getInt("maximum_scrape_targets"),
                 resultSet.getBoolean("enabled"),
@@ -738,6 +749,21 @@ public final class JdbcIngestionRepository implements IngestionRepository, Compr
                 .param("reasoningEffort", binding.reasoningEffort().name())
                 .param("toolType", binding.tool().name())
                 .update();
+    }
+
+    private boolean lockActiveHeaderProfile(CrawlerHeaderProfileId profileId) {
+        return jdbcClient.sql("""
+                select profile_id
+                  from crawler_header_profile
+                 where profile_id = :profileId
+                   and enabled = true
+                   and deleted_at is null
+                 for key share
+                """)
+                .param("profileId", profileId.value())
+                .query(String.class)
+                .optional()
+                .isPresent();
     }
 
     private NormalizedDocument document(ResultSet resultSet, int rowNumber) throws SQLException {

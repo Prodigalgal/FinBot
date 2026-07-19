@@ -1,6 +1,7 @@
 package io.omnnu.finbot.api.ingestion;
 
 import io.omnnu.finbot.application.ingestion.SourceDefinition;
+import io.omnnu.finbot.domain.ingestion.CrawlerHeaderProfileId;
 import io.omnnu.finbot.domain.ingestion.SourceMode;
 import io.omnnu.finbot.domain.ingestion.SourcePriority;
 import io.omnnu.finbot.domain.ingestion.SourceTier;
@@ -33,6 +34,7 @@ public record SourceMutationRequest(
         URI endpointBaseUrl,
         boolean credentialSupported,
         OutboundRoute outboundRoute,
+        @NotBlank @Size(max = 80) String crawlerHeaderProfileId,
         @Min(1) @Max(100) int maximumResults,
         @Min(0) @Max(20) int maximumScrapeTargets,
         boolean enabled,
@@ -54,6 +56,7 @@ public record SourceMutationRequest(
                 endpointBaseUrl,
                 credentialSupported,
                 outboundRoute,
+                new CrawlerHeaderProfileId(crawlerHeaderProfileId),
                 maximumResults,
                 maximumScrapeTargets,
                 enabled,

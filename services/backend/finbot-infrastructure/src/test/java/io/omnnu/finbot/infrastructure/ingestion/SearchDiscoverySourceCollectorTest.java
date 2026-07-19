@@ -50,6 +50,8 @@ class SearchDiscoverySourceCollectorTest {
             assertEquals("Oil inventory", payloads.getFirst().title());
             assertEquals("https://example.com/oil", payloads.getFirst().canonicalUrl().toString());
             assertEquals("search_discovery", payloads.getFirst().metadata().get("collector"));
+            assertEquals("accepted", payloads.getFirst().metadata().get("search_quality_gate"));
+            assertEquals("1", payloads.getFirst().metadata().get("search_quality_candidate_count"));
             assertTrue(observedTarget.get().contains("q=oil"));
             assertTrue(observedTarget.get().contains("inventory"));
             assertTrue(observedTarget.get().contains("format=json"));
@@ -122,15 +124,17 @@ class SearchDiscoverySourceCollectorTest {
                 proxyUri,
                 "IPV4",
                 proxyUri.toString());
-        return new SearchDiscoverySourceCollector(List.of(new JsonSearchDiscoveryProvider(
-                new CrawlerTransport(
-                        new RoutedHttpClientFactory(resolver, Runnable::run),
-                        new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
-                        new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
-                        Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                        "FinBot test contact=test@example.com"),
-                new ObjectMapper(),
-                runtimeSecrets)));
+        return new SearchDiscoverySourceCollector(
+                List.of(new JsonSearchDiscoveryProvider(
+                        new CrawlerTransport(
+                                new RoutedHttpClientFactory(resolver, Runnable::run),
+                                new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
+                                new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
+                                Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                                CrawlerTestHeaders.policy()),
+                        new ObjectMapper(),
+                        runtimeSecrets)),
+                new SearchResultQualityGate());
     }
 
     private static void respond(HttpExchange exchange, AtomicReference<String> observedTarget)

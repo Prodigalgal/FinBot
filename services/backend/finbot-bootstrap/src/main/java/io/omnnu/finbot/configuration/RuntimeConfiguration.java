@@ -10,6 +10,10 @@ import io.omnnu.finbot.application.autonomous.AutonomousResearchUseCase;
 import io.omnnu.finbot.application.identity.AdminCredentialVerifier;
 import io.omnnu.finbot.application.ingestion.EvidenceNormalizer;
 import io.omnnu.finbot.application.ingestion.IngestionApplicationService;
+import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfileRepository;
+import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfileResolver;
+import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfileService;
+import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfileUseCase;
 import io.omnnu.finbot.application.ingestion.IngestionRepository;
 import io.omnnu.finbot.application.ingestion.IngestionUseCase;
 import io.omnnu.finbot.application.ingestion.SourceCollectionGateway;
@@ -19,6 +23,7 @@ import io.omnnu.finbot.application.identity.AuthenticationCryptography;
 import io.omnnu.finbot.application.identity.AuthenticationPolicy;
 import io.omnnu.finbot.application.identity.AuthenticationStore;
 import io.omnnu.finbot.application.identity.AuthenticationUseCase;
+import io.omnnu.finbot.infrastructure.ingestion.CrawlerRequestHeaderPolicy;
 import io.omnnu.finbot.application.configuration.ConfigurationApplicationService;
 import io.omnnu.finbot.application.configuration.ConfigurationRepository;
 import io.omnnu.finbot.application.configuration.ConfigurationUseCase;
@@ -519,8 +524,23 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    CrawlerHeaderProfileUseCase crawlerHeaderProfileUseCase(
+            CrawlerHeaderProfileRepository repository,
+            SortableIdGenerator idGenerator,
+            Clock clock) {
+        return new CrawlerHeaderProfileService(repository, idGenerator, clock);
+    }
+
+    @Bean
+    CrawlerRequestHeaderPolicy crawlerRequestHeaderPolicy(
+            CrawlerHeaderProfileResolver resolver) {
+        return new CrawlerRequestHeaderPolicy(resolver);
+    }
+
+    @Bean
     IngestionUseCase ingestionUseCase(
             IngestionRepository repository,
+            CrawlerHeaderProfileRepository headerProfiles,
             SourceCollectionGateway collectionGateway,
             EvidenceNormalizer evidenceNormalizer,
             SourceRuntimeHealthGateway runtimeHealthGateway,
@@ -529,6 +549,7 @@ public class RuntimeConfiguration {
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
         return new IngestionApplicationService(
                 repository,
+                headerProfiles,
                 collectionGateway,
                 evidenceNormalizer,
                 runtimeHealthGateway,

@@ -1,5 +1,13 @@
 # 当前任务
 
+## S2：可复用爬虫请求头与搜索质量加固
+
+- 状态：实现完成，验证通过，待随 050 数据迁移一起发布（2026-07-19）。
+- 已完成：批量采集只编译一次最终查询；SearXNG 引擎/不可用引擎元数据和搜索结果质量门；统一 `CrawlerRequestHeaderPolicy`；可复用 `CrawlerHeaderProfile` 的 PostgreSQL 持久化、来源绑定、乐观版本热更新、使用中停用/删除保护、OpenAPI 与 Web 管理面板；跨 origin 重定向敏感头剥离。
+- 验收：Java `clean test bootJar`、前端 Vitest 18/18、OpenAPI contract check（91 paths / 106 operations）、Web production build 和静态 diff 门禁均通过；生产尚未部署。
+- 规格：[`in-progress/TASK-20260719-search-discovery-quality-hardening.md`](./in-progress/TASK-20260719-search-discovery-quality-hardening.md)。
+- 决策：[`../docs/decisions/026-reusable-crawler-header-profiles.md`](../docs/decisions/026-reusable-crawler-header-profiles.md)。
+
 ## S3：统一运行时配置控制面
 
 - 状态：Provider 与 Firecrawl 可靠性修复已生产发布；Firecrawl keyless 被外部 IP 风控阻断（2026-07-17）。

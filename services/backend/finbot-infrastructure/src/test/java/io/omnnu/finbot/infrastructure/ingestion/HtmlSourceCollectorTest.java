@@ -52,7 +52,7 @@ class HtmlSourceCollectorTest {
                             limiter(),
                             new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                             Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                            "FinBot test contact=test@example.com"),
+                            CrawlerTestHeaders.policy()),
                     new JsoupContentEnvelopeBuilder());
 
             var payloads = collector.collect(source(), "energy update");
@@ -109,7 +109,7 @@ class HtmlSourceCollectorTest {
                             limiter(),
                             new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                             Clock.systemUTC(),
-                            "FinBot test contact=test@example.com"),
+                            CrawlerTestHeaders.policy()),
                     new JsoupContentEnvelopeBuilder());
             var exception = assertThrows(
                     SourceCollectionException.class,
@@ -167,7 +167,7 @@ class HtmlSourceCollectorTest {
                         limiter(),
                         new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                         Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                        "FinBot test contact=test@example.com"),
+                        CrawlerTestHeaders.policy()),
                 new JsoupContentEnvelopeBuilder());
     }
 

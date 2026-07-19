@@ -445,6 +445,7 @@ export interface SourceRecord {
   endpointBaseUrl: string | null;
   credentialSupported: boolean;
   outboundRoute: string | null;
+  crawlerHeaderProfileId: string;
   maximumResults: number;
   maximumScrapeTargets: number;
   enabled: boolean;
@@ -457,6 +458,19 @@ export interface SourceRecord {
   } | null;
 }
 export type SourceMutation = Omit<SourceRecord, 'sourceId' | 'version'>;
+export interface CrawlerHeaderProfile {
+  profileId: string;
+  displayName: string;
+  userAgent: string;
+  accept: string | null;
+  acceptLanguage: string | null;
+  additionalHeaders: Record<string, string>;
+  enabled: boolean;
+  usageCount: number;
+  version: number;
+  updatedAt: string;
+}
+export type CrawlerHeaderProfileMutation = Omit<CrawlerHeaderProfile, 'profileId' | 'usageCount' | 'version' | 'updatedAt'>;
 export interface SourceHealth {
   sourceId: string;
   serviceReady: boolean;

@@ -21,6 +21,8 @@ export type ControlPlanePath =
   | "/api/v2/configuration/providers/{profileId}/probe"
   | "/api/v2/configuration/providers/probe"
   | "/api/v2/configuration/settings/{settingKey}"
+  | "/api/v2/crawler/header-profiles"
+  | "/api/v2/crawler/header-profiles/{profileId}"
   | "/api/v2/evidence/documents"
   | "/api/v2/exchanges/capabilities"
   | "/api/v2/ingestion/workspace"
@@ -112,6 +114,8 @@ export type ControlPlaneRequestPathBase =
   | `/api/v2/configuration/providers/${string}/probe`
   | `/api/v2/configuration/providers/probe`
   | `/api/v2/configuration/settings/${string}`
+  | `/api/v2/crawler/header-profiles`
+  | `/api/v2/crawler/header-profiles/${string}`
   | `/api/v2/evidence/documents`
   | `/api/v2/exchanges/capabilities`
   | `/api/v2/ingestion/workspace`
@@ -192,6 +196,7 @@ export type ControlPlaneGetRequestPathBase =
   | `/api/v2/auth/status`
   | `/api/v2/autonomous`
   | `/api/v2/configuration`
+  | `/api/v2/crawler/header-profiles`
   | `/api/v2/evidence/documents`
   | `/api/v2/exchanges/capabilities`
   | `/api/v2/ingestion/workspace`
@@ -249,6 +254,7 @@ export type ControlPlanePostRequestPathBase =
   | `/api/v2/configuration/providers`
   | `/api/v2/configuration/providers/${string}/probe`
   | `/api/v2/configuration/providers/probe`
+  | `/api/v2/crawler/header-profiles`
   | `/api/v2/network/diagnostics`
   | `/api/v2/network/proxy-gateways/${string}/reload`
   | `/api/v2/products/catalog-sync/${string}/${string}`
@@ -276,6 +282,7 @@ export type ControlPlanePutRequestPathBase =
   | `/api/v2/configuration/models/${string}`
   | `/api/v2/configuration/providers/${string}`
   | `/api/v2/configuration/settings/${string}`
+  | `/api/v2/crawler/header-profiles/${string}`
   | `/api/v2/network/proxy-gateways/${string}`
   | `/api/v2/operations/schedules/${string}`
   | `/api/v2/research/review/${string}/feedback`
@@ -294,6 +301,7 @@ export type ControlPlanePutRequestPath = ControlPlanePutRequestPathBase | `${Con
 export type ControlPlaneDeleteRequestPathBase =
   | `/api/v2/agent-roles/${string}`
   | `/api/v2/configuration/providers/${string}`
+  | `/api/v2/crawler/header-profiles/${string}`
   | `/api/v2/runtime-secrets/${string}/${string}/${string}`
   | `/api/v2/sources/${string}`
   | `/api/v2/watchlists/${string}`
@@ -332,6 +340,10 @@ export type ControlPlaneOperation =
   | { method: 'POST'; path: "/configuration/providers/{profileId}/probe" }
   | { method: 'POST'; path: "/configuration/providers/probe" }
   | { method: 'PUT'; path: "/configuration/settings/{settingKey}" }
+  | { method: 'GET'; path: "/crawler/header-profiles" }
+  | { method: 'POST'; path: "/crawler/header-profiles" }
+  | { method: 'DELETE'; path: "/crawler/header-profiles/{profileId}" }
+  | { method: 'PUT'; path: "/crawler/header-profiles/{profileId}" }
   | { method: 'GET'; path: "/evidence/documents" }
   | { method: 'GET'; path: "/exchanges/capabilities" }
   | { method: 'GET'; path: "/ingestion/workspace" }

@@ -20,6 +20,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class IngestionApplicationServiceTest {
@@ -144,9 +145,59 @@ class IngestionApplicationServiceTest {
     }
 
     @Test
+    void compilesTheSourceDefaultQueryExactlyOnceForBatchCollection() {
+        var repository = new StubRepository();
+        repository.source = new InformationSource(
+                new SourceId("source_search_contract01"),
+                "Oil search",
+                SourceMode.SEARCH_DISCOVERY,
+                SourceTier.T4,
+                "market_news",
+                "searxng_internal",
+                new BigDecimal("0.5"),
+                900,
+                SourcePriority.P2,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("oil market"),
+                URI.create("http://finbot-searxng:8080/search"),
+                null,
+                OutboundRoute.PUBLIC_DATA,
+                10,
+                0,
+                true,
+                0);
+        var observedQuery = new AtomicReference<String>();
+        var service = new IngestionApplicationService(
+                repository,
+                repository,
+                (source, query) -> {
+                    observedQuery.set(query);
+                    return List.of();
+                },
+                (source, evidenceId, payload) -> Optional.empty(),
+                source -> new SourceRuntimeHealthGateway.RuntimeChannelState(
+                        true, true, "PUBLIC_DATA", "direct", "READY", "NOT_APPLICABLE", "READY", null, null),
+                prefix -> prefix + "search_contract01",
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                Runnable::run);
+
+        service.collectEnabled(
+                        new io.omnnu.finbot.domain.workflow.WorkflowRunId("run_query_contract01"),
+                        "BTC oil inventory")
+                .toCompletableFuture()
+                .join();
+
+        assertEquals("oil market；研究焦点：BTC oil inventory", observedQuery.get());
+        assertEquals(observedQuery.get(), repository.startedQuery);
+    }
+
+    @Test
     void completesCollectionAsFailedBeforePropagatingUnexpectedCollectorFailure() {
         var repository = new StubRepository();
         var service = new IngestionApplicationService(
+                repository,
                 repository,
                 (source, query) -> {
                     throw new IllegalStateException("provider failed outside the error contract");
@@ -172,8 +223,9 @@ class IngestionApplicationServiceTest {
         assertEquals("SOURCE_COLLECTION_UNEXPECTED", repository.completedErrorCode);
     }
 
-    private static IngestionApplicationService service(IngestionRepository repository) {
+    private static IngestionApplicationService service(StubRepository repository) {
         return new IngestionApplicationService(
+                repository,
                 repository,
                 (source, query) -> List.of(),
                 (source, evidenceId, payload) -> Optional.empty(),
@@ -206,11 +258,62 @@ class IngestionApplicationServiceTest {
                 true);
     }
 
-    private static final class StubRepository implements IngestionRepository {
+    private static final class StubRepository implements IngestionRepository, CrawlerHeaderProfileRepository {
         private InformationSource source;
         private SourceId archivedSourceId;
         private CollectionStatus completedStatus;
         private String completedErrorCode;
+        private String startedQuery;
+
+        @Override
+        public List<CrawlerHeaderProfile> listProfiles() {
+            return List.of(defaultHeaderProfile());
+        }
+
+        @Override
+        public Optional<CrawlerHeaderProfile> findProfile(
+                io.omnnu.finbot.domain.ingestion.CrawlerHeaderProfileId profileId) {
+            return CrawlerHeaderRules.DEFAULT_PROFILE_ID.equals(profileId)
+                    ? Optional.of(defaultHeaderProfile())
+                    : Optional.empty();
+        }
+
+        @Override
+        public Optional<CrawlerHeaderProfile> createProfile(
+                CrawlerHeaderProfile profile,
+                Instant createdAt) {
+            return Optional.of(profile);
+        }
+
+        @Override
+        public Optional<CrawlerHeaderProfile> updateProfile(
+                CrawlerHeaderProfile profile,
+                long expectedVersion,
+                Instant updatedAt) {
+            return Optional.of(profile);
+        }
+
+        @Override
+        public boolean archiveProfile(
+                io.omnnu.finbot.domain.ingestion.CrawlerHeaderProfileId profileId,
+                long expectedVersion,
+                Instant archivedAt) {
+            return false;
+        }
+
+        private static CrawlerHeaderProfile defaultHeaderProfile() {
+            return new CrawlerHeaderProfile(
+                    CrawlerHeaderRules.DEFAULT_PROFILE_ID,
+                    "Default headers",
+                    "FinBot/2.0 (contact: test@example.com)",
+                    null,
+                    "zh-CN,en;q=0.8",
+                    java.util.Map.of(),
+                    true,
+                    0,
+                    0,
+                    NOW);
+        }
 
         @Override
         public List<InformationSource> listSources(boolean enabledOnly) {
@@ -272,6 +375,7 @@ class IngestionApplicationServiceTest {
         @Override
         public void startCollection(SourceCollectionRun collectionRun) {
             assertEquals(CollectionStatus.RUNNING, collectionRun.status());
+            startedQuery = collectionRun.query();
         }
 
         @Override
@@ -304,7 +408,7 @@ class IngestionApplicationServiceTest {
         public void saveEvidencePackage(
                 ResearchEvidencePackage evidencePackage,
                 String contentHash) {
-            throw new UnsupportedOperationException();
+            // The query contract test only verifies planning and collection input.
         }
 
         @Override

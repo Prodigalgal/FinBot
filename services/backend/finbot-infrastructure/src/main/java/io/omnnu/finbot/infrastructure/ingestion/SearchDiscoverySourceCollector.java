@@ -11,9 +11,13 @@ import org.springframework.stereotype.Component;
 @Component
 final class SearchDiscoverySourceCollector implements SourceCollectorAdapter {
     private final List<SearchDiscoveryProvider> providers;
+    private final SearchResultQualityGate qualityGate;
 
-    SearchDiscoverySourceCollector(List<SearchDiscoveryProvider> providers) {
+    SearchDiscoverySourceCollector(
+            List<SearchDiscoveryProvider> providers,
+            SearchResultQualityGate qualityGate) {
         this.providers = List.copyOf(Objects.requireNonNull(providers, "providers"));
+        this.qualityGate = Objects.requireNonNull(qualityGate, "qualityGate");
         if (this.providers.isEmpty()) {
             throw new IllegalArgumentException("At least one search discovery provider is required");
         }
@@ -33,7 +37,7 @@ final class SearchDiscoverySourceCollector implements SourceCollectorAdapter {
                         "SEARCH_DISCOVERY_PROVIDER_UNSUPPORTED",
                         "No search discovery provider is registered for " + providerName(source),
                         true));
-        return provider.search(source, query);
+        return qualityGate.filter(source, query, provider.search(source, query));
     }
 
     private static String providerName(InformationSource source) {

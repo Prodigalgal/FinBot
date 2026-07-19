@@ -48,9 +48,7 @@ final class SitemapSourceCollector implements SourceCollectorAdapter {
                 source.sourceId().value(),
                 endpoint,
                 route,
-                Map.of(
-                        "Accept", "application/xml, text/xml;q=0.9",
-                        "User-Agent", "FinBot/2.0 (+https://github.com/omnnu/FinBot)"),
+                Map.of("Accept", "application/xml, text/xml;q=0.9"),
                 Duration.ofSeconds(45),
                 MAXIMUM_RESPONSE_BYTES,
                 3,

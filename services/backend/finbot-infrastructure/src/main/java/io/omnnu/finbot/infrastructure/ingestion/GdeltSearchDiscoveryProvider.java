@@ -49,16 +49,13 @@ final class GdeltSearchDiscoveryProvider implements SearchDiscoveryProvider {
                     "GDELT source has no search endpoint",
                     true);
         }
-        var effectiveQuery = source.defaultQuery(query);
-        var requestUri = requestUri(endpoint, effectiveQuery, source.maximumResults());
+        var requestUri = requestUri(endpoint, query, source.maximumResults());
         var route = source.outboundRoute() == null ? OutboundRoute.PUBLIC_DATA : source.outboundRoute();
         var response = transport.get(new CrawlerTransport.Request(
                 source.sourceId().value(),
                 requestUri,
                 route,
-                Map.of(
-                        "Accept", "application/json",
-                        "User-Agent", "FinBot/2.0 (+https://github.com/Prodigalgal/FinBot)"),
+                Map.of("Accept", "application/json"),
                 REQUEST_TIMEOUT,
                 MAXIMUM_RESPONSE_BYTES,
                 3,
@@ -87,7 +84,7 @@ final class GdeltSearchDiscoveryProvider implements SearchDiscoveryProvider {
             payloads.add(new CollectedPayload(
                     endpoint,
                     url,
-                    effectiveQuery,
+                    query,
                     title,
                     response.statusCode(),
                     response.contentType(),

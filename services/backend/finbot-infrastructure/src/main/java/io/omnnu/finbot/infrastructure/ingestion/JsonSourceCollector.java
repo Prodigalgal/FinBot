@@ -59,9 +59,7 @@ final class JsonSourceCollector implements SourceCollectorAdapter {
                 source.sourceId().value(),
                 requestEndpoint,
                 route,
-                Map.of(
-                        "Accept", "application/json, application/*+json;q=0.9",
-                        "User-Agent", "FinBot/2.0 (+https://github.com/omnnu/FinBot)"),
+                Map.of("Accept", "application/json, application/*+json;q=0.9"),
                 Duration.ofSeconds(45),
                 MAXIMUM_RESPONSE_BYTES,
                 3,

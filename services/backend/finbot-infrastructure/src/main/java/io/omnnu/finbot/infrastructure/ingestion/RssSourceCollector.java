@@ -29,7 +29,6 @@ import org.xml.sax.SAXException;
 @Component
 final class RssSourceCollector implements SourceCollectorAdapter {
     private static final int MAXIMUM_RESPONSE_BYTES = 5 * 1024 * 1024;
-    private static final String USER_AGENT = "FinBot/2.0 (+https://github.com/omnnu/FinBot)";
 
     private final CrawlerTransport transport;
 
@@ -66,9 +65,7 @@ final class RssSourceCollector implements SourceCollectorAdapter {
                 source.sourceId().value(),
                 feedUrl,
                 route,
-                Map.of(
-                        "Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml",
-                        "User-Agent", USER_AGENT),
+                Map.of("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml"),
                 Duration.ofSeconds(30),
                 MAXIMUM_RESPONSE_BYTES,
                 3,

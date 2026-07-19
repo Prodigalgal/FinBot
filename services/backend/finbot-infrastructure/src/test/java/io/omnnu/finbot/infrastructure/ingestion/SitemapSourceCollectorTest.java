@@ -59,7 +59,7 @@ class SitemapSourceCollectorTest {
                 new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
                 new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                 Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                "FinBot test contact=test@example.com"));
+                CrawlerTestHeaders.policy()));
     }
 
     private static InformationSource source(URI endpoint) {

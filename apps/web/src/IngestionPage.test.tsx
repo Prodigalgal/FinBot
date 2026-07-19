@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
@@ -21,6 +21,7 @@ const source: SourceRecord = {
   endpointBaseUrl: null,
   credentialSupported: false,
   outboundRoute: 'PUBLIC_DATA',
+  crawlerHeaderProfileId: 'header_default',
   maximumResults: 10,
   maximumScrapeTargets: 0,
   enabled: true,
@@ -134,6 +135,10 @@ const apiMock = vi.hoisted(() => ({
   collectSource: vi.fn(),
   putRuntimeSecret: vi.fn(),
   clearRuntimeSecret: vi.fn(),
+  crawlerHeaderProfiles: vi.fn(),
+  createCrawlerHeaderProfile: vi.fn(),
+  updateCrawlerHeaderProfile: vi.fn(),
+  deleteCrawlerHeaderProfile: vi.fn(),
 }));
 
 vi.mock('./api', () => ({ api: apiMock }));
@@ -145,6 +150,12 @@ beforeEach(() => {
   apiMock.tasks.mockResolvedValue([]);
   apiMock.sources.mockResolvedValue([source]);
   apiMock.configuration.mockResolvedValue({ settings: [], providers: [], models: [] });
+  apiMock.crawlerHeaderProfiles.mockResolvedValue([{
+    profileId: 'header_default', displayName: 'FinBot 默认爬虫请求头',
+    userAgent: 'FinBot/2.0 (contact: finbot@omnnu.xyz)', accept: null,
+    acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8', additionalHeaders: {}, enabled: true,
+    usageCount: 1, version: 0, updatedAt: '2026-07-16T14:00:00Z',
+  }]);
   apiMock.documents.mockResolvedValue([]);
   apiMock.sourceHealth.mockResolvedValue({
     sourceId: source.sourceId, serviceReady: true, egressReady: true,
@@ -155,6 +166,12 @@ beforeEach(() => {
     latestStatusCode: 200, latestErrorCode: null, safeMessage: null,
   });
   apiMock.createSource.mockResolvedValue(createdSource);
+  apiMock.createCrawlerHeaderProfile.mockResolvedValue({
+    profileId: 'header_test01', displayName: '新闻请求头',
+    userAgent: 'FinBot/2.0 (contact: finbot@omnnu.xyz)', accept: null,
+    acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8', additionalHeaders: {}, enabled: true,
+    usageCount: 0, version: 0, updatedAt: '2026-07-16T14:00:00Z',
+  });
   apiMock.testSource.mockResolvedValue(sourceTestTask);
   apiMock.task.mockResolvedValue({
     ...sourceTestTask,
@@ -210,6 +227,23 @@ it('runs an immediate source test through the selected source configuration', as
   await waitFor(() => expect(apiMock.task).toHaveBeenCalledWith(sourceTestTask.taskId));
   expect(await screen.findByText(/在线测试已完成/)).toBeInTheDocument();
   expect(screen.getByText(/获取 1，新增 1，重复 0/)).toBeInTheDocument();
+});
+
+it('creates a reusable crawler header profile from the ingestion control plane', async () => {
+  const user = userEvent.setup();
+  render(<IngestionPage />);
+  await user.click(await screen.findByRole('button', { name: '新增配置' }));
+  const dialog = await screen.findByRole('dialog');
+  await user.type(within(dialog).getByRole('textbox', { name: '配置名称' }), '新闻请求头');
+  await user.click(within(dialog).getByRole('button', { name: '保存并热更新' }));
+
+  await waitFor(() => expect(apiMock.createCrawlerHeaderProfile).toHaveBeenCalledWith(expect.objectContaining({
+    displayName: '新闻请求头',
+    userAgent: 'FinBot/2.0 (contact: finbot@omnnu.xyz)',
+    acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8',
+    additionalHeaders: {},
+    enabled: true,
+  })));
 });
 
 it('shows the persistent task failure without reporting a successful source test', async () => {

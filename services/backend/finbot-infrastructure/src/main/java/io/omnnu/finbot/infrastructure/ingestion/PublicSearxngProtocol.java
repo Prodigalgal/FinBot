@@ -23,7 +23,6 @@ import org.springframework.stereotype.Component;
 @Component
 final class PublicSearxngProtocol {
     private static final int MAXIMUM_DIRECTORY_ENTRIES = 256;
-    private static final int MAXIMUM_UNRESPONSIVE_ENGINES = 16;
     private static final Duration DIRECTORY_CACHE_TTL = Duration.ofHours(6);
     private static final Duration DIRECTORY_STALE_TTL = Duration.ofHours(24);
 
@@ -91,7 +90,8 @@ final class PublicSearxngProtocol {
                     true,
                     response.statusCode());
         }
-        var unresponsiveEngines = unresponsiveEngines(root.path("unresponsive_engines"));
+        var unresponsiveEngines = SearxngResponseMetadata.unresponsiveEngines(
+                root.path("unresponsive_engines"));
         var searchEndpoint = instance.baseUri().resolve("search");
         var payloads = new ArrayList<CollectedPayload>();
         for (var result : results) {
@@ -140,7 +140,7 @@ final class PublicSearxngProtocol {
         metadata.put("public_pool_catalog_candidates", Integer.toString(directory.instances().size()));
         metadata.put("public_pool_instance_attempts", Integer.toString(instanceAttempt));
         metadata.put("search_unresponsive_engines", unresponsiveEngines);
-        metadata.put("search_result_engines", resultEngines(result));
+        metadata.put("search_result_engines", SearxngResponseMetadata.resultEngines(result));
         metadata.put("proxy_route", response.proxyRoute());
         metadata.put("source_tier", source.tier().name());
         metadata.put("result_kind", "search_snippet");
@@ -311,53 +311,6 @@ final class PublicSearxngProtocol {
             return List.of("IPV4");
         }
         return ipv6 ? List.of("IPV6") : List.of();
-    }
-
-    private static String unresponsiveEngines(JsonNode value) {
-        if (!value.isArray()) {
-            return "";
-        }
-        var errors = new ArrayList<String>();
-        for (var item : value) {
-            if (errors.size() >= MAXIMUM_UNRESPONSIVE_ENGINES) {
-                break;
-            }
-            if (item.isArray() && item.size() >= 2) {
-                var engine = safeMetadataText(item.get(0).asText());
-                var reason = safeMetadataText(item.get(1).asText());
-                if (!engine.isBlank() || !reason.isBlank()) {
-                    errors.add(engine + ":" + reason);
-                }
-            }
-        }
-        return String.join("|", errors);
-    }
-
-    private static String resultEngines(JsonNode result) {
-        var engines = new ArrayList<String>();
-        var value = result.path("engines");
-        if (value.isArray()) {
-            for (var engine : value) {
-                var normalized = safeMetadataText(engine.asText());
-                if (!normalized.isBlank() && engines.size() < 16) {
-                    engines.add(normalized);
-                }
-            }
-        } else {
-            var engine = safeMetadataText(result.path("engine").asText());
-            if (!engine.isBlank()) {
-                engines.add(engine);
-            }
-        }
-        return String.join(",", engines);
-    }
-
-    private static String safeMetadataText(String value) {
-        var normalized = Objects.requireNonNullElse(value, "")
-                .replace('\r', ' ')
-                .replace('\n', ' ')
-                .strip();
-        return normalized.length() <= 160 ? normalized : normalized.substring(0, 160);
     }
 
     private static String text(JsonNode node, String field) {

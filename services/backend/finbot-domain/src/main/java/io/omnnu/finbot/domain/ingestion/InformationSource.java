@@ -25,6 +25,7 @@ public record InformationSource(
         URI endpointBaseUrl,
         String credentialEnvironmentVariable,
         OutboundRoute outboundRoute,
+        CrawlerHeaderProfileId crawlerHeaderProfileId,
         int maximumResults,
         int maximumScrapeTargets,
         boolean enabled,
@@ -68,11 +69,59 @@ public record InformationSource(
                 endpointBaseUrl,
                 credentialEnvironmentVariable,
                 outboundRoute,
+                new CrawlerHeaderProfileId("header_default"),
                 maximumResults,
                 maximumScrapeTargets,
                 enabled,
                 version,
                 null);
+    }
+
+    public InformationSource(
+            SourceId sourceId,
+            String displayName,
+            SourceMode mode,
+            SourceTier tier,
+            String category,
+            String provider,
+            BigDecimal trustWeight,
+            int pollIntervalSeconds,
+            SourcePriority priority,
+            List<String> assetScope,
+            List<URI> feedUrls,
+            List<URI> seedUrls,
+            List<String> searchQueries,
+            URI endpointBaseUrl,
+            String credentialEnvironmentVariable,
+            OutboundRoute outboundRoute,
+            int maximumResults,
+            int maximumScrapeTargets,
+            boolean enabled,
+            long version,
+            AiWebSearchBinding aiWebSearchBinding) {
+        this(
+                sourceId,
+                displayName,
+                mode,
+                tier,
+                category,
+                provider,
+                trustWeight,
+                pollIntervalSeconds,
+                priority,
+                assetScope,
+                feedUrls,
+                seedUrls,
+                searchQueries,
+                endpointBaseUrl,
+                credentialEnvironmentVariable,
+                outboundRoute,
+                new CrawlerHeaderProfileId("header_default"),
+                maximumResults,
+                maximumScrapeTargets,
+                enabled,
+                version,
+                aiWebSearchBinding);
     }
 
     public InformationSource {
@@ -98,6 +147,7 @@ public record InformationSource(
             requireHttpUri(endpointBaseUrl, "endpointBaseUrl");
         }
         credentialEnvironmentVariable = optional(credentialEnvironmentVariable, 120);
+        Objects.requireNonNull(crawlerHeaderProfileId, "crawlerHeaderProfileId");
         if (mode.firecrawl() && outboundRoute != OutboundRoute.FIRECRAWL) {
             throw new IllegalArgumentException("Firecrawl sources must use the FIRECRAWL route");
         }

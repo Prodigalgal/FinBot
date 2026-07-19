@@ -1,6 +1,7 @@
 package io.omnnu.finbot.infrastructure.ingestion;
 
 import io.omnnu.finbot.application.ingestion.SourceCollectionException;
+import io.omnnu.finbot.domain.ingestion.SourceId;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import io.omnnu.finbot.infrastructure.network.RoutedHttpClientFactory;
 import java.io.IOException;
@@ -12,11 +13,9 @@ import java.net.http.HttpResponse;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Objects;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -26,27 +25,35 @@ public final class CrawlerTransport {
     private final CrawlerConcurrencyLimiter concurrencyLimiter;
     private final CrawlerPolitenessController politenessController;
     private final Clock clock;
-    private final String userAgent;
+    private final CrawlerRequestHeaderPolicy headerPolicy;
 
     public CrawlerTransport(
             RoutedHttpClientFactory httpClients,
             CrawlerConcurrencyLimiter concurrencyLimiter,
             CrawlerPolitenessController politenessController,
             Clock clock,
-            @Value("${finbot.crawler.user-agent:FinBot/2.0 (contact: finbot@omnnu.xyz)}")
-                    String userAgent) {
+            CrawlerRequestHeaderPolicy headerPolicy) {
         this.httpClients = Objects.requireNonNull(httpClients, "httpClients");
         this.concurrencyLimiter = Objects.requireNonNull(concurrencyLimiter, "concurrencyLimiter");
         this.politenessController = Objects.requireNonNull(politenessController, "politenessController");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.userAgent = requireHeaderValue(userAgent, "userAgent", 500);
+        this.headerPolicy = Objects.requireNonNull(headerPolicy, "headerPolicy");
     }
 
     @SuppressWarnings("try")
     public Response get(Request request) {
         Objects.requireNonNull(request, "request");
         var target = request.target();
-        var headers = withUserAgent(request.headers());
+        final Map<String, String> preparedHeaders;
+        try {
+            preparedHeaders = headerPolicy.prepare(new SourceId(request.sourceId()), request.headers());
+        } catch (IllegalArgumentException exception) {
+            throw new SourceCollectionException(
+                    request.errorPrefix() + "_REQUEST_HEADERS_INVALID",
+                    request.safeName() + " request headers are invalid",
+                    true);
+        }
+        var headers = preparedHeaders;
         var redirects = 0;
         var totalAttempts = 0;
         while (true) {
@@ -82,7 +89,7 @@ public final class CrawlerTransport {
             }
             var nextTarget = redirectTarget(target, response, request);
             if (!sameOrigin(target, nextTarget)) {
-                headers = safeRedirectHeaders(headers);
+                headers = headerPolicy.forCrossOriginRedirect(headers);
             }
             target = nextTarget;
             redirects++;
@@ -166,41 +173,6 @@ public final class CrawlerTransport {
                 || statusCode == 307 || statusCode == 308;
     }
 
-    private static Map<String, String> safeRedirectHeaders(Map<String, String> headers) {
-        var result = new HashMap<String, String>();
-        headers.forEach((name, value) -> {
-            var normalized = name.toLowerCase(Locale.ROOT);
-            if (!normalized.equals("authorization")
-                    && !normalized.equals("proxy-authorization")
-                    && !normalized.equals("cookie")
-                    && !normalized.equals("x-api-key")
-                    && !normalized.equals("x-subscription-token")) {
-                result.put(name, value);
-            }
-        });
-        return Map.copyOf(result);
-    }
-
-    private Map<String, String> withUserAgent(Map<String, String> headers) {
-        var result = new HashMap<String, String>();
-        headers.forEach((name, value) -> {
-            if (!"user-agent".equalsIgnoreCase(name)) {
-                result.put(name, value);
-            }
-        });
-        result.put("User-Agent", userAgent);
-        return Map.copyOf(result);
-    }
-
-    private static String requireHeaderValue(String value, String field, int maximumLength) {
-        var normalized = Objects.requireNonNull(value, field).strip();
-        if (normalized.isEmpty() || normalized.length() > maximumLength
-                || normalized.indexOf('\r') >= 0 || normalized.indexOf('\n') >= 0) {
-            throw new IllegalArgumentException(field + " is invalid");
-        }
-        return normalized;
-    }
-
     private static boolean sameOrigin(URI left, URI right) {
         return left.getScheme().equalsIgnoreCase(right.getScheme())
                 && left.getHost().equalsIgnoreCase(right.getHost())
@@ -271,7 +243,7 @@ public final class CrawlerTransport {
     }
 
     private static Map<String, String> sanitizedHeaders(HttpResponse<?> response) {
-        var result = new HashMap<String, String>();
+        var result = new java.util.HashMap<String, String>();
         response.headers().firstValue("content-type").ifPresent(value -> result.put("content-type", value));
         response.headers().firstValue("etag").ifPresent(value -> result.put("etag", value));
         response.headers().firstValue("last-modified").ifPresent(value -> result.put("last-modified", value));
