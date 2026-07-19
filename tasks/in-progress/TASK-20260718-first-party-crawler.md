@@ -2,7 +2,7 @@
 
 ## 状态
 
-生产验收完成：first-party 协议、ContentEnvelope、生产控制面和目录 v1/v2/v3 已落地，国内外新闻、内部 SearXNG 与 AI Web Search 已生产发布；047 已将来源级引擎配置编译为 SearXNG 官方支持的 `!shortcut` 查询语法，048 已增加显式可用引擎冗余，长 source ID 异步采集与信息源在线测试异步化均已完成 CI/GitOps 和公网验收；不设置 14 天影子比较门禁。
+生产验收完成：first-party 协议、ContentEnvelope、生产控制面和目录 v1/v2/v3/v4 已落地，国内外新闻、内部/公共 SearXNG 与 AI Web Search 已生产发布；047 已将来源级引擎配置编译为 SearXNG 官方支持的 `!shortcut` 查询语法，048 已增加显式可用引擎冗余，049 已增加强制代理、低频、冷却且不绕过访问控制的公共实例池，长 source ID 异步采集与信息源在线测试异步化均已完成 CI/GitOps 和公网验收；不设置 14 天影子比较门禁。
 
 ## 目标
 
@@ -22,6 +22,7 @@
 - 生产控制面 smoke 发现长 source ID 被错误拼入最长 40 字符的 idempotency scope，导致异步 `/collect` 返回 400；已改为固定 `manual-ingestion` scope，并将 source ID 纳入被 SHA-256 的 client key，生产异步任务均首次尝试 `COMPLETED`。
 - 生产公网同步 `/test` 在 SearXNG 长查询期间被 Cloudflare 504 截断，而后端仍继续完成采集；已将在线测试改为独立 `source-test` 幂等域的持久化 `INGESTION` 任务，控制面立即返回 `202`，Web 短轮询任务并按 source/query/任务创建时间关联采集运行，原结构化统计保持不变。
 - 最终生产 smoke：公网 `202` 首响应 964 ms，任务 `task_00000mrqnqo5w_0aeec89fc6111703dd0f` 首次尝试 `COMPLETED`；对应采集运行 `collection_00000mrqnqqdn_9f5af9015b148c9f4650` 获取 20 条、新增 7 条、去重 13 条且无错误码。ArgoCD revision `a68f4b7d802d361b095f398a837926c2a1230898` 为 `Synced/Healthy/Succeeded`。
+- 公共实例池生产验收：提交 `dcaccb2` 的 CI run `29669029088` 全部通过，GitOps revision `1ebbf7ea8649d7e3f26242547c040e2063bb0312` 为 `Synced/Healthy/Succeeded`，backend/quant/web 均为 `sha-dcaccb27aab04a2926eba4c4face4676df09f369` 单副本且零重启；Liquibase 049 为 `EXECUTED`，catalog v4 为 62 条来源。公网真实测试任务 `task_00000mrr5j7aa_1a0de31f03b332d99404` 首次尝试 `COMPLETED`；首次有效公共池运行 `collection_00000mrr5ao0m_8c87aeec2267f0ca657e` 在三实例尝试后明确 `BLOCKED / PUBLIC_SEARXNG_POOL_EXHAUSTED / HTTP 403`，后续运行按设计进入一小时全池冷却，未发生直连或隐式渠道切换。
 
 ## 下一阶段实现顺序
 
@@ -29,6 +30,7 @@
 2. Provider 工具协议测活后再按需启用 Grok/Gemini AI Web Search 默认来源，继续保持独立 token 与引用审计。
 3. 扩充行业和地区来源时优先官方 API/RSS；新增搜索 engine 必须先通过代理出口真实结果 smoke。
 4. 保留 Firecrawl 独立渠道及三个显式操作模式；默认关闭，任何渠道失败不得隐式切换，不以日历等待作为条件。
+5. 公共 SearXNG 仅调用运营者明确开放的 JSON API；持续按真实成功率调整静态门槛和冷却，不增加浏览器指纹、Cookie、JS challenge 或 CAPTCHA 绕过。
 
 ## 非目标
 
