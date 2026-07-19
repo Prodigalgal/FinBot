@@ -3,6 +3,7 @@ import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import LanOutlinedIcon from '@mui/icons-material/LanOutlined';
@@ -13,7 +14,7 @@ import SchemaOutlinedIcon from '@mui/icons-material/SchemaOutlined';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined';
-import { AppBar, Box, Chip, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, MenuItem, Stack, TextField, Toolbar, Tooltip, Typography, useMediaQuery } from '@mui/material';
+import { AppBar, Box, ButtonBase, Chip, Collapse, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, ListSubheader, MenuItem, Stack, TextField, Toolbar, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import type { ReactElement } from 'react';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useTheme } from '@mui/material/styles';
@@ -39,6 +40,13 @@ const WorkflowPage = lazy(() => import('./WorkflowPage').then((module) => ({ def
 const drawerWidth = 236;
 type PageId = 'dashboard' | 'catalog' | 'research' | 'autonomous' | 'review' | 'market' | 'quant' | 'trading' | 'ingestion' | 'reports' | 'settings' | 'workflow' | 'network';
 interface PageDefinition { id: PageId; group: string; label: string; title: string; icon: ReactElement }
+interface NavigationGroupDefinition {
+  key: string;
+  label: string;
+  description: string;
+  initiallyExpanded: boolean;
+}
+
 const pages: PageDefinition[] = [
   { id: 'dashboard', group: '工作台', label: '研究决策工作台', title: '研究决策工作台', icon: <DashboardOutlinedIcon /> },
   { id: 'catalog', group: '研究决策', label: '产品与自选', title: '产品库与自选列表', icon: <Inventory2OutlinedIcon /> },
@@ -54,6 +62,13 @@ const pages: PageDefinition[] = [
   { id: 'workflow', group: '系统', label: 'AI 工作流', title: 'AI 调度小组与自由工作流', icon: <SchemaOutlinedIcon /> },
   { id: 'network', group: '系统', label: '网络诊断', title: '代理路由与网络诊断', icon: <LanOutlinedIcon /> },
 ];
+const navigationGroups: NavigationGroupDefinition[] = [
+  { key: '工作台', label: '工作台', description: '总览与待办', initiallyExpanded: true },
+  { key: '研究决策', label: '研究流程', description: '从问题到结论', initiallyExpanded: true },
+  { key: '研究分析与验证', label: '分析与验证', description: '行情、量化与模拟', initiallyExpanded: true },
+  { key: '任务与记录', label: '数据与记录', description: '采集、证据与报告', initiallyExpanded: false },
+  { key: '系统', label: '系统管理', description: '模型、工作流与网络', initiallyExpanded: false },
+];
 const pageIds = new Set(pages.map((item) => item.id));
 
 export function App() {
@@ -63,6 +78,9 @@ export function App() {
   const [operations, setOperations] = useState<OperationsOverview | null>(null);
   const [researchQuestion, setResearchQuestion] = useState<string | undefined>();
   const [researchLaunch, setResearchLaunch] = useState<ResearchLaunch | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(navigationGroups.map((group) => [group.key, group.initiallyExpanded])),
+  );
   const current = useMemo(() => pages.find((item) => item.id === page) || pages[0], [page]);
   const refreshStatus = () => api.operations().then(setOperations).catch(() => undefined);
   const navigate = (target: string) => {
@@ -98,8 +116,13 @@ export function App() {
     return () => { disposed = true; source?.close(); if (timer !== undefined) window.clearTimeout(timer); window.removeEventListener('hashchange', hashListener); };
   }, []);
 
+  useEffect(() => {
+    setExpandedGroups((groups) => groups[current.group] ? groups : { ...groups, [current.group]: true });
+  }, [current.group]);
+
   const openResearch = (question: string) => { setResearchQuestion(question); setResearchLaunch(null); navigate('research'); };
   const openLaunch = (launch: ResearchLaunch) => { setResearchLaunch(launch); setResearchQuestion(undefined); navigate('research'); };
+  const toggleGroup = (groupKey: string) => setExpandedGroups((groups) => ({ ...groups, [groupKey]: !groups[groupKey] }));
   const content = (() => {
     switch (page) {
       case 'dashboard': return <DashboardPage onNavigate={navigate} />;
@@ -118,15 +141,31 @@ export function App() {
     }
   })();
   const workerOnline = operations?.workers.some((worker) => worker.status === 'RUNNING') || false;
-  const groups = [...new Set(pages.map((item) => item.group))];
   return <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
     {desktop && <Drawer component="nav" aria-label="主导航" variant="permanent" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', borderRightColor: 'divider' } }}>
-      <Box sx={{ px: 2, py: 2.25 }}><Typography variant="h2">FinBot</Typography><Typography variant="caption" color="text.secondary">AI 研究与走势预测</Typography></Box>
-      <Box sx={{ overflowY: 'auto', px: 1 }}>{groups.map((group) => <Box key={group} sx={{ mb: 1 }}><Typography variant="overline" color="text.secondary" sx={{ px: 1.25 }}>{group}</Typography><List disablePadding>{pages.filter((item) => item.group === group).map((item) => <ListItemButton key={item.id} selected={page === item.id} onClick={() => navigate(item.id)} sx={{ borderRadius: 1, mb: .25, minHeight: 38 }}><ListItemIcon sx={{ minWidth: 34 }}>{item.icon}</ListItemIcon><ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 13, fontWeight: 700 }} /></ListItemButton>)}</List></Box>)}</Box>
-      <Box sx={{ mt: 'auto', p: 2 }}><Chip size="small" color={workerOnline ? 'success' : 'warning'} label={workerOnline ? 'Worker 在线' : 'Worker 离线'} /></Box>
+      <Box sx={{ px: 2, py: 2.25, borderBottom: '1px solid', borderColor: 'divider' }}><Typography variant="h2">FinBot</Typography><Typography variant="caption" color="text.secondary">AI 研究与走势预测</Typography></Box>
+      <Box sx={{ overflowY: 'auto', px: 1, py: 1.25 }}>{navigationGroups.map((group) => {
+        const expanded = expandedGroups[group.key] ?? group.initiallyExpanded;
+        const groupPages = pages.filter((item) => item.group === group.key);
+        return <Box key={group.key} sx={{ mb: 1 }}>
+          <ButtonBase
+            data-testid={`nav-group-${group.key}`}
+            aria-expanded={expanded}
+            onClick={() => toggleGroup(group.key)}
+            sx={{ width: '100%', borderRadius: 1, px: 1.25, py: .6, textAlign: 'left', '&:hover': { bgcolor: 'action.hover' } }}
+          >
+            <Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="overline" color="text.secondary" display="block" lineHeight={1.2}>{group.label}</Typography><Typography variant="caption" color="text.secondary" noWrap>{group.description}</Typography></Box>
+            <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 160ms ease' }} />
+          </ButtonBase>
+          <Collapse in={expanded} timeout="auto" unmountOnExit>
+            <List disablePadding sx={{ mt: .35 }}>{groupPages.map((item) => <ListItemButton key={item.id} selected={page === item.id} aria-current={page === item.id ? 'page' : undefined} onClick={() => navigate(item.id)} sx={{ borderRadius: 1, mb: .25, minHeight: 38, pl: 1.25 }}><ListItemIcon sx={{ minWidth: 34 }}>{item.icon}</ListItemIcon><ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 13, fontWeight: 700 }} /></ListItemButton>)}</List>
+          </Collapse>
+        </Box>;
+      })}</Box>
+      <Box sx={{ mt: 'auto', p: 1.5, borderTop: '1px solid', borderColor: 'divider' }}><Stack direction="row" spacing={1} alignItems="center"><Chip size="small" color={workerOnline ? 'success' : 'warning'} label={workerOnline ? 'Worker 在线' : 'Worker 离线'} /><Typography variant="caption" color="text.secondary">常驻调度</Typography></Stack></Box>
     </Drawer>}
     <Box sx={{ flex: 1, minWidth: 0 }}>
-      <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}><Toolbar sx={{ display: { xs: 'grid', sm: 'flex' }, gridTemplateColumns: { xs: 'minmax(0, 1fr) auto auto' }, gridTemplateAreas: { xs: '"navigation refresh logout" "heading heading heading"' }, columnGap: { xs: .75, sm: 1.25 }, rowGap: { xs: .75 }, py: { xs: 1, sm: 0 }, minHeight: { xs: 'auto', sm: 64, md: 68 } }}>{!desktop && <TextField select size="small" value={page} onChange={(event) => navigate(event.target.value)} sx={{ gridArea: { xs: 'navigation', sm: 'auto' }, width: { xs: '100%', sm: 170 }, minWidth: 0 }}>{groups.map((group) => pages.filter((item) => item.group === group).map((item) => <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>))}</TextField>}<Box sx={{ gridArea: { xs: 'heading', sm: 'auto' }, flex: 1, minWidth: 0, overflow: 'hidden' }}><Typography variant="h1" noWrap>{current.title}</Typography><Typography variant="caption" color="text.secondary" noWrap>Java 26 · PostgreSQL · Python Quant{operations && <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}> · 状态更新 {formatTime(operations.generatedAt)}</Box>}</Typography></Box><Chip size="small" color={statusColor(workerOnline ? 'RUNNING' : 'FAILED')} label={workerOnline ? '常驻运行' : '需检查'} sx={{ display: { xs: 'none', sm: 'inline-flex' } }} /><Tooltip title="刷新运行状态"><IconButton sx={{ gridArea: { xs: 'refresh', sm: 'auto' } }} onClick={() => void refreshStatus()}><RefreshIcon /></IconButton></Tooltip><Tooltip title="退出登录"><IconButton sx={{ gridArea: { xs: 'logout', sm: 'auto' } }} onClick={() => api.logout().finally(() => window.location.reload())}><LogoutIcon /></IconButton></Tooltip></Toolbar></AppBar>
+      <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}><Toolbar sx={{ display: { xs: 'grid', sm: 'flex' }, gridTemplateColumns: { xs: 'minmax(0, 1fr) auto auto' }, gridTemplateAreas: { xs: '"navigation refresh logout" "heading heading heading"' }, columnGap: { xs: .75, sm: 1.25 }, rowGap: { xs: .75 }, py: { xs: 1, sm: 0 }, minHeight: { xs: 'auto', sm: 64, md: 68 } }}>{!desktop && <TextField select size="small" value={page} onChange={(event) => navigate(event.target.value)} sx={{ gridArea: { xs: 'navigation', sm: 'auto' }, width: { xs: '100%', sm: 190 }, minWidth: 0 }}>{navigationGroups.flatMap((group) => [<ListSubheader key={`${group.key}-header`} disableSticky>{group.label}</ListSubheader>, ...pages.filter((item) => item.group === group.key).map((item) => <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>)])}</TextField>}<Box sx={{ gridArea: { xs: 'heading', sm: 'auto' }, flex: 1, minWidth: 0, overflow: 'hidden' }}><Typography variant="caption" color="text.secondary" noWrap>{navigationGroups.find((group) => group.key === current.group)?.label} / {current.label}</Typography><Typography data-testid="app-page-title" variant="h1" sx={{ overflowWrap: 'anywhere' }}>{current.title}</Typography><Typography variant="caption" color="text.secondary" noWrap>Java 26 · PostgreSQL · Python Quant{operations && <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}> · 状态更新 {formatTime(operations.generatedAt)}</Box>}</Typography></Box><Chip size="small" color={statusColor(workerOnline ? 'RUNNING' : 'FAILED')} label={workerOnline ? '常驻运行' : '需检查'} sx={{ display: { xs: 'none', sm: 'inline-flex' } }} /><Tooltip title="刷新运行状态"><IconButton sx={{ gridArea: { xs: 'refresh', sm: 'auto' } }} onClick={() => void refreshStatus()}><RefreshIcon /></IconButton></Tooltip><Tooltip title="退出登录"><IconButton sx={{ gridArea: { xs: 'logout', sm: 'auto' } }} onClick={() => api.logout().finally(() => window.location.reload())}><LogoutIcon /></IconButton></Tooltip></Toolbar></AppBar>
       <Box component="main" sx={{ p: { xs: 1.25, sm: 2, lg: 2.5 }, maxWidth: 1680, mx: 'auto' }}><Suspense fallback={<LoadingBlock label="正在加载工作区" />}>{content}</Suspense></Box>
     </Box>
   </Box>;

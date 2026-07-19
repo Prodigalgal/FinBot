@@ -48,23 +48,27 @@ try {
   await page.getByText('账户权益', { exact: true }).first().waitFor();
 
   const pages = [
-    ['研究决策工作台', '研究决策工作台', '系统就绪度'],
-    ['产品与自选', '产品库与自选列表', '产品库'],
-    ['发起研究', '即时研究流水线', '研究问题'],
-    ['自动研究', '自动研究循环', '自动循环'],
-    ['复核与效果', '研究复核与效果反馈', '基准运行'],
-    ['走势预测', '实盘行情走势预测', '分析目标'],
-    ['量化验证', '量化研究与预测验证', '仓位与风控预览'],
-    ['模拟验证', '模拟交易验证与永久审计', '账户概览'],
-    ['采集与处理', '信息采集、清理与证据', '信息源状态'],
-    ['运行报告', '结构化运行报告', '生成报告'],
-    ['系统设置', '系统、模型与交易配置', '快速启用'],
-    ['AI 工作流', 'AI 调度小组与自由工作流', '辩论轮次'],
-    ['网络诊断', '代理路由与网络诊断', '出站路由'],
+    ['研究决策工作台', '研究决策工作台', '系统就绪度', '工作台'],
+    ['产品与自选', '产品库与自选列表', '产品库', '研究决策'],
+    ['发起研究', '即时研究流水线', '研究问题', '研究决策'],
+    ['自动研究', '自动研究循环', '自动循环', '研究决策'],
+    ['复核与效果', '研究复核与效果反馈', '基准运行', '研究决策'],
+    ['走势预测', '实盘行情走势预测', '分析目标', '研究分析与验证'],
+    ['量化验证', '量化研究与预测验证', '仓位与风控预览', '研究分析与验证'],
+    ['模拟验证', '模拟交易验证与永久审计', '账户概览', '研究分析与验证'],
+    ['采集与处理', '信息采集、清理与证据', '信息源状态', '任务与记录'],
+    ['运行报告', '结构化运行报告', '生成报告', '任务与记录'],
+    ['系统设置', '系统、模型与交易配置', '快速启用', '系统'],
+    ['AI 工作流', 'AI 调度小组与自由工作流', '辩论轮次', '系统'],
+    ['网络诊断', '代理路由与网络诊断', '出站路由', '系统'],
   ];
   const mainNavigation = page.getByRole('navigation', { name: '主导航' });
-  for (const [navigation, heading, readyText] of pages) {
-    await mainNavigation.getByRole('button', { name: navigation, exact: true }).click();
+  for (const [navigation, heading, readyText, group] of pages) {
+    const navigationButton = mainNavigation.getByRole('button', { name: navigation, exact: true });
+    if (!await navigationButton.isVisible()) {
+      await mainNavigation.getByTestId(`nav-group-${group}`).click();
+    }
+    await navigationButton.click();
     await page.getByRole('heading', { name: heading, exact: true }).waitFor();
     await page.getByText(readyText, { exact: false }).first().waitFor();
     if (navigation === '网络诊断') {

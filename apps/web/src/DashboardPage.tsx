@@ -1,5 +1,8 @@
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import LanOutlinedIcon from '@mui/icons-material/LanOutlined';
+import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import { Alert, Box, Button, Card, CardContent, Chip, LinearProgress, Paper, Stack, Typography } from '@mui/material';
 import type { ReactNode } from 'react';
@@ -20,22 +23,23 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (page: string) => v
   if (error) return <ErrorBlock error={error} />;
   if (!data) return <LoadingBlock label="正在汇总运行状态" />;
   const running = (data.operations.taskCounts.CLAIMED || 0) + (data.operations.taskCounts.PENDING || 0);
-  const failures = (data.operations.taskCounts.FAILED || 0) + data.history.filter((run) => run.status === 'FAILED').length;
+  const historicalFailures = data.operations.taskCounts.FAILED || 0;
+  const recentFailures = data.history.filter((run) => run.status === 'FAILED').length;
   return (
     <Stack spacing={3}>
       {!data.readiness.ready && <Alert severity="error">系统就绪度 {data.readiness.score}%，存在会阻断完整研究闭环的配置或运行状态。</Alert>}
-      {failures > 0 && <Alert severity="warning">当前有 {failures} 条失败记录，可在“复核与效果”或“运行报告”查看错误详情。</Alert>}
+      {historicalFailures > 0 && <Alert severity={recentFailures > 0 ? 'warning' : 'info'} action={<Button color="inherit" size="small" onClick={() => onNavigate?.('review')}>查看复核</Button>}>历史累计 {historicalFailures} 条失败任务；最近 {data.history.length} 次研究中 {recentFailures} 次失败。该统计不代表当前 Worker 离线。</Alert>}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 1.5 }}>
         <Metric title="系统就绪度" value={`${data.readiness.score}%`} detail={data.readiness.ready ? '研究闭环可运行' : '存在阻断项'} icon={<AutorenewIcon />} />
         <Metric title="账户权益" value={formatMoney(data.accounts.totalEquity, data.accounts.currency)} detail={`近 30 天已实现 ${formatMoney(data.accounts.totalRealizedPnl, data.accounts.currency)}`} icon={<AccountBalanceWalletOutlinedIcon />} />
         <Metric title="运行队列" value={String(running)} detail={`${data.operations.workers.filter((worker) => worker.status === 'RUNNING').length} 个 Worker 在线`} icon={<AutorenewIcon />} />
         <Metric title="模拟执行" value={String(data.automations.filter((item) => item.status === 'SUBMITTED').length)} detail="仅 Gate TestNet / Bybit Demo" icon={<SmartToyOutlinedIcon />} />
       </Box>
-      <Box><SectionTitle title="快速操作" /><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}><Button variant="contained" onClick={() => onNavigate?.('research')}>发起即时研究</Button><Button onClick={() => onNavigate?.('autonomous')}>自动研究</Button><Button onClick={() => onNavigate?.('catalog')}>产品与自选</Button><Button onClick={() => onNavigate?.('trading')}>模拟账户</Button><Button onClick={() => onNavigate?.('network')}>网络诊断</Button></Stack></Box>
+      <Box><SectionTitle title="快速操作" /><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap flexWrap="wrap"><Button variant="contained" startIcon={<PlayCircleOutlineIcon />} onClick={() => onNavigate?.('research')}>发起即时研究</Button><Button startIcon={<AutorenewIcon />} onClick={() => onNavigate?.('autonomous')}>自动研究</Button><Button startIcon={<Inventory2OutlinedIcon />} onClick={() => onNavigate?.('catalog')}>产品与自选</Button><Button startIcon={<AccountBalanceWalletOutlinedIcon />} onClick={() => onNavigate?.('trading')}>模拟账户</Button><Button startIcon={<LanOutlinedIcon />} onClick={() => onNavigate?.('network')}>网络诊断</Button></Stack></Box>
       <Box><SectionTitle title="系统就绪度" /><Paper variant="outlined" sx={{ overflow: 'hidden' }}>{data.readiness.checks.map((check, index) => <Stack key={check.code} direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }} sx={{ px: 2, py: 1.5, borderTop: index ? '1px solid' : 0, borderColor: 'divider' }}><Box sx={{ flex: 1 }}><Typography fontWeight={700}>{check.title}</Typography><Typography variant="body2" color="text.secondary">{check.detail}</Typography></Box><Chip size="small" color={statusColor(check.status)} label={statusLabel(check.status)} /><Button size="small" onClick={() => onNavigate?.(check.actionPage)}>处理</Button></Stack>)}</Paper></Box>
       {data.readiness.latestResearch && <Box><SectionTitle title="最新结论" /><Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between"><Box><Typography fontWeight={800}>{data.readiness.latestResearch.requestSummary}</Typography><Typography sx={{ mt: .75 }}>{data.readiness.latestResearch.conclusion}</Typography><Typography variant="caption" color="text.secondary">{data.readiness.latestResearch.runId} · {formatTime(data.readiness.latestResearch.completedAt)}</Typography></Box><Chip size="small" color={statusColor(data.readiness.latestResearch.status)} label={statusLabel(data.readiness.latestResearch.status)} sx={{ alignSelf: 'flex-start' }} /></Stack></Paper></Box>}
       <Box>
-        <SectionTitle title="研究进度" />
+        <SectionTitle title="最近研究" action={<Button size="small" onClick={() => onNavigate?.('review')}>查看全部</Button>} />
         <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
           {data.history.map((run, index) => (
             <Stack key={run.runId} direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} sx={{ px: 2, py: 1.5, borderTop: index ? '1px solid' : 0, borderColor: 'divider' }}>

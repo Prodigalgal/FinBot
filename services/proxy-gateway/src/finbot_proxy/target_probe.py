@@ -130,6 +130,8 @@ def _failure_code(error: Exception) -> str:
         return "TIMEOUT"
     if isinstance(reason, ssl.SSLError):
         return "TLS_ERROR"
+    if isinstance(reason, (ConnectionResetError, ConnectionAbortedError)):
+        return "CONNECTION_RESET"
     if isinstance(reason, (ConnectionError, OSError)):
         return "CONNECTION_ERROR"
     return type(reason).__name__.upper()[:64]

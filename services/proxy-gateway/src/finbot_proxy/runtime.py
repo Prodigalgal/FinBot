@@ -447,7 +447,8 @@ class ProxyGateway:
         self._process = subprocess.Popen(
             [str(configuration.sing_box_path), "run", "-c", str(active)],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            # Keep credential-free handshake failures visible in container logs.
+            stderr=None,
         )
         deadline = time.monotonic() + 10
         node_ports = tuple(

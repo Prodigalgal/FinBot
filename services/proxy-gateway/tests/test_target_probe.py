@@ -7,6 +7,10 @@ from finbot_proxy.round_robin import NodeAssignment
 from finbot_proxy.target_probe import TargetProbeConfiguration, probe_targets
 
 
+def test_failure_code_distinguishes_remote_connection_reset() -> None:
+    assert target_probe._failure_code(ConnectionResetError("reset")) == "CONNECTION_RESET"
+
+
 def test_probe_targets_keeps_only_successful_original_assignments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
