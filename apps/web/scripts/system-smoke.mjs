@@ -24,6 +24,14 @@ page.on('requestfailed', (request) => browserProblems.push({
   type: 'requestfailed',
   text: `${request.failure()?.errorText || 'request failed'} ${request.url()}`,
 }));
+page.on('response', (response) => {
+  if (response.status() >= 500) {
+    browserProblems.push({
+      type: 'http',
+      text: `HTTP ${response.status()} ${response.request().method()} ${response.url()}`,
+    });
+  }
+});
 
 try {
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
