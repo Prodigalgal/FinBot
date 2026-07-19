@@ -250,6 +250,11 @@ jobs:
             context: apps/web
             dockerfile: apps/web/Dockerfile
             no_cache: true
+          - component: browser-worker
+            image: speedproxy/finbot-browser-worker
+            context: services/browser-worker
+            dockerfile: services/browser-worker/Dockerfile
+            no_cache: false
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -316,6 +321,7 @@ jobs:
             ghcr.io/example/finbot-backend=docker.io/speedproxy/finbot-backend:${IMAGE_TAG} \
             ghcr.io/example/finbot-quant=docker.io/speedproxy/finbot-quant:${IMAGE_TAG} \
             ghcr.io/example/finbot-web=docker.io/speedproxy/finbot-web:${IMAGE_TAG} \
+            ghcr.io/example/finbot-browser-worker=docker.io/speedproxy/finbot-browser-worker:${IMAGE_TAG} \
             ghcr.io/example/finbot-proxy=${{ steps.current-proxy.outputs.image }}
           kustomize build . >/tmp/finbot-rendered.yaml
       - name: Commit GitOps revision

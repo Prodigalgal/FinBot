@@ -97,3 +97,19 @@ spec:
     - name: health
       port: 8081
       targetPort: health
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: finbot-browser-worker
+  labels:
+    app.kubernetes.io/name: finbot-browser-worker
+    app.kubernetes.io/part-of: finbot
+spec:
+  selector:
+    app.kubernetes.io/name: finbot-browser-worker
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http

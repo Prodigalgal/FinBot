@@ -458,6 +458,19 @@ export interface SourceRecord {
   } | null;
 }
 export type SourceMutation = Omit<SourceRecord, 'sourceId' | 'version'>;
+export type CrawlerBrowserTemplate =
+  | 'NONE'
+  | 'CHROME_WINDOWS'
+  | 'CHROME_MAC'
+  | 'FIREFOX_WINDOWS'
+  | 'EDGE_WINDOWS'
+  | 'CUSTOM';
+export type CrawlerCaptchaBypassProvider =
+  | 'NONE'
+  | 'CAPSOLVER'
+  | 'TWOCAPTCHA'
+  | 'FIRECRAWL_BROWSER'
+  | 'BROWSER_WORKER';
 export interface CrawlerHeaderProfile {
   profileId: string;
   displayName: string;
@@ -465,6 +478,11 @@ export interface CrawlerHeaderProfile {
   accept: string | null;
   acceptLanguage: string | null;
   additionalHeaders: Record<string, string>;
+  browserTemplate: CrawlerBrowserTemplate;
+  retainSensitiveHeadersOnCrossOriginRedirect: boolean;
+  crossOriginRetainHeaders: string[];
+  captchaBypassEnabled: boolean;
+  captchaBypassProvider: CrawlerCaptchaBypassProvider;
   enabled: boolean;
   usageCount: number;
   version: number;

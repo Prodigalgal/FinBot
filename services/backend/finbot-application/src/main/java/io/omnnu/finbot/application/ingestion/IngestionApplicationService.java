@@ -468,7 +468,7 @@ public final class IngestionApplicationService implements IngestionUseCase {
                 0,
                 exception.blocked() ? "BLOCKED" : "FAILED",
                 exception.errorCode(),
-                "none",
+                exception.observationLabel(),
                 now,
                 now);
     }

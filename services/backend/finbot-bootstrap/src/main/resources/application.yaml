@@ -70,6 +70,7 @@ finbot:
     maximum-concurrent-per-host: ${FINBOT_CRAWLER_MAXIMUM_CONCURRENT_PER_HOST:2}
     permit-wait-timeout: ${FINBOT_CRAWLER_PERMIT_WAIT_TIMEOUT:PT10S}
     minimum-host-delay: ${FINBOT_CRAWLER_MINIMUM_HOST_DELAY:PT0.25S}
+    browser-worker-url: "${FINBOT_BROWSER_WORKER_URL:http://finbot-browser-worker:8082}"
   firecrawl:
     maximum-calls-per-source-per-day: ${FINBOT_FIRECRAWL_MAXIMUM_CALLS_PER_SOURCE_PER_DAY:100}
     circuit-failure-threshold: ${FINBOT_FIRECRAWL_CIRCUIT_FAILURE_THRESHOLD:3}

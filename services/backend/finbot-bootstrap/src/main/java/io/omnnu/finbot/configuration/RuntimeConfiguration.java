@@ -23,6 +23,7 @@ import io.omnnu.finbot.application.identity.AuthenticationCryptography;
 import io.omnnu.finbot.application.identity.AuthenticationPolicy;
 import io.omnnu.finbot.application.identity.AuthenticationStore;
 import io.omnnu.finbot.application.identity.AuthenticationUseCase;
+import io.omnnu.finbot.application.ingestion.CrawlerAccessChallengeDetector;
 import io.omnnu.finbot.infrastructure.ingestion.CrawlerRequestHeaderPolicy;
 import io.omnnu.finbot.application.configuration.ConfigurationApplicationService;
 import io.omnnu.finbot.application.configuration.ConfigurationRepository;
@@ -535,6 +536,11 @@ public class RuntimeConfiguration {
     CrawlerRequestHeaderPolicy crawlerRequestHeaderPolicy(
             CrawlerHeaderProfileResolver resolver) {
         return new CrawlerRequestHeaderPolicy(resolver);
+    }
+
+    @Bean
+    CrawlerAccessChallengeDetector crawlerAccessChallengeDetector() {
+        return new CrawlerAccessChallengeDetector();
     }
 
     @Bean

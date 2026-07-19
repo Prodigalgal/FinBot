@@ -59,7 +59,9 @@ class SitemapSourceCollectorTest {
                 new CrawlerConcurrencyLimiter(16, 2, 2, Duration.ofSeconds(1)),
                 new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                 Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                CrawlerTestHeaders.policy()));
+                CrawlerTestHeaders.policy(),
+                    new io.omnnu.finbot.application.ingestion.CrawlerAccessChallengeDetector(),
+                    CrawlerTestHeaders.noBypass()));
     }
 
     private static InformationSource source(URI endpoint) {

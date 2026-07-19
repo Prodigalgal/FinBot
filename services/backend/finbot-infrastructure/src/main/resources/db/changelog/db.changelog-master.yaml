@@ -101,3 +101,7 @@ databaseChangeLog:
       file: db/changelog/releases/050-crawler-header-profiles.sql
   - include:
       file: db/changelog/releases/051-proxy-gateway-engine.sql
+  - include:
+      file: db/changelog/releases/052-crawler-header-camouflage.sql
+  - include:
+      file: db/changelog/releases/053-crawler-browser-worker-provider.sql

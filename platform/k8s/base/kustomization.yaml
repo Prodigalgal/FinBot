@@ -34,6 +34,7 @@ configMapGenerator:
       - FINBOT_SCHEDULER_POLL_DELAY=PT5S
       - FINBOT_TRADING_LEDGER_STALE_AFTER=PT10M
       - FINBOT_CRAWLER_USER_AGENT=FinBot/2.0 (+https://github.com/Prodigalgal/FinBot; contact=finbot@omnnu.xyz)
+      - FINBOT_BROWSER_WORKER_URL=http://finbot-browser-worker:8082
       - FINBOT_SEARXNG_ALLOWED_HOSTS=finbot-searxng,finbot-searxng.finbot.svc,finbot-searxng.finbot.svc.cluster.local
 generatorOptions:
   annotations:

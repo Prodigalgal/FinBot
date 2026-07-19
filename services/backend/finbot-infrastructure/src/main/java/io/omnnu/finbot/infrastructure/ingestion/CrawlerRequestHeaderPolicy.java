@@ -1,5 +1,7 @@
 package io.omnnu.finbot.infrastructure.ingestion;
 
+import io.omnnu.finbot.application.ingestion.CrawlerBrowserIdentityTemplates;
+import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfile;
 import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfileResolver;
 import io.omnnu.finbot.domain.ingestion.SourceId;
 import java.util.Locale;
@@ -9,29 +11,22 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 
-/** Applies transparent crawler identity, content negotiation defaults, and redirect-safe header rules. */
+/**
+ * Resolves camouflage-capable request headers from reusable profiles.
+ *
+ * <p>Supports full browser identity suites, forwarding and client-hint headers, session tokens,
+ * and configurable cross-origin redirect retention.
+ */
 public final class CrawlerRequestHeaderPolicy {
-    private static final int MAXIMUM_HEADERS = 32;
+    private static final int MAXIMUM_HEADERS = 64;
     private static final int MAXIMUM_HEADER_NAME_LENGTH = 80;
-    private static final int MAXIMUM_HEADER_VALUE_LENGTH = 2_048;
-    private static final int MAXIMUM_TOTAL_HEADER_LENGTH = 16_384;
+    private static final int MAXIMUM_HEADER_VALUE_LENGTH = 4_096;
+    private static final int MAXIMUM_TOTAL_HEADER_LENGTH = 32_768;
     private static final Pattern HEADER_NAME = Pattern.compile("[!#$%&'*+.^_`|~0-9A-Za-z-]+");
-    private static final Set<String> FORBIDDEN_HEADERS = Set.of(
-            "connection",
+    private static final Set<String> FRAMING_MANAGED_HEADERS = Set.of(
             "content-length",
-            "forwarded",
-            "host",
-            "proxy-connection",
-            "te",
-            "trailer",
-            "transfer-encoding",
-            "upgrade",
-            "via",
-            "x-forwarded-for",
-            "x-forwarded-host",
-            "x-forwarded-proto",
-            "x-real-ip");
-    private static final Set<String> CROSS_ORIGIN_HEADERS = Set.of(
+            "transfer-encoding");
+    private static final Set<String> DEFAULT_SENSITIVE_CROSS_ORIGIN = Set.of(
             "authorization",
             "cookie",
             "origin",
@@ -47,15 +42,31 @@ public final class CrawlerRequestHeaderPolicy {
         this.profileResolver = Objects.requireNonNull(profileResolver, "profileResolver");
     }
 
-    Map<String, String> prepare(SourceId sourceId, Map<String, String> requestedHeaders) {
+    CrawlerHeaderProfile resolveProfile(SourceId sourceId) {
         var profile = profileResolver.resolve(Objects.requireNonNull(sourceId, "sourceId"))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Crawler header profile is not configured for source"));
         if (!profile.enabled()) {
             throw new IllegalArgumentException("Crawler header profile is disabled");
         }
+        return profile;
+    }
+
+    Map<String, String> prepare(SourceId sourceId, Map<String, String> requestedHeaders) {
+        var profile = resolveProfile(sourceId);
+        return prepare(profile, requestedHeaders);
+    }
+
+    Map<String, String> prepare(CrawlerHeaderProfile profile, Map<String, String> requestedHeaders) {
+        Objects.requireNonNull(profile, "profile");
         Objects.requireNonNull(requestedHeaders, "requestedHeaders");
-        if (requestedHeaders.size() + profile.additionalHeaders().size() > MAXIMUM_HEADERS) {
+        var identity = CrawlerBrowserIdentityTemplates.apply(
+                profile.browserTemplate(),
+                profile.userAgent(),
+                profile.accept(),
+                profile.acceptLanguage(),
+                profile.additionalHeaders());
+        if (requestedHeaders.size() + identity.additionalHeaders().size() > MAXIMUM_HEADERS) {
             throw new IllegalArgumentException("Too many crawler request headers");
         }
         var result = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
@@ -69,15 +80,14 @@ public final class CrawlerRequestHeaderPolicy {
             }
             result.put(name, value);
         }
-        profile.additionalHeaders().forEach(result::put);
-        if (profile.accept() != null) {
-            result.put("Accept", profile.accept());
+        identity.additionalHeaders().forEach(result::put);
+        if (identity.accept() != null && !identity.accept().isBlank()) {
+            result.put("Accept", identity.accept());
         }
-        if (profile.acceptLanguage() != null) {
-            result.put("Accept-Language", profile.acceptLanguage());
+        if (identity.acceptLanguage() != null && !identity.acceptLanguage().isBlank()) {
+            result.put("Accept-Language", identity.acceptLanguage());
         }
-        result.remove("User-Agent");
-        result.put("User-Agent", profile.userAgent());
+        result.put("User-Agent", identity.userAgent());
         result.putIfAbsent("Accept", DEFAULT_ACCEPT);
         result.putIfAbsent("Accept-Language", DEFAULT_ACCEPT_LANGUAGE);
         var combinedLength = result.entrySet().stream()
@@ -89,14 +99,38 @@ public final class CrawlerRequestHeaderPolicy {
         return Map.copyOf(result);
     }
 
-    Map<String, String> forCrossOriginRedirect(Map<String, String> preparedHeaders) {
+    Map<String, String> forCrossOriginRedirect(CrawlerHeaderProfile profile, Map<String, String> preparedHeaders) {
+        Objects.requireNonNull(profile, "profile");
+        Objects.requireNonNull(preparedHeaders, "preparedHeaders");
+        if (profile.retainSensitiveHeadersOnCrossOriginRedirect()) {
+            return Map.copyOf(preparedHeaders);
+        }
+        var retain = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
+        for (var name : profile.crossOriginRetainHeaders()) {
+            retain.put(name.toLowerCase(Locale.ROOT), name);
+        }
         var result = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
         preparedHeaders.forEach((name, value) -> {
-            if (!sensitiveAcrossOrigins(name)) {
+            if (shouldRetainOnCrossOrigin(name, retain.keySet())) {
                 result.put(name, value);
             }
         });
         return Map.copyOf(result);
+    }
+
+    private static boolean shouldRetainOnCrossOrigin(String name, Set<String> explicitRetainLower) {
+        var normalized = name.toLowerCase(Locale.ROOT);
+        if (explicitRetainLower.contains(normalized)) {
+            return true;
+        }
+        if (DEFAULT_SENSITIVE_CROSS_ORIGIN.contains(normalized)
+                || normalized.contains("api-key")
+                || normalized.contains("apikey")
+                || normalized.endsWith("-token")
+                || normalized.endsWith("-secret")) {
+            return false;
+        }
+        return true;
     }
 
     private static String requireName(String value) {
@@ -105,10 +139,8 @@ public final class CrawlerRequestHeaderPolicy {
         if (name.isEmpty()
                 || name.length() > MAXIMUM_HEADER_NAME_LENGTH
                 || !HEADER_NAME.matcher(name).matches()
-                || FORBIDDEN_HEADERS.contains(normalized)
-                || normalized.startsWith("sec-fetch-")
-                || normalized.startsWith("sec-ch-ua")) {
-            throw new IllegalArgumentException("Crawler request header name is not allowed");
+                || FRAMING_MANAGED_HEADERS.contains(normalized)) {
+            throw new IllegalArgumentException("Crawler request header name is not allowed: " + name);
         }
         return name;
     }
@@ -122,14 +154,5 @@ public final class CrawlerRequestHeaderPolicy {
             throw new IllegalArgumentException(field + " is invalid");
         }
         return normalized;
-    }
-
-    private static boolean sensitiveAcrossOrigins(String name) {
-        var normalized = name.toLowerCase(Locale.ROOT);
-        return CROSS_ORIGIN_HEADERS.contains(normalized)
-                || normalized.contains("api-key")
-                || normalized.contains("apikey")
-                || normalized.endsWith("-token")
-                || normalized.endsWith("-secret");
     }
 }

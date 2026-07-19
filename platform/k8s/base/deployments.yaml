@@ -358,3 +358,114 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finbot-browser-worker
+  labels:
+    app.kubernetes.io/name: finbot-browser-worker
+    app.kubernetes.io/part-of: finbot
+    app.kubernetes.io/component: browser-worker
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finbot-browser-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finbot-browser-worker
+        app.kubernetes.io/part-of: finbot
+        app.kubernetes.io/component: browser-worker
+    spec:
+      terminationGracePeriodSeconds: 45
+      automountServiceAccountToken: false
+      nodeSelector:
+        infra.mnnu/node-class: core-public
+      imagePullSecrets:
+        - name: finbot-dockerhub
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: finbot-browser-worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: browser-worker
+          image: ghcr.io/example/finbot-browser-worker:latest
+          env:
+            - name: PORT
+              value: "8082"
+            - name: FINBOT_BROWSER_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: finbot-secrets
+                  key: FINBOT_JAVA_SERVICE_TOKEN
+          ports:
+            - name: http
+              containerPort: 8082
+          startupProbe:
+            httpGet:
+              path: /internal/v1/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /internal/v1/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /internal/v1/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 3Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: dshm
+              mountPath: /dev/shm
+            - name: home
+              mountPath: /home/finbot
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: home
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 512Mi

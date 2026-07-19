@@ -52,7 +52,9 @@ class HtmlSourceCollectorTest {
                             limiter(),
                             new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                             Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                            CrawlerTestHeaders.policy()),
+                            CrawlerTestHeaders.policy(),
+                    new io.omnnu.finbot.application.ingestion.CrawlerAccessChallengeDetector(),
+                    CrawlerTestHeaders.noBypass()),
                     new JsoupContentEnvelopeBuilder());
 
             var payloads = collector.collect(source(), "energy update");
@@ -84,7 +86,8 @@ class HtmlSourceCollectorTest {
                     SourceCollectionException.class,
                     () -> collector.collect(source(URI.create("http://example.test/forbidden")), ""));
 
-            assertEquals("HTML_HTTP_403", exception.errorCode());
+            assertEquals("HTML_ACCESS_BLOCKED", exception.errorCode());
+            assertEquals(java.util.Optional.of("UNKNOWN_BLOCK"), exception.challengeKind());
             assertTrue(exception.blocked());
         } finally {
             proxy.stop(0);
@@ -109,7 +112,9 @@ class HtmlSourceCollectorTest {
                             limiter(),
                             new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                             Clock.systemUTC(),
-                            CrawlerTestHeaders.policy()),
+                            CrawlerTestHeaders.policy(),
+                    new io.omnnu.finbot.application.ingestion.CrawlerAccessChallengeDetector(),
+                    CrawlerTestHeaders.noBypass()),
                     new JsoupContentEnvelopeBuilder());
             var exception = assertThrows(
                     SourceCollectionException.class,
@@ -167,7 +172,9 @@ class HtmlSourceCollectorTest {
                         limiter(),
                         new CrawlerPolitenessController(Duration.ZERO, Clock.systemUTC()),
                         Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                        CrawlerTestHeaders.policy()),
+                        CrawlerTestHeaders.policy(),
+                    new io.omnnu.finbot.application.ingestion.CrawlerAccessChallengeDetector(),
+                    CrawlerTestHeaders.noBypass()),
                 new JsoupContentEnvelopeBuilder());
     }
 

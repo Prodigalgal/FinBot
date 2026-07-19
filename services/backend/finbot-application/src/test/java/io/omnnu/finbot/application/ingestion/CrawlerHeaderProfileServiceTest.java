@@ -2,7 +2,10 @@ package io.omnnu.finbot.application.ingestion;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.omnnu.finbot.domain.ingestion.CrawlerBrowserTemplate;
+import io.omnnu.finbot.domain.ingestion.CrawlerCaptchaBypassProvider;
 import io.omnnu.finbot.domain.ingestion.CrawlerHeaderProfileId;
 import java.time.Clock;
 import java.time.Instant;
@@ -11,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class CrawlerHeaderProfileServiceTest {
@@ -30,7 +34,7 @@ class CrawlerHeaderProfileServiceTest {
         assertEquals(created.profileId(), updated.profileId());
         assertEquals("Market headers v2", updated.displayName());
         assertEquals(1, updated.version());
-        assertEquals("FinBot/2.1 (contact: test@example.com)", updated.userAgent());
+        assertTrue(updated.userAgent().contains("Chrome"));
     }
 
     @Test
@@ -40,7 +44,10 @@ class CrawlerHeaderProfileServiceTest {
         var created = service.createProfile(definition("In use", true));
         repository.replace(new CrawlerHeaderProfile(
                 created.profileId(), created.displayName(), created.userAgent(), created.accept(),
-                created.acceptLanguage(), created.additionalHeaders(), true, 2, created.version(), NOW));
+                created.acceptLanguage(), created.additionalHeaders(), created.browserTemplate(),
+                created.retainSensitiveHeadersOnCrossOriginRedirect(),
+                created.crossOriginRetainHeaders(), created.captchaBypassEnabled(),
+                created.captchaBypassProvider(), true, 2, created.version(), NOW));
 
         assertThrows(
                 IngestionConflictException.class,
@@ -60,6 +67,11 @@ class CrawlerHeaderProfileServiceTest {
                 null,
                 "zh-CN,en;q=0.8",
                 Map.of(),
+                CrawlerBrowserTemplate.NONE,
+                false,
+                Set.of(),
+                false,
+                CrawlerCaptchaBypassProvider.NONE,
                 true,
                 0,
                 0,
@@ -76,20 +88,54 @@ class CrawlerHeaderProfileServiceTest {
                                 null,
                                 "zh-CN,en;q=0.8",
                                 Map.of(),
+                                CrawlerBrowserTemplate.NONE,
+                                false,
+                                Set.of(),
+                                false,
+                                CrawlerCaptchaBypassProvider.NONE,
                                 false),
                         0));
     }
 
     @Test
-    void rejectsSensitiveAdditionalHeadersAndBrowserIdentityUserAgents() {
+    void acceptsBrowserIdentityAndCaptchaBypassConfiguration() {
+        var definition = new CrawlerHeaderProfileDefinition(
+                "Bypass chrome",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                null,
+                null,
+                Map.of(
+                        "X-Forwarded-For", "203.0.113.10",
+                        "Authorization", "Bearer token",
+                        "Sec-Fetch-Site", "none"),
+                CrawlerBrowserTemplate.CHROME_WINDOWS,
+                true,
+                Set.of("Cookie", "Referer"),
+                true,
+                CrawlerCaptchaBypassProvider.CAPSOLVER,
+                true);
+        var created = service(new FakeRepository()).createProfile(definition);
+        assertEquals(CrawlerBrowserTemplate.CHROME_WINDOWS, created.browserTemplate());
+        assertTrue(created.captchaBypassEnabled());
+        assertEquals(CrawlerCaptchaBypassProvider.CAPSOLVER, created.captchaBypassProvider());
+        assertTrue(created.retainSensitiveHeadersOnCrossOriginRedirect());
+    }
+
+    @Test
+    void rejectsEnabledBypassWithoutProvider() {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new CrawlerHeaderProfileDefinition(
-                        "Unsafe",
+                        "Invalid bypass",
                         "Mozilla/5.0",
                         null,
                         null,
-                        Map.of("Authorization", "secret"),
+                        Map.of(),
+                        CrawlerBrowserTemplate.NONE,
+                        false,
+                        Set.of(),
+                        true,
+                        CrawlerCaptchaBypassProvider.NONE,
                         true));
     }
 
@@ -103,10 +149,15 @@ class CrawlerHeaderProfileServiceTest {
     private static CrawlerHeaderProfileDefinition definition(String name, boolean enabled) {
         return new CrawlerHeaderProfileDefinition(
                 name,
-                "FinBot/2.1 (contact: test@example.com)",
-                "application/json",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "text/html",
                 "zh-CN,en;q=0.8",
-                Map.of("Cache-Control", "no-cache"),
+                Map.of("Cache-Control", "no-cache", "X-Forwarded-For", "198.51.100.1"),
+                CrawlerBrowserTemplate.CHROME_WINDOWS,
+                false,
+                Set.of(),
+                false,
+                CrawlerCaptchaBypassProvider.NONE,
                 enabled);
     }
 

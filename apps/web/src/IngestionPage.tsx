@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from './api';
 import { SecretTextField } from './SecretTextField';
-import type { AiModel, AiProvider, ConfigurationSnapshot, CrawlerHeaderProfile, CrawlerHeaderProfileMutation, EvidenceDocument, IngestionWorkspace, ReasoningEffort, SourceHealth, SourceMutation, SourceRecord, TaskRecord } from './types';
+import type { AiModel, AiProvider, ConfigurationSnapshot, CrawlerBrowserTemplate, CrawlerCaptchaBypassProvider, CrawlerHeaderProfile, CrawlerHeaderProfileMutation, EvidenceDocument, IngestionWorkspace, ReasoningEffort, SourceHealth, SourceMutation, SourceRecord, TaskRecord } from './types';
 import { EmptyBlock, ErrorBlock, LoadingBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
 
 const SOURCE_TEST_POLL_INTERVAL_MILLISECONDS = 2_000;
@@ -208,7 +208,7 @@ export function IngestionPage() {
         {sourceHealth.latestErrorCode && <Typography variant="caption" color="error">{sourceHealth.latestErrorCode}{sourceHealth.safeMessage ? `：${sourceHealth.safeMessage}` : ''}</Typography>}
       </Stack>
     </Alert>}
-    <Box><SectionTitle title={`爬虫请求头配置（${headerProfiles.length}）`} action={<Button startIcon={<AddIcon />} onClick={() => setHeaderEditor('new')}>新增配置</Button>} /><Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>配置</TableCell><TableCell>User-Agent</TableCell><TableCell>语言 / 自定义头</TableCell><TableCell>使用中</TableCell><TableCell>状态</TableCell><TableCell align="right">操作</TableCell></TableRow></TableHead><TableBody>{headerProfiles.map((profile) => <TableRow key={profile.profileId}><TableCell><Typography fontWeight={700}>{profile.displayName}</Typography><Typography variant="caption" color="text.secondary">{profile.profileId} · v{profile.version}</Typography></TableCell><TableCell sx={{ maxWidth: 320, overflowWrap: 'anywhere' }}>{profile.userAgent}</TableCell><TableCell>{profile.acceptLanguage || '默认语言'} · {Object.keys(profile.additionalHeaders).length} 个附加头</TableCell><TableCell>{profile.usageCount} 个信源</TableCell><TableCell><Chip size="small" color={profile.enabled ? 'success' : 'default'} label={profile.enabled ? '已启用' : '已停用'} /></TableCell><TableCell align="right" sx={{ whiteSpace: 'nowrap' }}><Tooltip title="编辑请求头配置"><span><IconButton size="small" disabled={busy} onClick={() => setHeaderEditor(profile)}><EditOutlinedIcon fontSize="small" /></IconButton></span></Tooltip><Tooltip title={profile.usageCount > 0 ? '请先解绑使用中的信源' : '删除请求头配置'}><span><IconButton size="small" color="error" disabled={busy || profile.usageCount > 0 || profile.profileId === 'header_default'} onClick={() => void deleteHeaderProfile(profile)}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell></TableRow>)}</TableBody></Table>{headerProfiles.length === 0 && <EmptyBlock>尚无请求头配置</EmptyBlock>}</Paper></Box>
+    <Box><SectionTitle title={`爬虫请求头配置（${headerProfiles.length}）`} action={<Button startIcon={<AddIcon />} onClick={() => setHeaderEditor('new')}>新增配置</Button>} /><Paper variant="outlined" sx={{ overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>配置</TableCell><TableCell>User-Agent / 模板</TableCell><TableCell>伪装 / 绕过</TableCell><TableCell>使用中</TableCell><TableCell>状态</TableCell><TableCell align="right">操作</TableCell></TableRow></TableHead><TableBody>{headerProfiles.map((profile) => <TableRow key={profile.profileId}><TableCell><Typography fontWeight={700}>{profile.displayName}</Typography><Typography variant="caption" color="text.secondary">{profile.profileId} · v{profile.version}</Typography></TableCell><TableCell sx={{ maxWidth: 320, overflowWrap: 'anywhere' }}><Typography variant="body2">{profile.userAgent}</Typography><Typography variant="caption" color="text.secondary">{profile.browserTemplate} · {Object.keys(profile.additionalHeaders).length} 个附加头</Typography></TableCell><TableCell><Typography variant="caption" display="block">跨域保留：{profile.retainSensitiveHeadersOnCrossOriginRedirect ? '全部敏感头' : (profile.crossOriginRetainHeaders?.length ? profile.crossOriginRetainHeaders.join(', ') : '默认剥离')}</Typography><Typography variant="caption" display="block">CAPTCHA：{profile.captchaBypassEnabled ? profile.captchaBypassProvider : '关闭'}</Typography></TableCell><TableCell>{profile.usageCount} 个信源</TableCell><TableCell><Chip size="small" color={profile.enabled ? 'success' : 'default'} label={profile.enabled ? '已启用' : '已停用'} /></TableCell><TableCell align="right" sx={{ whiteSpace: 'nowrap' }}><Tooltip title="编辑请求头配置"><span><IconButton size="small" disabled={busy} onClick={() => setHeaderEditor(profile)}><EditOutlinedIcon fontSize="small" /></IconButton></span></Tooltip><Tooltip title={profile.usageCount > 0 ? '请先解绑使用中的信源' : '删除请求头配置'}><span><IconButton size="small" color="error" disabled={busy || profile.usageCount > 0 || profile.profileId === 'header_default'} onClick={() => void deleteHeaderProfile(profile)}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell></TableRow>)}</TableBody></Table>{headerProfiles.length === 0 && <EmptyBlock>尚无请求头配置</EmptyBlock>}</Paper></Box>
     {selectedSource?.credentialSupported && <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Box sx={{ minWidth: { md: 240 } }}><Typography fontWeight={700}>{selectedSource.displayName}凭据</Typography><Typography variant="caption" color="text.secondary">{sourceCredentialLabel(selectedSource.credentialSource)}{selectedSource.credentialFingerprint ? ` · 指纹 ${selectedSource.credentialFingerprint}` : ''}</Typography></Box><SecretTextField fullWidth autoComplete="new-password" label="新 API Key" value={credentialValue} onChange={(event) => setCredentialValue(event.target.value)} helperText="保存后下一次采集立即使用；旧值不会回显" /><Button disabled={busy || credentialValue.trim().length < 8} onClick={() => void putSourceCredential(selectedSource)}>设置凭据</Button><Button color="error" disabled={busy || selectedSource.credentialSource !== 'DATABASE_OVERRIDE'} onClick={() => void clearSourceCredential(selectedSource)}>清除热配置</Button></Stack></Paper>}
     <Box><SectionTitle title={`信息源状态（${filteredSources.length}/${workspace.sources.length}）`} action={<Button startIcon={<AddIcon />} onClick={() => setEditorSource('new')}>新增信源</Button>} />
       <Paper variant="outlined" sx={{ p: 1.5, mb: 1 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25}>
@@ -291,39 +291,79 @@ function SourceEditorDialog({ open, source, providers, models, headerProfiles, b
   </Box></DialogContent><DialogActions><Button onClick={onClose} disabled={busy}>取消</Button><Button variant="contained" disabled={busy || !sourceDraftValid(draft)} onClick={() => void onSave(draft)}>保存</Button></DialogActions></Dialog>;
 }
 
+const BROWSER_TEMPLATES: CrawlerBrowserTemplate[] = ['NONE', 'CHROME_WINDOWS', 'CHROME_MAC', 'FIREFOX_WINDOWS', 'EDGE_WINDOWS', 'CUSTOM'];
+const CAPTCHA_PROVIDERS: CrawlerCaptchaBypassProvider[] = ['NONE', 'CAPSOLVER', 'TWOCAPTCHA', 'FIRECRAWL_BROWSER', 'BROWSER_WORKER'];
+const CHROME_WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const DEFAULT_HEADER_PROFILE: CrawlerHeaderProfileMutation = {
   displayName: '',
-  userAgent: 'FinBot/2.0 (contact: finbot@omnnu.xyz)',
+  userAgent: CHROME_WINDOWS_UA,
   accept: null,
   acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8',
   additionalHeaders: {},
+  browserTemplate: 'CHROME_WINDOWS',
+  retainSensitiveHeadersOnCrossOriginRedirect: false,
+  crossOriginRetainHeaders: [],
+  captchaBypassEnabled: false,
+  captchaBypassProvider: 'NONE',
   enabled: true,
 };
 
 function CrawlerHeaderProfileDialog({ open, profile, busy, onClose, onSave }: { open: boolean; profile: CrawlerHeaderProfile | null; busy: boolean; onClose: () => void; onSave: (profile: CrawlerHeaderProfileMutation) => Promise<void> }) {
   const [draft, setDraft] = useState<CrawlerHeaderProfileMutation>(DEFAULT_HEADER_PROFILE);
   const [additionalHeadersText, setAdditionalHeadersText] = useState('');
+  const [retainHeadersText, setRetainHeadersText] = useState('');
   useEffect(() => {
     if (!open) return;
     const next = profile ? headerProfileMutation(profile) : DEFAULT_HEADER_PROFILE;
-    setDraft(next);
+    setDraft({
+      ...next,
+      browserTemplate: next.browserTemplate || 'NONE',
+      crossOriginRetainHeaders: next.crossOriginRetainHeaders || [],
+      captchaBypassProvider: next.captchaBypassProvider || 'NONE',
+      retainSensitiveHeadersOnCrossOriginRedirect: Boolean(next.retainSensitiveHeadersOnCrossOriginRedirect),
+      captchaBypassEnabled: Boolean(next.captchaBypassEnabled),
+    });
     setAdditionalHeadersText(Object.entries(next.additionalHeaders).map(([name, value]) => `${name}: ${value}`).join('\n'));
+    setRetainHeadersText((next.crossOriginRetainHeaders || []).join('\n'));
   }, [open, profile]);
   const parsedHeaders = parseAdditionalHeaders(additionalHeadersText);
+  const retainHeaders = splitLines(retainHeadersText);
   const valid = Boolean(draft.displayName.trim()
-    && draft.userAgent.startsWith('FinBot/')
-    && (draft.userAgent.includes('contact:') || draft.userAgent.includes('+http'))
-    && parsedHeaders);
-  const save = () => parsedHeaders && onSave({ ...draft, additionalHeaders: parsedHeaders });
+    && draft.userAgent.trim()
+    && parsedHeaders
+    && (!draft.captchaBypassEnabled || draft.captchaBypassProvider !== 'NONE'));
+  const applyTemplate = (template: CrawlerBrowserTemplate) => {
+    setDraft((current) => ({
+      ...current,
+      browserTemplate: template,
+      userAgent: template === 'CHROME_WINDOWS' || template === 'NONE' ? (template === 'CHROME_WINDOWS' ? CHROME_WINDOWS_UA : current.userAgent) : current.userAgent,
+    }));
+  };
+  const save = () => parsedHeaders && onSave({
+    ...draft,
+    additionalHeaders: parsedHeaders,
+    crossOriginRetainHeaders: retainHeaders,
+    captchaBypassProvider: draft.captchaBypassEnabled ? draft.captchaBypassProvider : 'NONE',
+  });
   return <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="md" fullWidth><DialogTitle>{profile ? '编辑爬虫请求头配置' : '新增爬虫请求头配置'}</DialogTitle><DialogContent dividers><Stack spacing={1.5} sx={{ pt: .5 }}>
     {profile && profile.usageCount > 0 && <Alert severity="warning">本次保存会热更新 {profile.usageCount} 个已绑定信息源；停用前必须先解绑。</Alert>}
+    <Alert severity="info">支持完整浏览器伪装（Sec-* / X-Forwarded-* / Cookie / Authorization 等）、C1 挑战分类、C2 Playwright 浏览器 worker（BROWSER_WORKER）与 C3 外部求解器。C2 走集群内 finbot-browser-worker；CapSolver/2Captcha 用 FINBOT_CAPSOLVER_API_KEY / FINBOT_TWOCAPTCHA_API_KEY。</Alert>
     <TextField required label="配置名称" value={draft.displayName} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} inputProps={{ maxLength: 120 }} />
-    <TextField required label="User-Agent" value={draft.userAgent} onChange={(event) => setDraft((current) => ({ ...current, userAgent: event.target.value }))} inputProps={{ maxLength: 500 }} error={Boolean(draft.userAgent) && (!draft.userAgent.startsWith('FinBot/') || (!draft.userAgent.includes('contact:') && !draft.userAgent.includes('+http')))} helperText="必须以 FinBot/ 开头，并包含 contact: 或项目 URL" />
+    <TextField select label="浏览器身份模板" value={draft.browserTemplate} onChange={(event) => applyTemplate(event.target.value as CrawlerBrowserTemplate)} helperText="模板会补齐 Sec-CH-UA / Sec-Fetch-* 等客户端提示头；自定义附加头优先">
+      {BROWSER_TEMPLATES.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+    </TextField>
+    <TextField required label="User-Agent" value={draft.userAgent} onChange={(event) => setDraft((current) => ({ ...current, userAgent: event.target.value }))} inputProps={{ maxLength: 500 }} helperText="可填写任意浏览器或爬虫 UA" />
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
       <TextField label="Accept 覆盖" value={draft.accept || ''} onChange={(event) => setDraft((current) => ({ ...current, accept: event.target.value || null }))} inputProps={{ maxLength: 2048 }} />
       <TextField label="Accept-Language" value={draft.acceptLanguage || ''} onChange={(event) => setDraft((current) => ({ ...current, acceptLanguage: event.target.value || null }))} inputProps={{ maxLength: 500 }} />
     </Box>
-    <TextField label="安全附加请求头（每行 Name: Value）" value={additionalHeadersText} onChange={(event) => setAdditionalHeadersText(event.target.value)} multiline minRows={4} error={parsedHeaders === null} />
+    <TextField label="附加请求头（每行 Name: Value）" value={additionalHeadersText} onChange={(event) => setAdditionalHeadersText(event.target.value)} multiline minRows={5} error={parsedHeaders === null} helperText="可写 X-Forwarded-For、Sec-*、Cookie、Authorization、Origin、Referer、Host 等；禁止 Content-Length / Transfer-Encoding" />
+    <FormControlLabel control={<Switch checked={draft.retainSensitiveHeadersOnCrossOriginRedirect} onChange={(event) => setDraft((current) => ({ ...current, retainSensitiveHeadersOnCrossOriginRedirect: event.target.checked }))} />} label="跨域重定向时保留全部敏感头（Authorization / Cookie / Origin / Referer / Token）" />
+    <TextField label="跨域重定向白名单头（每行一个，仅在未开启“全部保留”时生效）" value={retainHeadersText} onChange={(event) => setRetainHeadersText(event.target.value)} multiline minRows={2} />
+    <FormControlLabel control={<Switch checked={draft.captchaBypassEnabled} onChange={(event) => setDraft((current) => ({ ...current, captchaBypassEnabled: event.target.checked, captchaBypassProvider: event.target.checked && current.captchaBypassProvider === 'NONE' ? 'CAPSOLVER' : current.captchaBypassProvider }))} />} label="启用 CAPTCHA / WAF 自动绕过（C3）" />
+    <TextField select label="绕过提供方" value={draft.captchaBypassProvider} disabled={!draft.captchaBypassEnabled} onChange={(event) => setDraft((current) => ({ ...current, captchaBypassProvider: event.target.value as CrawlerCaptchaBypassProvider }))} helperText="BROWSER_WORKER=集群内 Playwright(C2)；CapSolver/2Captcha=外部 API(C3)；FIRECRAWL_BROWSER=Firecrawl 渲染">
+      {CAPTCHA_PROVIDERS.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+    </TextField>
     <FormControlLabel control={<Switch checked={draft.enabled} disabled={Boolean(profile?.usageCount) || profile?.profileId === 'header_default'} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} />} label={profile?.profileId === 'header_default' ? '系统默认必须启用' : '启用配置'} />
   </Stack></DialogContent><DialogActions><Button onClick={onClose} disabled={busy}>取消</Button><Button variant="contained" disabled={busy || !valid} onClick={() => void save()}>保存并热更新</Button></DialogActions></Dialog>;
 }

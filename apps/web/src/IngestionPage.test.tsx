@@ -153,8 +153,10 @@ beforeEach(() => {
   apiMock.crawlerHeaderProfiles.mockResolvedValue([{
     profileId: 'header_default', displayName: 'FinBot 默认爬虫请求头',
     userAgent: 'FinBot/2.0 (contact: finbot@omnnu.xyz)', accept: null,
-    acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8', additionalHeaders: {}, enabled: true,
-    usageCount: 1, version: 0, updatedAt: '2026-07-16T14:00:00Z',
+    acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8', additionalHeaders: {},
+    browserTemplate: 'NONE', retainSensitiveHeadersOnCrossOriginRedirect: false,
+    crossOriginRetainHeaders: [], captchaBypassEnabled: false, captchaBypassProvider: 'NONE',
+    enabled: true, usageCount: 1, version: 0, updatedAt: '2026-07-16T14:00:00Z',
   }]);
   apiMock.documents.mockResolvedValue([]);
   apiMock.sourceHealth.mockResolvedValue({
@@ -168,9 +170,11 @@ beforeEach(() => {
   apiMock.createSource.mockResolvedValue(createdSource);
   apiMock.createCrawlerHeaderProfile.mockResolvedValue({
     profileId: 'header_test01', displayName: '新闻请求头',
-    userAgent: 'FinBot/2.0 (contact: finbot@omnnu.xyz)', accept: null,
-    acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8', additionalHeaders: {}, enabled: true,
-    usageCount: 0, version: 0, updatedAt: '2026-07-16T14:00:00Z',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    accept: null, acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8', additionalHeaders: {},
+    browserTemplate: 'CHROME_WINDOWS', retainSensitiveHeadersOnCrossOriginRedirect: false,
+    crossOriginRetainHeaders: [], captchaBypassEnabled: false, captchaBypassProvider: 'NONE',
+    enabled: true, usageCount: 0, version: 0, updatedAt: '2026-07-16T14:00:00Z',
   });
   apiMock.testSource.mockResolvedValue(sourceTestTask);
   apiMock.task.mockResolvedValue({
@@ -239,8 +243,10 @@ it('creates a reusable crawler header profile from the ingestion control plane',
 
   await waitFor(() => expect(apiMock.createCrawlerHeaderProfile).toHaveBeenCalledWith(expect.objectContaining({
     displayName: '新闻请求头',
-    userAgent: 'FinBot/2.0 (contact: finbot@omnnu.xyz)',
-    acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8',
+    browserTemplate: 'CHROME_WINDOWS',
+    captchaBypassEnabled: false,
+    captchaBypassProvider: 'NONE',
+    retainSensitiveHeadersOnCrossOriginRedirect: false,
     additionalHeaders: {},
     enabled: true,
   })));

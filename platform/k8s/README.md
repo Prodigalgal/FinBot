@@ -55,6 +55,7 @@ database bootstrap 与 schema migration 是 Argo CD Hook，成功后通过 `Hook
 - `speedproxy/finbot-backend:sha-<commit>`
 - `speedproxy/finbot-quant:sha-<commit>`
 - `speedproxy/finbot-web:sha-<commit>`
+- `speedproxy/finbot-browser-worker:sha-<commit>`
 - `speedproxy/finbot-proxy:sha-<commit>`
 
 Core Actions 同步本目录并更新 Backend、Quant、Web 三个 tag；Proxy Actions 只更新独立代理镜像 tag。两个流水线通过 GitOps concurrency 串行写入私有仓库 `Prodigalgal/ircs-prod-config/finbot`。ArgoCD Application `finbot` 从 `finbot/oracle` 自动同步；CI 不持有 kubeconfig，也不直接写集群。
@@ -68,6 +69,7 @@ kubectl -n finbot get deploy,statefulset,pod,svc,pvc,job -o wide
 kubectl -n finbot rollout status deployment/finbot-backend --timeout=10m
 kubectl -n finbot rollout status deployment/finbot-quant --timeout=5m
 kubectl -n finbot rollout status deployment/finbot-web --timeout=5m
+kubectl -n finbot rollout status deployment/finbot-browser-worker --timeout=10m
 kubectl -n finbot rollout status deployment/finbot-firecrawl-proxy --timeout=5m
 kubectl -n finbot rollout status deployment/finbot-web-crawl-proxy --timeout=5m
 kubectl -n finbot rollout status deployment/finbot-exchange-proxy --timeout=5m

@@ -11,6 +11,14 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class FinBotApplication {
     public static void main(String[] args) {
+        // Allow camouflage profiles to set Host / Connection / hop-by-hop headers when configured.
+        // Must be set before jdk.internal.net.http.common.Utils loads RestrictedHeaders.
+        var existing = System.getProperty("jdk.httpclient.allowRestrictedHeaders");
+        if (existing == null || existing.isBlank()) {
+            System.setProperty(
+                    "jdk.httpclient.allowRestrictedHeaders",
+                    "host,connection,expect,upgrade,via,te,trailer");
+        }
         SpringApplication.run(FinBotApplication.class, args);
     }
 }

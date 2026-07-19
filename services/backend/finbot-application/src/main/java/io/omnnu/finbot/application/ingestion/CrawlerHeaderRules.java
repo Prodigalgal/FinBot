@@ -1,6 +1,9 @@
 package io.omnnu.finbot.application.ingestion;
 
+import io.omnnu.finbot.domain.ingestion.CrawlerBrowserTemplate;
+import io.omnnu.finbot.domain.ingestion.CrawlerCaptchaBypassProvider;
 import io.omnnu.finbot.domain.ingestion.CrawlerHeaderProfileId;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -8,38 +11,24 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 
+/**
+ * Validates crawler header profiles for camouflage-capable requests.
+ *
+ * <p>Profiles may carry full browser identities, client hints, forwarding headers, session cookies
+ * and authorization tokens. Framing-managed headers ({@code content-length},
+ * {@code transfer-encoding}) remain rejected because the HTTP client owns those values.
+ */
 public final class CrawlerHeaderRules {
     public static final CrawlerHeaderProfileId DEFAULT_PROFILE_ID =
             new CrawlerHeaderProfileId("header_default");
-    private static final int MAXIMUM_ADDITIONAL_HEADERS = 16;
-    private static final int MAXIMUM_TOTAL_HEADER_LENGTH = 8_192;
+    private static final int MAXIMUM_ADDITIONAL_HEADERS = 48;
+    private static final int MAXIMUM_TOTAL_HEADER_LENGTH = 24_576;
+    private static final int MAXIMUM_RETAIN_HEADERS = 32;
     private static final Pattern HEADER_NAME = Pattern.compile("[!#$%&'*+.^_`|~0-9A-Za-z-]+");
-    private static final Set<String> RESERVED_OR_SENSITIVE_HEADERS = Set.of(
-            "accept",
-            "accept-language",
-            "authorization",
-            "connection",
+    /** Headers the Java HttpClient / framing layer must own. */
+    private static final Set<String> FRAMING_MANAGED_HEADERS = Set.of(
             "content-length",
-            "content-type",
-            "cookie",
-            "forwarded",
-            "host",
-            "origin",
-            "proxy-authorization",
-            "proxy-connection",
-            "referer",
-            "te",
-            "trailer",
-            "transfer-encoding",
-            "upgrade",
-            "user-agent",
-            "via",
-            "x-api-key",
-            "x-forwarded-for",
-            "x-forwarded-host",
-            "x-forwarded-proto",
-            "x-real-ip",
-            "x-subscription-token");
+            "transfer-encoding");
 
     private CrawlerHeaderRules() {
     }
@@ -49,13 +38,7 @@ public final class CrawlerHeaderRules {
     }
 
     public static String userAgent(String value) {
-        var normalized = requiredValue(value, "userAgent", 500);
-        if (!normalized.startsWith("FinBot/")
-                || !(normalized.contains("contact:") || normalized.contains("+http"))) {
-            throw new IllegalArgumentException(
-                    "Crawler User-Agent must identify FinBot and include a contact address");
-        }
-        return normalized;
+        return requiredValue(value, "userAgent", 500);
     }
 
     public static String optionalAccept(String value) {
@@ -76,18 +59,11 @@ public final class CrawlerHeaderRules {
         for (var entry : values.entrySet()) {
             var name = requiredValue(entry.getKey(), "headerName", 80);
             var lowerName = name.toLowerCase(Locale.ROOT);
-            if (!HEADER_NAME.matcher(name).matches()
-                    || RESERVED_OR_SENSITIVE_HEADERS.contains(lowerName)
-                    || lowerName.startsWith("sec-fetch-")
-                    || lowerName.startsWith("sec-ch-ua")
-                    || lowerName.contains("api-key")
-                    || lowerName.contains("apikey")
-                    || lowerName.endsWith("-token")
-                    || lowerName.endsWith("-secret")) {
+            if (!HEADER_NAME.matcher(name).matches() || FRAMING_MANAGED_HEADERS.contains(lowerName)) {
                 throw new IllegalArgumentException(
-                        "Crawler header profile contains a reserved or sensitive header");
+                        "Crawler header profile contains an invalid or framing-managed header: " + name);
             }
-            var headerValue = requiredValue(entry.getValue(), "headerValue", 2_048);
+            var headerValue = requiredValue(entry.getValue(), "headerValue", 4_096);
             totalLength += name.length() + headerValue.length();
             if (totalLength > MAXIMUM_TOTAL_HEADER_LENGTH) {
                 throw new IllegalArgumentException("Crawler header profile is too large");
@@ -98,6 +74,40 @@ public final class CrawlerHeaderRules {
             }
         }
         return Map.copyOf(normalized);
+    }
+
+    public static CrawlerBrowserTemplate browserTemplate(CrawlerBrowserTemplate value) {
+        return value == null ? CrawlerBrowserTemplate.NONE : value;
+    }
+
+    public static CrawlerCaptchaBypassProvider captchaBypassProvider(CrawlerCaptchaBypassProvider value) {
+        return value == null ? CrawlerCaptchaBypassProvider.NONE : value;
+    }
+
+    public static Set<String> crossOriginRetainHeaders(Set<String> values) {
+        Objects.requireNonNull(values, "crossOriginRetainHeaders");
+        if (values.size() > MAXIMUM_RETAIN_HEADERS) {
+            throw new IllegalArgumentException("Too many cross-origin retain headers");
+        }
+        var normalized = new LinkedHashSet<String>();
+        for (var raw : values) {
+            var name = requiredValue(raw, "crossOriginRetainHeader", 80);
+            if (!HEADER_NAME.matcher(name).matches()
+                    || FRAMING_MANAGED_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("Cross-origin retain header is invalid: " + name);
+            }
+            normalized.add(name);
+        }
+        return Set.copyOf(normalized);
+    }
+
+    public static void validateBypassConfiguration(
+            boolean captchaBypassEnabled,
+            CrawlerCaptchaBypassProvider provider) {
+        if (captchaBypassEnabled && !provider.active()) {
+            throw new IllegalArgumentException(
+                    "captchaBypassEnabled requires an active captchaBypassProvider");
+        }
     }
 
     private static String optionalValue(String value, String field, int maximumLength) {

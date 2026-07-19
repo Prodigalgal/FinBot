@@ -8,16 +8,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfile;
 import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfileRepository;
 import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfileResolver;
+import io.omnnu.finbot.domain.ingestion.CrawlerBrowserTemplate;
+import io.omnnu.finbot.domain.ingestion.CrawlerCaptchaBypassProvider;
 import io.omnnu.finbot.domain.ingestion.CrawlerHeaderProfileId;
 import io.omnnu.finbot.domain.ingestion.SourceId;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,12 +33,18 @@ public final class JdbcCrawlerHeaderProfileRepository
             profile.profile_id, profile.display_name, profile.user_agent,
             profile.accept_header, profile.accept_language,
             profile.additional_headers::text as additional_headers,
+            profile.browser_template,
+            profile.retain_sensitive_headers_on_cross_origin,
+            profile.cross_origin_retain_headers::text as cross_origin_retain_headers,
+            profile.captcha_bypass_enabled, profile.captcha_bypass_provider,
             profile.enabled, profile.version, profile.updated_at,
             (select count(*) from information_source source
               where source.crawler_header_profile_id = profile.profile_id
                 and source.deleted_at is null) as usage_count
             """;
     private static final TypeReference<Map<String, String>> HEADER_MAP = new TypeReference<>() {
+    };
+    private static final TypeReference<List<String>> HEADER_LIST = new TypeReference<>() {
     };
 
     private final JdbcClient jdbcClient;
@@ -89,10 +99,14 @@ public final class JdbcCrawlerHeaderProfileRepository
         var changed = jdbcClient.sql("""
                 insert into crawler_header_profile (
                   profile_id, display_name, user_agent, accept_header, accept_language,
-                  additional_headers, enabled, version, created_at, updated_at
+                  additional_headers, browser_template, retain_sensitive_headers_on_cross_origin,
+                  cross_origin_retain_headers, captcha_bypass_enabled, captcha_bypass_provider,
+                  enabled, version, created_at, updated_at
                 ) values (
                   :profileId, :displayName, :userAgent, :acceptHeader, :acceptLanguage,
-                  cast(:additionalHeaders as jsonb), :enabled, 0, :createdAt, :createdAt
+                  cast(:additionalHeaders as jsonb), :browserTemplate, :retainSensitive,
+                  cast(:crossOriginRetain as jsonb), :captchaBypassEnabled, :captchaBypassProvider,
+                  :enabled, 0, :createdAt, :createdAt
                 ) on conflict (profile_id) do nothing
                 """)
                 .param("profileId", candidate.profileId().value())
@@ -101,6 +115,11 @@ public final class JdbcCrawlerHeaderProfileRepository
                 .param("acceptHeader", candidate.accept())
                 .param("acceptLanguage", candidate.acceptLanguage())
                 .param("additionalHeaders", json(candidate.additionalHeaders()))
+                .param("browserTemplate", candidate.browserTemplate().name())
+                .param("retainSensitive", candidate.retainSensitiveHeadersOnCrossOriginRedirect())
+                .param("crossOriginRetain", json(List.copyOf(candidate.crossOriginRetainHeaders())))
+                .param("captchaBypassEnabled", candidate.captchaBypassEnabled())
+                .param("captchaBypassProvider", candidate.captchaBypassProvider().name())
                 .param("enabled", candidate.enabled())
                 .param("createdAt", timestamp(createdAt))
                 .update();
@@ -120,6 +139,11 @@ public final class JdbcCrawlerHeaderProfileRepository
                        accept_header = :acceptHeader,
                        accept_language = :acceptLanguage,
                        additional_headers = cast(:additionalHeaders as jsonb),
+                       browser_template = :browserTemplate,
+                       retain_sensitive_headers_on_cross_origin = :retainSensitive,
+                       cross_origin_retain_headers = cast(:crossOriginRetain as jsonb),
+                       captcha_bypass_enabled = :captchaBypassEnabled,
+                       captcha_bypass_provider = :captchaBypassProvider,
                        enabled = :enabled,
                        version = version + 1,
                        updated_at = :updatedAt
@@ -138,6 +162,11 @@ public final class JdbcCrawlerHeaderProfileRepository
                 .param("acceptHeader", candidate.accept())
                 .param("acceptLanguage", candidate.acceptLanguage())
                 .param("additionalHeaders", json(candidate.additionalHeaders()))
+                .param("browserTemplate", candidate.browserTemplate().name())
+                .param("retainSensitive", candidate.retainSensitiveHeadersOnCrossOriginRedirect())
+                .param("crossOriginRetain", json(List.copyOf(candidate.crossOriginRetainHeaders())))
+                .param("captchaBypassEnabled", candidate.captchaBypassEnabled())
+                .param("captchaBypassProvider", candidate.captchaBypassProvider().name())
                 .param("enabled", candidate.enabled())
                 .param("expectedVersion", expectedVersion)
                 .param("updatedAt", timestamp(updatedAt))
@@ -179,6 +208,11 @@ public final class JdbcCrawlerHeaderProfileRepository
                 resultSet.getString("accept_header"),
                 resultSet.getString("accept_language"),
                 headers(resultSet.getString("additional_headers")),
+                CrawlerBrowserTemplate.from(resultSet.getString("browser_template")),
+                resultSet.getBoolean("retain_sensitive_headers_on_cross_origin"),
+                retainHeaders(resultSet.getString("cross_origin_retain_headers")),
+                resultSet.getBoolean("captcha_bypass_enabled"),
+                CrawlerCaptchaBypassProvider.from(resultSet.getString("captcha_bypass_provider")),
                 resultSet.getBoolean("enabled"),
                 resultSet.getLong("usage_count"),
                 resultSet.getLong("version"),
@@ -190,6 +224,15 @@ public final class JdbcCrawlerHeaderProfileRepository
             return objectMapper.readValue(value, HEADER_MAP);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to decode crawler header profile", exception);
+        }
+    }
+
+    private Set<String> retainHeaders(String value) {
+        try {
+            var list = objectMapper.readValue(value, HEADER_LIST);
+            return Set.copyOf(new LinkedHashSet<>(list));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to decode cross-origin retain headers", exception);
         }
     }
 

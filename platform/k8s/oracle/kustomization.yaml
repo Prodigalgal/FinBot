@@ -16,3 +16,6 @@ images:
   - name: ghcr.io/example/finbot-proxy
     newName: docker.io/speedproxy/finbot-proxy
     newTag: latest
+  - name: ghcr.io/example/finbot-browser-worker
+    newName: docker.io/speedproxy/finbot-browser-worker
+    newTag: latest
