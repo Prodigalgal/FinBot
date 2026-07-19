@@ -679,6 +679,22 @@ class LiquibasePostgresIntegrationTest {
                                and table_name in (
                                  'information_source_ai_web_search','ai_web_search_invocation'
                                )) as ai_web_search_table_count
+                           , (select count(*) from information_source
+                              where source_id = 'source_searxng_public_pool'
+                                and source_mode = 'SEARCH_DISCOVERY'
+                                and source_tier = 'T4'
+                                and category = 'broad_news_discovery'
+                                and provider = 'searxng_public_pool'
+                                and trust_weight = 0.42
+                                and poll_interval_seconds = 21600
+                                and priority = 'P3'
+                                and endpoint_base_url = 'https://searx.space/data/instances.json'
+                                and credential_env is null
+                                and proxy_route_type = 'WEB_CRAWL'
+                                and maximum_results = 20
+                                and maximum_scrape_targets = 0
+                                and enabled = true
+                                and deleted_at is null) as public_searxng_source_ready
                         """)) {
             try (var result = statement.executeQuery()) {
                 result.next();
@@ -692,8 +708,8 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(6, result.getInt("workflow_version_count"));
                 assertEquals("workflowversion_standard_v6", result.getString("published_version_id"));
                 assertEquals("multi_strategy_ensemble", result.getString("published_quant_operation"));
-                assertEquals(61, result.getInt("source_count"));
-                assertEquals(56, result.getInt("enabled_source_count"));
+                assertEquals(62, result.getInt("source_count"));
+                assertEquals(57, result.getInt("enabled_source_count"));
                 assertEquals(5, result.getInt("proxy_route_count"));
                 assertEquals(5, result.getInt("watchlist_item_count"));
                 assertFalse(result.getBoolean("gate_proxy_required"));
@@ -740,12 +756,12 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(3, result.getInt("experiment_assignment_column_count"));
                 assertEquals(1, result.getInt("network_idempotency_column_count"));
                 assertEquals(1, result.getInt("activity_view_count"));
-                assertEquals("v3", result.getString("source_catalog_version"));
+                assertEquals("v4", result.getString("source_catalog_version"));
                 assertEquals(
-                        "e1abe028cf7e97ac51b40b2485a37a4bbcf48d969ad31143b379bcf537abed22",
+                        "24a5f8c50a624f60789b1c8dbe17bac0048017695b931750e6a4e5251276ed46",
                         result.getString("source_catalog_hash"));
-                assertEquals(61, result.getInt("source_catalog_manifest_count"));
-                assertEquals(3, result.getInt("source_catalog_history_count"));
+                assertEquals(62, result.getInt("source_catalog_manifest_count"));
+                assertEquals(4, result.getInt("source_catalog_history_count"));
                 assertEquals(5, result.getInt("free_structured_source_count"));
                 assertEquals(1, result.getInt("sec_source_ready"));
                 assertEquals(1, result.getInt("gdelt_source_ready"));
@@ -765,6 +781,7 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(8, result.getInt("exchange_news_source_count"));
                 assertEquals("gate", result.getString("gate_source_provider"));
                 assertEquals(2, result.getInt("ai_web_search_table_count"));
+                assertEquals(1, result.getInt("public_searxng_source_ready"));
             }
         }
     }
@@ -820,7 +837,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(50, result.getInt("changeset_count"));
+                    assertEquals(51, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

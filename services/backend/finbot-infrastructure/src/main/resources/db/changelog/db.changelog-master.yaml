@@ -95,3 +95,5 @@ databaseChangeLog:
       file: db/changelog/releases/047-searxng-engine-shortcut-routing.sql
   - include:
       file: db/changelog/releases/048-searxng-resilient-engine-routing.sql
+  - include:
+      file: db/changelog/releases/049-public-searxng-instance-pool.sql
