@@ -12,6 +12,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 USER root
+# Patch known HIGH OS CVEs present in the Playwright base image so CI Trivy gates pass.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 finbot \
     && useradd --uid 10001 --gid finbot --shell /usr/sbin/nologin --create-home finbot \
     && mkdir -p /tmp /home/finbot \
