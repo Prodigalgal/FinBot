@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+from finbot_proxy.engine import ProxyEngine
 from finbot_proxy.models import Subscription
 from finbot_proxy.round_robin import NodeAssignment, RoundRobinTcpProxy
-from finbot_proxy.singbox import build_configuration
 from finbot_proxy.subscription import load_subscription, parse_subscription, select_nodes
 from finbot_proxy.target_probe import TargetProbeConfiguration, probe_targets
 
@@ -38,6 +38,8 @@ class RuntimeConfiguration:
     runtime_directory: Path
     allow_insecure_tls: bool
     target_probe: TargetProbeConfiguration | None
+    engine: ProxyEngine = ProxyEngine.SING_BOX
+    xray_path: Path = Path("/usr/local/bin/xray")
     enabled: bool = True
 
     @classmethod
@@ -77,6 +79,8 @@ class RuntimeConfiguration:
             runtime_directory=Path(os.getenv("PROXY_RUNTIME_DIRECTORY", "/tmp/finbot-proxy")),
             allow_insecure_tls=_boolean("PROXY_ALLOW_INSECURE_TLS", False),
             target_probe=_target_probe_from_environment(),
+            engine=ProxyEngine.parse(os.getenv("PROXY_ENGINE", "SING_BOX")),
+            xray_path=Path(os.getenv("XRAY_PATH", "/usr/local/bin/xray")),
             enabled=enabled,
         )
 
@@ -96,6 +100,7 @@ class RuntimeConfiguration:
         allow_insecure_tls = payload.get("allowInsecureTls")
         if not isinstance(allow_insecure_tls, bool):
             raise ValueError("allowInsecureTls must be a boolean")
+        engine = ProxyEngine.parse(payload.get("engine", self.engine.value))
         return RuntimeConfiguration(
             subscription_url=subscription_url,
             inline_nodes=inline_nodes,
@@ -110,6 +115,8 @@ class RuntimeConfiguration:
             runtime_directory=self.runtime_directory,
             allow_insecure_tls=allow_insecure_tls,
             target_probe=self.target_probe,
+            engine=engine,
+            xray_path=self.xray_path,
             enabled=enabled,
         )
 
@@ -135,6 +142,7 @@ class GatewayState:
         self._rejected_insecure_node_count = 0
         self._enabled_insecure_node_count = 0
         self._allow_insecure_tls = False
+        self._engine = ProxyEngine.SING_BOX
         self._enabled = True
         self._generation = 0
         self._refresh_attempt = 0
@@ -157,6 +165,7 @@ class GatewayState:
         validation_target: str | None,
         eligible_node_count: int | None = None,
         selection_offset: int = 0,
+        engine: ProxyEngine = ProxyEngine.SING_BOX,
     ) -> None:
         with self._lock:
             self._service_ready = True
@@ -179,6 +188,7 @@ class GatewayState:
             self._rejected_insecure_node_count = rejected_insecure_node_count
             self._enabled_insecure_node_count = enabled_insecure_node_count
             self._allow_insecure_tls = allow_insecure_tls
+            self._engine = engine
             self._generation += 1
             self._refresh_attempt += 1
             self._last_refresh_epoch_seconds = time.time()
@@ -187,16 +197,23 @@ class GatewayState:
             )
             self._refresh_condition.notify_all()
 
-    def failed_refresh(self, error: Exception, *, process_alive: bool) -> None:
+    def failed_refresh(
+        self,
+        error: Exception,
+        *,
+        process_alive: bool,
+        engine: ProxyEngine = ProxyEngine.SING_BOX,
+    ) -> None:
         with self._lock:
             self._service_ready = process_alive
             self._ready = self._ready and process_alive
             self._refresh_attempt += 1
             self._last_refresh_epoch_seconds = time.time()
             self._last_error = _safe_error(error)
+            self._engine = engine
             self._refresh_condition.notify_all()
 
-    def disabled(self) -> None:
+    def disabled(self, engine: ProxyEngine = ProxyEngine.SING_BOX) -> None:
         with self._lock:
             self._service_ready = True
             self._ready = False
@@ -211,6 +228,7 @@ class GatewayState:
             self._validation_target = None
             self._last_validation_epoch_seconds = None
             self._last_error = None
+            self._engine = engine
             self._generation += 1
             self._refresh_attempt += 1
             self._last_refresh_epoch_seconds = time.time()
@@ -261,6 +279,7 @@ class GatewayState:
             "rejectedInsecureNodeCount": self._rejected_insecure_node_count,
             "enabledInsecureNodeCount": self._enabled_insecure_node_count,
             "allowInsecureTls": self._allow_insecure_tls,
+            "engine": self._engine.value,
             "generation": self._generation,
             "refreshAttempt": self._refresh_attempt,
             "lastRefreshEpochSeconds": self._last_refresh_epoch_seconds,
@@ -280,6 +299,7 @@ class ProxyGateway:
         self._configuration_lock = threading.Lock()
         self._refresh_lock = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
+        self._active_engine: ProxyEngine | None = None
         self._configuration_hash: str | None = None
         self._selection_offset = secrets.randbits(31)
         self._round_robin = RoundRobinTcpProxy(
@@ -297,7 +317,11 @@ class ProxyGateway:
                     try:
                         self._refresh(configuration)
                     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
-                        self._state.failed_refresh(error, process_alive=self._process_alive())
+                        self._state.failed_refresh(
+                            error,
+                            process_alive=self._process_alive(),
+                            engine=self._active_engine or configuration.engine,
+                        )
                 self._reload_requested.wait(configuration.refresh_seconds)
                 self._reload_requested.clear()
         finally:
@@ -337,6 +361,7 @@ class ProxyGateway:
             "maximumNodes": configuration.maximum_nodes,
             "refreshSeconds": configuration.refresh_seconds,
             "allowInsecureTls": configuration.allow_insecure_tls,
+            "engine": configuration.engine.value,
             "enabled": configuration.enabled,
             "_previousRefreshAttempt": previous_refresh_attempt,
         }
@@ -349,7 +374,7 @@ class ProxyGateway:
         if not configuration.enabled:
             self._round_robin.clear_targets()
             self._stop_process()
-            self._state.disabled()
+            self._state.disabled(configuration.engine)
             return
         subscription = self._load_nodes(configuration)
         selection = select_nodes(
@@ -362,11 +387,13 @@ class ProxyGateway:
         self._selection_offset += max(len(selection.nodes), 1)
         if not selection.nodes:
             raise RuntimeError("Proxy subscription contains no secure supported nodes")
-        generated = build_configuration(
+        generated = configuration.engine.build_configuration(
             selection.nodes,
             listen_port_start=configuration.node_port_start,
         )
-        generated_hash = hashlib.sha256(generated.encode("utf-8")).hexdigest()
+        generated_hash = hashlib.sha256(
+            (configuration.engine.value + "\0" + generated).encode("utf-8")
+        ).hexdigest()
         if generated_hash != self._configuration_hash or not self._process_alive():
             self._replace_process(generated, configuration, len(selection.nodes))
             self._configuration_hash = generated_hash
@@ -399,6 +426,7 @@ class ProxyGateway:
             validation_target=validation_target,
             eligible_node_count=selection.eligible_node_count,
             selection_offset=selection.selection_offset,
+            engine=configuration.engine,
         )
 
     def _load_nodes(self, configuration: RuntimeConfiguration) -> Subscription:
@@ -429,23 +457,28 @@ class ProxyGateway:
     ) -> None:
         runtime = configuration.runtime_directory
         runtime.mkdir(parents=True, exist_ok=True)
-        candidate = runtime / "sing-box.candidate.json"
-        active = runtime / "sing-box.json"
+        spec = configuration.engine.process_spec(
+            sing_box_path=configuration.sing_box_path,
+            xray_path=configuration.xray_path,
+            runtime_directory=runtime,
+        )
+        candidate = spec.candidate
+        active = spec.active
         candidate.write_text(generated, encoding="utf-8")
         candidate.chmod(0o600)
         checked = subprocess.run(
-            [str(configuration.sing_box_path), "check", "-c", str(candidate)],
+            list(spec.check_command),
             capture_output=True,
             timeout=20,
             check=False,
         )
         if checked.returncode != 0:
-            raise RuntimeError("sing-box rejected generated configuration")
+            raise RuntimeError(f"{spec.name} rejected generated configuration")
         candidate.replace(active)
         self._round_robin.clear_targets()
         self._stop_process()
         self._process = subprocess.Popen(
-            [str(configuration.sing_box_path), "run", "-c", str(active)],
+            list(spec.run_command),
             stdout=subprocess.DEVNULL,
             # Keep credential-free handshake failures visible in container logs.
             stderr=None,
@@ -456,16 +489,18 @@ class ProxyGateway:
         )
         while time.monotonic() < deadline:
             if self._process.poll() is not None:
-                raise RuntimeError("sing-box exited during startup")
+                raise RuntimeError(f"{spec.name} exited during startup")
             if all(_tcp_connectable("127.0.0.1", port) for port in node_ports):
+                self._active_engine = configuration.engine
                 return
             time.sleep(0.2)
         self._stop_process()
-        raise RuntimeError("sing-box proxy port did not become ready")
+        raise RuntimeError(f"{spec.name} proxy port did not become ready")
 
     def _stop_process(self) -> None:
         process = self._process
         self._process = None
+        self._active_engine = None
         if process is None or process.poll() is not None:
             self._state.process_stopped()
             return
@@ -481,8 +516,13 @@ class ProxyGateway:
         return self._process is not None and self._process.poll() is None
 
     def _validate_runtime(self, configuration: RuntimeConfiguration) -> None:
-        if not configuration.sing_box_path.is_file():
-            raise FileNotFoundError("sing-box executable is unavailable")
+        spec = configuration.engine.process_spec(
+            sing_box_path=configuration.sing_box_path,
+            xray_path=configuration.xray_path,
+            runtime_directory=configuration.runtime_directory,
+        )
+        if not spec.executable.is_file():
+            raise FileNotFoundError(f"{spec.name} executable is unavailable")
         if configuration.fetch_timeout_seconds <= 0:
             raise ValueError("PROXY_FETCH_TIMEOUT_SECONDS must be positive")
         _validate_port_ranges(

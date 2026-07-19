@@ -1,5 +1,6 @@
 package io.omnnu.finbot.application.workspace;
 
+import io.omnnu.finbot.application.network.ProxyEngine;
 import java.time.Instant;
 import java.util.List;
 
@@ -36,6 +37,7 @@ public record NetworkWorkspace(
             String gatewayId,
             String displayName,
             boolean enabled,
+            ProxyEngine engine,
             String preferredNames,
             int maximumNodes,
             int refreshSeconds,

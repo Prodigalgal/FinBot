@@ -27,14 +27,18 @@ RUN git init . \
        -o /out/sing-box ./cmd/sing-box \
     && go version -m /out/sing-box | grep -F 'vcs.modified=false'
 
+FROM ghcr.io/xtls/xray-core:26.3.27 AS xray-runtime
+
 FROM python:3.13-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    SING_BOX_PATH=/usr/local/bin/sing-box
+    SING_BOX_PATH=/usr/local/bin/sing-box \
+    XRAY_PATH=/usr/local/bin/xray
 WORKDIR /app
 
 COPY --from=sing-box-builder /out/sing-box /usr/local/bin/sing-box
+COPY --from=xray-runtime /usr/local/bin/xray /usr/local/bin/xray
 RUN groupadd --gid 10001 finbot \
     && useradd --uid 10001 --gid finbot --shell /usr/sbin/nologin --no-create-home finbot
 

@@ -236,6 +236,7 @@ export const api = {
   updateProxyGateway: (gateway: NetworkWorkspace['proxyGateways'][number]) => request<unknown>(`/api/v2/network/proxy-gateways/${encodeURIComponent(gateway.gatewayId)}`, {
     method: 'PUT',
     body: JSON.stringify({
+      engine: gateway.engine,
       preferredNames: gateway.preferredNames.split(',').map((name) => name.trim()).filter(Boolean),
       maximumNodes: gateway.maximumNodes,
       refreshSeconds: gateway.refreshSeconds,

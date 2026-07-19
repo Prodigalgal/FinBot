@@ -2,7 +2,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, Chip, FormControlLabel, Paper, Stack, Switch, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, Chip, FormControl, FormControlLabel, InputLabel, MenuItem, Paper, Select, Stack, Switch, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from './api';
@@ -155,6 +155,7 @@ export function NetworkPage() {
           </AccordionSummary>
           <AccordionDetails sx={{ px: { xs: 1.5, sm: 2 }, pb: 2 }}><Stack spacing={2}>
             {gateway.enabled && runtime && <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 0.5, md: 2 }}>
+              <Typography variant="body2">运行内核 {proxyEngineLabel(runtime.engine)}</Typography>
               <Typography variant="body2">健康节点 {runtime.healthyNodeCount}/{runtime.nodeCount}</Typography>
               <Typography variant="body2">探测目标 {runtime.validationTarget || '未配置'}</Typography>
               <Typography variant="body2">最近探测 {formatTime(runtime.lastRefreshAt)}</Typography>
@@ -162,7 +163,15 @@ export function NetworkPage() {
             </Stack>}
             {gateway.enabled && runtime && Object.keys(runtime.probeFailureCounts).length > 0 && <Typography variant="caption" color={runtime.egressReady ? 'text.secondary' : 'error'}>{Object.entries(runtime.probeFailureCounts).map(([code, count]) => `${probeFailureLabel(code)} × ${count}`).join('；')}</Typography>}
             {gateway.enabled && runtime?.error && <Typography variant="caption" color="error">{proxyRuntimeError(runtime.error)}</Typography>}
+            {draft.engine === 'XRAY' && <Alert severity="info">Xray 仅加载 VLESS 节点；节点源包含 Hysteria2 时会拒绝切换并保留失败状态。</Alert>}
             <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} alignItems={{ lg: 'center' }}>
+              <FormControl size="small" sx={{ minWidth: { lg: 150 } }}>
+                <InputLabel id={`${gateway.gatewayId}-engine-label`}>代理内核</InputLabel>
+                <Select labelId={`${gateway.gatewayId}-engine-label`} label="代理内核" value={draft.engine} onChange={(event) => updateGatewayDraft(gateway, { engine: event.target.value as Gateway['engine'] })}>
+                  <MenuItem value="SING_BOX">sing-box</MenuItem>
+                  <MenuItem value="XRAY">Xray</MenuItem>
+                </Select>
+              </FormControl>
               <TextField size="small" label="优选标签" value={draft.preferredNames} onChange={(event) => updateGatewayDraft(gateway, { preferredNames: event.target.value })} sx={{ minWidth: { lg: 240 } }} />
               <TextField size="small" label="最大节点数" type="number" value={draft.maximumNodes} inputProps={{ min: 1, max: 128 }} onChange={(event) => updateGatewayDraft(gateway, { maximumNodes: Number(event.target.value) })} sx={{ width: { lg: 140 } }} />
               <TextField size="small" label="刷新周期（秒）" type="number" value={draft.refreshSeconds} inputProps={{ min: 60, max: 86400 }} onChange={(event) => updateGatewayDraft(gateway, { refreshSeconds: Number(event.target.value) })} sx={{ width: { lg: 170 } }} />
@@ -188,7 +197,7 @@ export function NetworkPage() {
 
 type NetworkSection = 'gateways' | 'routes' | 'history';
 type Gateway = NetworkWorkspace['proxyGateways'][number];
-type GatewayDraft = Pick<Gateway, 'preferredNames' | 'maximumNodes' | 'refreshSeconds' | 'allowInsecureTls' | 'enabled'>;
+type GatewayDraft = Pick<Gateway, 'engine' | 'preferredNames' | 'maximumNodes' | 'refreshSeconds' | 'allowInsecureTls' | 'enabled'>;
 
 function GatewaySecretEditor({ gateway, secretName, label, values, busy, onChange, onSave, onClear }: {
   gateway: Gateway;
@@ -213,7 +222,7 @@ function GatewaySecretEditor({ gateway, secretName, label, values, busy, onChang
 }
 
 function toGatewayDraft(gateway: Gateway): GatewayDraft {
-  return { preferredNames: gateway.preferredNames, maximumNodes: gateway.maximumNodes, refreshSeconds: gateway.refreshSeconds, allowInsecureTls: gateway.allowInsecureTls, enabled: gateway.enabled };
+  return { engine: gateway.engine, preferredNames: gateway.preferredNames, maximumNodes: gateway.maximumNodes, refreshSeconds: gateway.refreshSeconds, allowInsecureTls: gateway.allowInsecureTls, enabled: gateway.enabled };
 }
 
 function gatewaySecretKey(gatewayId: string, secretName: string): string { return `${gatewayId}:${secretName}`; }
@@ -250,6 +259,8 @@ function proxyRuntimeError(error: string): string {
 }
 
 function runtimeSourceLabel(source: string): string { return ({ DATABASE_OVERRIDE: '后台热配置', ENVIRONMENT_FALLBACK: '启动备用配置', UNCONFIGURED: '未配置', NOT_SUPPORTED: '不支持' } as Record<string, string>)[source] || source; }
+
+function proxyEngineLabel(engine: Gateway['engine']): string { return engine === 'XRAY' ? 'Xray' : 'sing-box'; }
 
 function proxySourceLabel(source: NetworkWorkspace['routes'][number]['proxyCredentialSource']): string { return ({ DATABASE_OVERRIDE: '后台热配置', ENVIRONMENT_FALLBACK: '启动备用配置', UNCONFIGURED: '代理未配置' } as const)[source]; }
 

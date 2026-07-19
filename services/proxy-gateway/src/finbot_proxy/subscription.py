@@ -125,6 +125,7 @@ def _parse_vless(value: str) -> VlessNode:
         address=parsed.hostname,
         port=int(parsed.port or (443 if security in {"tls", "reality"} else 80)),
         uuid=unquote(parsed.username),
+        flow=_optional(query, "flow"),
         security=security,
         transport=transport,
         server_name=server_name,
@@ -171,6 +172,8 @@ def _is_supported(node: ProxyNode) -> bool:
     if node.security not in {"none", "tls", "reality"}:
         return False
     if node.transport not in {"tcp", "ws", "grpc"}:
+        return False
+    if node.flow not in {None, "xtls-rprx-vision"}:
         return False
     return node.security != "reality" or bool(node.reality_public_key)
 

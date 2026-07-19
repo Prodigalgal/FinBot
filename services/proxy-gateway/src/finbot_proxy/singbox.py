@@ -57,6 +57,8 @@ def _vless_outbound(node: VlessNode, tag: str) -> dict[str, Any]:
         "server_port": node.port,
         "uuid": node.uuid,
     }
+    if node.flow:
+        outbound["flow"] = node.flow
     if node.security in {"tls", "reality"}:
         tls: dict[str, Any] = {
             "enabled": True,

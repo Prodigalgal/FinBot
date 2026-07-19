@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.network.ProxyGatewayProfile;
 import io.omnnu.finbot.application.network.ProxyGatewayProfileRepository;
+import io.omnnu.finbot.application.network.ProxyEngine;
 import java.net.URI;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -22,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 public final class JdbcProxyGatewayProfileRepository implements ProxyGatewayProfileRepository {
     private static final String SELECT = """
             select gateway_id, display_name, control_url, subscription_url_env, inline_nodes_env,
-                   preferred_names::text, maximum_nodes, refresh_seconds, allow_insecure_tls,
+                   engine, preferred_names::text, maximum_nodes, refresh_seconds, allow_insecure_tls,
                    enabled, version, updated_at
             from proxy_gateway_profile
             """;
@@ -58,7 +59,8 @@ public final class JdbcProxyGatewayProfileRepository implements ProxyGatewayProf
             Instant updatedAt) {
         var changed = jdbcClient.sql("""
                 update proxy_gateway_profile
-                set preferred_names = cast(:preferredNames as jsonb),
+                set engine = :engine,
+                    preferred_names = cast(:preferredNames as jsonb),
                     maximum_nodes = :maximumNodes,
                     refresh_seconds = :refreshSeconds,
                     allow_insecure_tls = :allowInsecureTls,
@@ -68,6 +70,7 @@ public final class JdbcProxyGatewayProfileRepository implements ProxyGatewayProf
                 where gateway_id = :gatewayId and version = :expectedVersion
                 """)
                 .param("gatewayId", profile.gatewayId())
+                .param("engine", profile.engine().name())
                 .param("preferredNames", json(profile.preferredNames()))
                 .param("maximumNodes", profile.maximumNodes())
                 .param("refreshSeconds", profile.refreshSeconds())
@@ -86,6 +89,7 @@ public final class JdbcProxyGatewayProfileRepository implements ProxyGatewayProf
                 URI.create(resultSet.getString("control_url")),
                 resultSet.getString("subscription_url_env"),
                 resultSet.getString("inline_nodes_env"),
+                ProxyEngine.valueOf(resultSet.getString("engine")),
                 strings(resultSet.getString("preferred_names")),
                 resultSet.getInt("maximum_nodes"),
                 resultSet.getInt("refresh_seconds"),

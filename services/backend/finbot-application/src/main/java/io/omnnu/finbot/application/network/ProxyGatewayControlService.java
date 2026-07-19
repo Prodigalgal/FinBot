@@ -87,6 +87,7 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
                 current.controlUrl(),
                 current.subscriptionUrlEnvironment(),
                 current.inlineNodesEnvironment(),
+                command.engine(),
                 preferredNames,
                 command.maximumNodes(),
                 command.refreshSeconds(),
@@ -125,6 +126,7 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
         return new ProxyGatewayRuntimeConfiguration(
                 secret(profile, "SUBSCRIPTION_URL", profile.subscriptionUrlEnvironment()),
                 secret(profile, "INLINE_NODES", profile.inlineNodesEnvironment()),
+                profile.engine(),
                 profile.preferredNames(),
                 profile.maximumNodes(),
                 profile.refreshSeconds(),
@@ -141,6 +143,7 @@ public final class ProxyGatewayControlService implements ProxyGatewayControlUseC
         }
         return new ProxyGatewayRuntimeStatus(
                 profile.gatewayId(),
+                profile.engine(),
                 false,
                 false,
                 0,

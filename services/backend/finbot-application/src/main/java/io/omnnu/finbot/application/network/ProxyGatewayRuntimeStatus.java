@@ -7,6 +7,7 @@ import java.util.Objects;
 
 public record ProxyGatewayRuntimeStatus(
         String gatewayId,
+        ProxyEngine engine,
         boolean serviceReady,
         boolean egressReady,
         int nodeCount,
@@ -22,6 +23,7 @@ public record ProxyGatewayRuntimeStatus(
         String error) {
     public ProxyGatewayRuntimeStatus {
         gatewayId = Objects.requireNonNull(gatewayId, "gatewayId");
+        engine = Objects.requireNonNull(engine, "engine");
         healthyNodeIndices = List.copyOf(healthyNodeIndices);
         probeFailureCounts = Map.copyOf(probeFailureCounts);
         if (nodeCount < 0 || healthyNodeCount < 0 || unhealthyNodeCount < 0

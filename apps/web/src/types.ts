@@ -626,7 +626,7 @@ export interface NetworkWorkspace {
     latestActivityAt: string | null; updatedAt: string;
   }>;
   proxyGateways: Array<{
-    gatewayId: string; displayName: string; enabled: boolean; preferredNames: string;
+    gatewayId: string; displayName: string; enabled: boolean; engine: ProxyEngine; preferredNames: string;
     maximumNodes: number; refreshSeconds: number; allowInsecureTls: boolean;
     subscriptionSupported: boolean; subscriptionSource: string; subscriptionFingerprint: string | null; subscriptionVersion: number;
     inlineNodesSupported: boolean; inlineNodesSource: string; inlineNodesFingerprint: string | null; inlineNodesVersion: number;
@@ -637,6 +637,7 @@ export interface NetworkWorkspace {
 
 export interface ProxyGatewayRuntimeStatus {
   gatewayId: string;
+  engine: ProxyEngine;
   serviceReady: boolean;
   egressReady: boolean;
   nodeCount: number;
@@ -651,6 +652,8 @@ export interface ProxyGatewayRuntimeStatus {
   lastRefreshAt: string | null;
   error: string | null;
 }
+
+export type ProxyEngine = 'SING_BOX' | 'XRAY';
 
 export interface NetworkDiagnostic {
   diagnosticId: string; route: string; status: string; proxyConfigured: boolean;

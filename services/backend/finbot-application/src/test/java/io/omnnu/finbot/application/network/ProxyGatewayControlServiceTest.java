@@ -49,6 +49,7 @@ class ProxyGatewayControlServiceTest {
         assertEquals("RELOAD_ACCEPTED", result.status());
         assertEquals("https://hot.example/subscription", gateway.configuration.subscriptionUrl());
         assertEquals("hysteria2://fallback-node.example:443", gateway.configuration.inlineNodes());
+        assertEquals(ProxyEngine.SING_BOX, gateway.configuration.engine());
         assertEquals(List.of("JP", "SG"), gateway.configuration.preferredNames());
         assertEquals(ProxyGatewayApplyMode.FORCE_RELOAD, gateway.mode);
     }
@@ -65,6 +66,7 @@ class ProxyGatewayControlServiceTest {
         assertThrows(ConfigurationConflictException.class, () -> service.update(
                 new UpdateProxyGatewayProfileCommand(
                         disabled.gatewayId(),
+                        ProxyEngine.SING_BOX,
                         List.of(" JP ", "JP"),
                         8,
                         300,
@@ -80,6 +82,7 @@ class ProxyGatewayControlServiceTest {
 
         var updated = service.update(new UpdateProxyGatewayProfileCommand(
                 repository.profile.gatewayId(),
+                ProxyEngine.XRAY,
                 List.of(" JP ", "JP", "SG"),
                 8,
                 300,
@@ -88,6 +91,7 @@ class ProxyGatewayControlServiceTest {
                 3));
 
         assertEquals(List.of("JP", "SG"), updated.preferredNames());
+        assertEquals(ProxyEngine.XRAY, updated.engine());
         assertEquals(4, updated.version());
         assertFalse(updated.enabled());
     }
@@ -228,6 +232,7 @@ class ProxyGatewayControlServiceTest {
                 URI.create("http://finbot-exchange-proxy:8081"),
                 "SUBSCRIPTION_ENV",
                 "INLINE_NODES_ENV",
+                ProxyEngine.SING_BOX,
                 List.of("JP", "SG"),
                 16,
                 1800,
@@ -288,6 +293,7 @@ class ProxyGatewayControlServiceTest {
                 ProxyGatewayProfile profile) {
             return CompletableFuture.completedFuture(new ProxyGatewayRuntimeStatus(
                     profile.gatewayId(),
+                    profile.engine(),
                     true,
                     false,
                     4,

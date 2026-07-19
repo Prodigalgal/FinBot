@@ -99,3 +99,5 @@ databaseChangeLog:
       file: db/changelog/releases/049-public-searxng-instance-pool.sql
   - include:
       file: db/changelog/releases/050-crawler-header-profiles.sql
+  - include:
+      file: db/changelog/releases/051-proxy-gateway-engine.sql

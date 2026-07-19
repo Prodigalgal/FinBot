@@ -11,6 +11,7 @@ public record ProxyGatewayProfile(
         URI controlUrl,
         String subscriptionUrlEnvironment,
         String inlineNodesEnvironment,
+        ProxyEngine engine,
         List<String> preferredNames,
         int maximumNodes,
         int refreshSeconds,
@@ -22,6 +23,7 @@ public record ProxyGatewayProfile(
         gatewayId = Objects.requireNonNull(gatewayId, "gatewayId").strip();
         displayName = Objects.requireNonNull(displayName, "displayName").strip();
         Objects.requireNonNull(controlUrl, "controlUrl");
+        Objects.requireNonNull(engine, "engine");
         preferredNames = List.copyOf(preferredNames);
         Objects.requireNonNull(updatedAt, "updatedAt");
     }

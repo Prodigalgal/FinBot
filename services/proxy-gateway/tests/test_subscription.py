@@ -63,6 +63,23 @@ def test_allows_insecure_tls_nodes_only_when_explicitly_enabled() -> None:
     assert selection.enabled_insecure_node_count == 1
 
 
+def test_parses_vless_reality_vision_flow() -> None:
+    subscription = parse_subscription(
+        "vless://00000000-0000-0000-0000-000000000002@198.51.100.10:8443"
+        "?encryption=none&flow=xtls-rprx-vision&security=reality"
+        "&sni=www.microsoft.com&fp=chrome&pbk=test-public-key"
+        "&sid=0123456789abcdef&type=tcp#VLESS-1"
+    )
+
+    assert subscription.invalid_node_count == 0
+    assert len(subscription.nodes) == 1
+    node = subscription.nodes[0]
+    assert isinstance(node, VlessNode)
+    assert node.flow == "xtls-rprx-vision"
+    assert node.reality_public_key == "test-public-key"
+    assert node.reality_short_id == "0123456789abcdef"
+
+
 def test_rotates_selection_window_across_the_full_eligible_pool() -> None:
     subscription = parse_subscription("\n".join(
         f"hysteria2://password@node-{index}.example.com:443#node-{index}"

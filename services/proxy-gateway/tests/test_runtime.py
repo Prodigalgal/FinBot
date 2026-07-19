@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from finbot_proxy.engine import ProxyEngine
 from finbot_proxy.runtime import GatewayState, ProxyGateway, RuntimeConfiguration, serve_health
 from finbot_proxy.target_probe import TargetProbeConfiguration
 
@@ -16,6 +17,18 @@ def test_runtime_rejects_insecure_tls_by_default(monkeypatch: pytest.MonkeyPatch
     configuration = RuntimeConfiguration.from_environment()
 
     assert configuration.allow_insecure_tls is False
+
+
+def test_runtime_loads_xray_engine_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "PROXY_NODES",
+        "vless://00000000-0000-0000-0000-000000000001@example.com:443",
+    )
+    monkeypatch.setenv("PROXY_ENGINE", "xray")
+
+    configuration = RuntimeConfiguration.from_environment()
+
+    assert configuration.engine is ProxyEngine.XRAY
 
 
 def test_disabled_runtime_bootstraps_without_nodes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -203,6 +216,7 @@ def test_dynamic_configuration_is_atomic_and_does_not_return_secrets(tmp_path: P
         runtime_directory=tmp_path,
         allow_insecure_tls=False,
         target_probe=None,
+        xray_path=executable,
     )
     gateway = ProxyGateway(configuration, GatewayState())
 
@@ -214,12 +228,14 @@ def test_dynamic_configuration_is_atomic_and_does_not_return_secrets(tmp_path: P
             "maximumNodes": 8,
             "refreshSeconds": 300,
             "allowInsecureTls": False,
+            "engine": "XRAY",
         }
     )
 
     assert result["status"] == "reload-accepted"
     assert result["reloadRequired"] is True
     assert result["inlineNodesConfigured"] is True
+    assert result["engine"] == "XRAY"
     assert "secret" not in str(result)
 
 
@@ -265,6 +281,7 @@ def test_unchanged_ready_configuration_does_not_force_early_refresh(
             "maximumNodes": 16,
             "refreshSeconds": 1800,
             "allowInsecureTls": False,
+            "engine": "SING_BOX",
         }
     )
 

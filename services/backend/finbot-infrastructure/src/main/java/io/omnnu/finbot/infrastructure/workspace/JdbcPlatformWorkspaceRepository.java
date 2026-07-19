@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
 import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
 import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
+import io.omnnu.finbot.application.network.ProxyEngine;
 import io.omnnu.finbot.application.network.ProxyRouteResolver;
 import io.omnnu.finbot.application.workspace.IngestionWorkspace;
 import io.omnnu.finbot.application.workspace.NetworkWorkspace;
@@ -274,6 +275,7 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 .list();
         var proxyGateways = jdbcClient.sql("""
                 select gateway_id, display_name, subscription_url_env, inline_nodes_env,
+                       engine,
                        (select string_agg(value, ',')
                         from jsonb_array_elements_text(preferred_names) value) as preferred_names,
                        maximum_nodes, refresh_seconds, allow_insecure_tls,
@@ -617,6 +619,7 @@ public final class JdbcPlatformWorkspaceRepository implements PlatformWorkspaceR
                 gatewayId,
                 resultSet.getString("display_name"),
                 enabled,
+                ProxyEngine.valueOf(resultSet.getString("engine")),
                 Objects.requireNonNullElse(resultSet.getString("preferred_names"), ""),
                 resultSet.getInt("maximum_nodes"),
                 resultSet.getInt("refresh_seconds"),

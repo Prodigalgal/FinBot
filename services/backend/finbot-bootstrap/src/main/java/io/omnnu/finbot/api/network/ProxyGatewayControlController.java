@@ -1,6 +1,7 @@
 package io.omnnu.finbot.api.network;
 
 import io.omnnu.finbot.application.network.ProxyGatewayControlUseCase;
+import io.omnnu.finbot.application.network.ProxyEngine;
 import io.omnnu.finbot.application.network.ProxyGatewayReloadResult;
 import io.omnnu.finbot.application.network.ProxyGatewayRuntimeStatus;
 import io.omnnu.finbot.application.network.ProxyGatewayProfile;
@@ -45,6 +46,7 @@ public final class ProxyGatewayControlController {
             @Valid @RequestBody UpdateRequest request) {
         return useCase.update(new UpdateProxyGatewayProfileCommand(
                 gatewayId,
+                request.engine(),
                 request.preferredNames(),
                 request.maximumNodes(),
                 request.refreshSeconds(),
@@ -54,6 +56,7 @@ public final class ProxyGatewayControlController {
     }
 
     public record UpdateRequest(
+            ProxyEngine engine,
             @Size(max = 32) List<@Size(min = 1, max = 80) String> preferredNames,
             @Min(1) @Max(128) int maximumNodes,
             @Min(60) @Max(86_400) int refreshSeconds,
@@ -61,6 +64,7 @@ public final class ProxyGatewayControlController {
             boolean enabled,
             @Min(0) long expectedVersion) {
         public UpdateRequest {
+            Objects.requireNonNull(engine, "engine");
             preferredNames = preferredNames == null ? List.of() : List.copyOf(preferredNames);
         }
     }

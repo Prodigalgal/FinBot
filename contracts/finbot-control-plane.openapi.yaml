@@ -2606,6 +2606,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - engine
         - preferredNames
         - maximumNodes
         - refreshSeconds
@@ -2613,6 +2614,11 @@ components:
         - enabled
         - expectedVersion
       properties:
+        engine:
+          type: string
+          enum:
+            - SING_BOX
+            - XRAY
         preferredNames:
           type: array
           maxItems: 32

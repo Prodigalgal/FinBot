@@ -8,6 +8,7 @@ class VlessNode:
     address: str
     port: int
     uuid: str
+    flow: str | None
     security: str
     transport: str
     server_name: str

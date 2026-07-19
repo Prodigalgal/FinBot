@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
 import io.omnnu.finbot.application.network.ProxyGatewayApplyMode;
 import io.omnnu.finbot.application.network.ProxyGatewayControlGateway;
+import io.omnnu.finbot.application.network.ProxyEngine;
 import io.omnnu.finbot.application.network.ProxyGatewayProfile;
 import io.omnnu.finbot.application.network.ProxyGatewayRuntimeConfiguration;
 import io.omnnu.finbot.application.network.ProxyGatewayRuntimeStatus;
@@ -100,6 +101,7 @@ public final class JdkProxyGatewayControlGateway implements ProxyGatewayControlG
                     probeFailureCounts.put(entry.getKey(), entry.getValue().asInt()));
             return new ProxyGatewayRuntimeStatus(
                     gatewayId,
+                    ProxyEngine.valueOf(root.path("engine").asText("SING_BOX")),
                     root.path("serviceReady").asBoolean(false),
                     root.path("ready").asBoolean(false),
                     root.path("nodeCount").asInt(0),

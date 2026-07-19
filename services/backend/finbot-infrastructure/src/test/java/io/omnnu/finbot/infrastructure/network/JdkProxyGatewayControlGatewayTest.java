@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import io.omnnu.finbot.application.configuration.EnvironmentValueResolver;
 import io.omnnu.finbot.application.network.ProxyGatewayApplyMode;
+import io.omnnu.finbot.application.network.ProxyEngine;
 import io.omnnu.finbot.application.network.ProxyGatewayProfile;
 import io.omnnu.finbot.application.network.ProxyGatewayRuntimeConfiguration;
 import java.net.InetSocketAddress;
@@ -33,6 +34,7 @@ class JdkProxyGatewayControlGatewayTest {
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             var body = """
                     {
+                      "engine": "XRAY",
                       "serviceReady": true,
                       "ready": false,
                       "nodeCount": 4,
@@ -71,6 +73,7 @@ class JdkProxyGatewayControlGatewayTest {
                     URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
                     null,
                     "EXCHANGE_PROXY_NODES",
+                    ProxyEngine.XRAY,
                     List.of("JP"),
                     16,
                     1800,
@@ -83,6 +86,7 @@ class JdkProxyGatewayControlGatewayTest {
             var configuration = new ProxyGatewayRuntimeConfiguration(
                     "https://subscription.example/proxies",
                     null,
+                    ProxyEngine.XRAY,
                     List.of("JP"),
                     16,
                     1800,
@@ -99,6 +103,7 @@ class JdkProxyGatewayControlGatewayTest {
             assertEquals(List.of("force=true", "<none>"), reloadQueries);
             assertThrows(NullPointerException.class, () -> gateway.apply(profile, configuration, null));
             assertTrue(status.serviceReady());
+            assertEquals(ProxyEngine.XRAY, status.engine());
             assertFalse(status.egressReady());
             assertEquals(4, status.nodeCount());
             assertEquals(0, status.healthyNodeCount());
