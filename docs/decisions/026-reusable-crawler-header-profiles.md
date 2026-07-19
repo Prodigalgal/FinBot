@@ -20,12 +20,14 @@ Accepted，2026-07-19；**修订为 A+B+C1+C2+C3**（伪装、挑战分类、Pla
    - `retainSensitiveHeadersOnCrossOriginRedirect=true` 时保留全部敏感头
    - 否则默认剥离 `Authorization`/`Cookie`/`Origin`/`Referer`/token 类头，但可用 `crossOriginRetainHeaders` 白名单保留
 4. **C1 访问挑战分类（默认始终启用，与是否绕过无关）**：
-   - `CrawlerAccessChallengeDetector` 识别 Cloudflare Turnstile/Managed、reCAPTCHA、hCaptcha、Anubis、DataDome、PerimeterX、通用 JS challenge、429 限流与未知 401/403 阻断
-   - 错误码形态：`{PREFIX}_CHALLENGE_*` / `{PREFIX}_ACCESS_BLOCKED` / `{PREFIX}_RATE_LIMITED` / `{PREFIX}_HTTP_{status}`
-   - `SourceCollectionException` 携带 `challengeKind`；失败 `source_fetch_attempt.parser_version` 记为 `challenge/<kind>`，健康面板通过 `latestErrorCode` + `safeMessage` 可见
+   - `CrawlerAccessChallengeDetector` 识别 Cloudflare Turnstile/Managed、reCAPTCHA、hCaptcha、Anubis（含 Oh noes / within.website / 200 bot wall）、DataDome、PerimeterX、通用 JS challenge、429 限流与未知 401/403 阻断
+   - **HTTP 200 挑战页**（如 baresearch Anubis）同样分类，不再当作成功内容
+   - 错误码形态：`{PREFIX}_CHALLENGE_*` / `{PREFIX}_ACCESS_BLOCKED` / `{PREFIX}_RATE_LIMITED` / `{PREFIX}_HTTP_{status}`；公共 SearXNG 为 `PUBLIC_SEARXNG_INSTANCE_CHALLENGE_*`
+   - `SourceCollectionException` 携带 `challengeKind`；失败 `source_fetch_attempt.parser_version` 记为 `challenge/<kind>`
    - C1 **不执行** challenge、不自动求解
 5. **C2 浏览器 worker（first-party Playwright）**：
-   - 独立服务 `finbot-browser-worker`（`services/browser-worker`），加载真实 Chromium，等待 JS challenge 收敛后返回 cookie / UA
+   - 独立服务 `finbot-browser-worker`，stealth 启动参数 + 反 webdriver 注入 + 更长 Anubis 结算窗口
+   - 挑战未解除时 `detail=challenge-unresolved`，Java 侧 fail-closed，不假装成功
    - Profile `captchaBypassProvider=BROWSER_WORKER`；集群内 URL 默认 `http://finbot-browser-worker:8082`
    - 鉴权 `FINBOT_BROWSER_WORKER_TOKEN`（可回退 `FINBOT_JAVA_SERVICE_TOKEN`）
 6. **C3 外部 CAPTCHA/WAF 求解（按 Profile 显式开启）**：

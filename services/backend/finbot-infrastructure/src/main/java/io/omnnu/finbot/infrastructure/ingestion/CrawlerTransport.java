@@ -72,15 +72,22 @@ public final class CrawlerTransport {
         while (true) {
             var headers = applyBypass(baseHeaders, bypass);
             var result = followRedirects(request, profile, headers);
-            if (result.statusCode() >= 200 && result.statusCode() < 300) {
-                return result;
-            }
             var challenge = challengeDetector.detect(
                     result.requestedUrl(),
                     result.statusCode(),
                     result.contentType(),
                     result.body(),
                     result.responseHeaders());
+            var success = result.statusCode() >= 200 && result.statusCode() < 300;
+            // C1: classify HTML challenge interstitials even when the status is 200.
+            if (success && challenge.isEmpty()) {
+                return result;
+            }
+            if (success && challenge.isPresent()
+                    && challenge.get().kind() == CrawlerAccessChallenge.Kind.RATE_LIMITED) {
+                // 200 + rate-limit markers is extremely rare; treat as success content.
+                return result;
+            }
             var solvable = challenge.isPresent()
                     && challenge.get().kind() != CrawlerAccessChallenge.Kind.UNKNOWN_BLOCK
                     && challenge.get().kind() != CrawlerAccessChallenge.Kind.RATE_LIMITED;
@@ -98,7 +105,10 @@ public final class CrawlerTransport {
                 bypassAttempts++;
                 continue;
             }
-            // C1 always classifies; C3 only retries when enabled and solvable.
+            if (success && challenge.isEmpty()) {
+                return result;
+            }
+            // C1 always classifies blocked/challenge responses; C2/C3 only retry when enabled.
             throw classifiedFailure(request, result, challenge);
         }
     }

@@ -186,6 +186,7 @@ class PublicSearxngSearchDiscoveryProviderTest {
         return new PublicSearxngSearchDiscoveryProvider(
                 gateway,
                 new PublicSearxngProtocol(new ObjectMapper()),
+                new io.omnnu.finbot.application.ingestion.CrawlerAccessChallengeDetector(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

@@ -69,6 +69,34 @@ class CrawlerAccessChallengeDetectorTest {
     }
 
     @Test
+    void detectsAnubisOhNoesAndHttp200BotWall() {
+        var ohNoes = detector.detect(
+                URI.create("https://searx.oloke.xyz/search"),
+                400,
+                "text/html",
+                """
+                        <html><head><title>Oh noes!</title>
+                        <link rel="stylesheet" href="/.within.website/x/xess/xess.min.css">
+                        </head><body>challenge</body></html>
+                        """.getBytes(StandardCharsets.UTF_8),
+                Map.of()).orElseThrow();
+        assertEquals(CrawlerAccessChallenge.Kind.ANUBIS, ohNoes.kind());
+
+        var botWall = detector.detect(
+                URI.create("https://baresearch.org/search"),
+                200,
+                "text/html; charset=utf-8",
+                """
+                        <html><head><title>Making sure you're not a bot!</title>
+                        <link href="/.within.website/x/xess/xess.min.css" rel="stylesheet">
+                        </head></html>
+                        """.getBytes(StandardCharsets.UTF_8),
+                Map.of()).orElseThrow();
+        assertEquals(CrawlerAccessChallenge.Kind.ANUBIS, botWall.kind());
+        assertEquals(200, botWall.statusCode());
+    }
+
+    @Test
     void detectsDataDomeAndPerimeterX() {
         var datadome = detector.detect(
                 URI.create("https://shop.example/"),

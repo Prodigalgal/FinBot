@@ -1,6 +1,7 @@
 package io.omnnu.finbot.infrastructure.ingestion;
 
 import io.omnnu.finbot.application.ingestion.CollectedPayload;
+import io.omnnu.finbot.application.ingestion.CrawlerAccessChallengeDetector;
 import io.omnnu.finbot.application.ingestion.SourceCollectionException;
 import io.omnnu.finbot.domain.ingestion.InformationSource;
 import io.omnnu.finbot.domain.network.OutboundRoute;
@@ -33,6 +34,7 @@ final class PublicSearxngSearchDiscoveryProvider implements SearchDiscoveryProvi
 
     private final PublicSearxngHttpGateway httpGateway;
     private final PublicSearxngProtocol protocol;
+    private final CrawlerAccessChallengeDetector challengeDetector;
     private final Clock clock;
     private final AtomicInteger selectionCursor = new AtomicInteger();
     private final ConcurrentHashMap<String, Instant> instanceCooldowns = new ConcurrentHashMap<>();
@@ -43,9 +45,11 @@ final class PublicSearxngSearchDiscoveryProvider implements SearchDiscoveryProvi
     PublicSearxngSearchDiscoveryProvider(
             PublicSearxngHttpGateway httpGateway,
             PublicSearxngProtocol protocol,
+            CrawlerAccessChallengeDetector challengeDetector,
             Clock clock) {
         this.httpGateway = Objects.requireNonNull(httpGateway, "httpGateway");
         this.protocol = Objects.requireNonNull(protocol, "protocol");
+        this.challengeDetector = Objects.requireNonNull(challengeDetector, "challengeDetector");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -159,13 +163,34 @@ final class PublicSearxngSearchDiscoveryProvider implements SearchDiscoveryProvi
                 "PUBLIC_SEARXNG_INSTANCE",
                 "Public SearXNG instance"));
         if (!PublicSearxngProtocol.isJson(response.contentType())) {
-            throw failure(
-                    "PUBLIC_SEARXNG_INSTANCE_NOT_JSON",
-                    "Public SearXNG instance did not expose the JSON Search API",
-                    true,
-                    response.statusCode());
+            throw nonJsonFailure(instance.baseUri(), response);
         }
         return protocol.mapSearch(source, query, directory, instance, instanceAttempt, response);
+    }
+
+    private SourceCollectionException nonJsonFailure(
+            URI instanceBase,
+            CrawlerTransport.Response response) {
+        var challenge = challengeDetector.detect(
+                response.requestedUrl() == null ? instanceBase : response.requestedUrl(),
+                response.statusCode(),
+                response.contentType(),
+                response.body(),
+                response.responseHeaders());
+        if (challenge.isPresent()) {
+            var detected = challenge.get();
+            return new SourceCollectionException(
+                    "PUBLIC_SEARXNG_INSTANCE_" + detected.errorCodeSuffix(),
+                    detected.safeMessage("Public SearXNG instance"),
+                    detected.blocked(),
+                    response.statusCode(),
+                    detected.kind().name());
+        }
+        return failure(
+                "PUBLIC_SEARXNG_INSTANCE_NOT_JSON",
+                "Public SearXNG instance did not expose the JSON Search API",
+                true,
+                response.statusCode());
     }
 
     private List<PublicInstance> rotatedCandidates(List<PublicInstance> available) {
@@ -192,16 +217,24 @@ final class PublicSearxngSearchDiscoveryProvider implements SearchDiscoveryProvi
 
     private static Duration cooldown(SourceCollectionException exception) {
         var statusCode = exception.statusCode();
-        if (statusCode != null && statusCode == 429) {
+        var code = exception.errorCode();
+        if (statusCode != null && statusCode == 429
+                || code.endsWith("_RATE_LIMITED")
+                || code.contains("RATE_LIMITED")) {
             return RATE_LIMIT_COOLDOWN;
+        }
+        if (code.contains("CHALLENGE_")
+                || code.endsWith("_ACCESS_BLOCKED")
+                || exception.challengeKind().isPresent()) {
+            return ACCESS_DENIED_COOLDOWN;
         }
         if (statusCode != null && (statusCode == 400 || statusCode == 401 || statusCode == 403
                 || statusCode == 405 || statusCode == 406 || statusCode == 418)) {
             return ACCESS_DENIED_COOLDOWN;
         }
-        if (exception.errorCode().endsWith("NOT_JSON")
-                || exception.errorCode().endsWith("JSON_INVALID")
-                || exception.errorCode().endsWith("SCHEMA_INVALID")) {
+        if (code.endsWith("NOT_JSON")
+                || code.endsWith("JSON_INVALID")
+                || code.endsWith("SCHEMA_INVALID")) {
             return INVALID_RESPONSE_COOLDOWN;
         }
         return TRANSIENT_FAILURE_COOLDOWN;

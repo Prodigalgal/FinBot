@@ -57,7 +57,7 @@ class CrawlerRequestHeaderPolicyTest {
 
         var headers = policy.prepare(SOURCE_ID, Map.of());
 
-        assertTrue(headers.get("User-Agent").contains("Chrome/126"));
+        assertTrue(headers.get("User-Agent").contains("Chrome/131"));
         assertEquals("198.51.100.10", headers.get("X-Forwarded-For"));
         assertTrue(headers.containsKey("sec-ch-ua") || headers.containsKey("Sec-Ch-Ua"));
         assertEquals("?0", headers.get("sec-ch-ua-mobile") != null

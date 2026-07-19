@@ -293,7 +293,7 @@ function SourceEditorDialog({ open, source, providers, models, headerProfiles, b
 
 const BROWSER_TEMPLATES: CrawlerBrowserTemplate[] = ['NONE', 'CHROME_WINDOWS', 'CHROME_MAC', 'FIREFOX_WINDOWS', 'EDGE_WINDOWS', 'CUSTOM'];
 const CAPTCHA_PROVIDERS: CrawlerCaptchaBypassProvider[] = ['NONE', 'CAPSOLVER', 'TWOCAPTCHA', 'FIRECRAWL_BROWSER', 'BROWSER_WORKER'];
-const CHROME_WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const CHROME_WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const DEFAULT_HEADER_PROFILE: CrawlerHeaderProfileMutation = {
   displayName: '',
   userAgent: CHROME_WINDOWS_UA,

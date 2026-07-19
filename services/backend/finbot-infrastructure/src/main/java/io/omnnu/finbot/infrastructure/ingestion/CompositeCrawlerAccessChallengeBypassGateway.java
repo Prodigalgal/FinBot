@@ -90,11 +90,16 @@ public final class CompositeCrawlerAccessChallengeBypassGateway
                 .orElseThrow(() -> bypassFailure(
                         "BROWSER_WORKER",
                         "browser worker token is not configured"));
+        var anubisLike = switch (challenge.kind()) {
+            case ANUBIS, CLOUDFLARE_MANAGED, CLOUDFLARE_TURNSTILE, GENERIC_JS_CHALLENGE,
+                    DATADOME, PERIMETERX -> true;
+            default -> false;
+        };
         var body = objectMapper.createObjectNode()
                 .put("url", challenge.pageUrl().toString())
-                .put("wait_ms", 6_000)
-                .put("timeout_ms", 45_000)
-                .put("wait_until", "domcontentloaded");
+                .put("wait_ms", anubisLike ? 20_000 : 8_000)
+                .put("timeout_ms", anubisLike ? 70_000 : 45_000)
+                .put("wait_until", anubisLike ? "networkidle" : "domcontentloaded");
         try {
             var requestBuilder = HttpRequest.newBuilder(URI.create(trimSlash(baseUrl) + "/internal/v1/challenge/solve"))
                     .timeout(SOLVER_TIMEOUT)
@@ -113,6 +118,12 @@ public final class CompositeCrawlerAccessChallengeBypassGateway
                 throw bypassFailure("BROWSER_WORKER", "HTTP " + response.statusCode());
             }
             var payload = objectMapper.readTree(response.body());
+            var detail = payload.path("detail").asText("playwright");
+            if (detail.contains("challenge-unresolved")) {
+                throw bypassFailure(
+                        "BROWSER_WORKER",
+                        "challenge still present after browser settle (" + challenge.kind().name() + ")");
+            }
             var cookies = new LinkedHashMap<String, String>();
             var cookieNode = payload.path("cookies");
             if (cookieNode.isObject()) {
@@ -130,7 +141,7 @@ public final class CompositeCrawlerAccessChallengeBypassGateway
             return new CrawlerAccessChallengeBypass(
                     headers,
                     cookies,
-                    "browser-worker-" + payload.path("detail").asText("playwright"));
+                    "browser-worker-" + detail);
         } catch (SourceCollectionException exception) {
             throw exception;
         } catch (IOException | InterruptedException exception) {

@@ -243,6 +243,34 @@ class CrawlerTransportTest {
     }
 
     @Test
+    void classifiesHttp200AnubisBotWallAsChallenge() throws IOException {
+        var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxy.createContext("/search", exchange -> {
+            var body = """
+                    <!doctype html><html><head><title>Making sure you're not a bot!</title>
+                    <link href="/.within.website/x/xess/xess.min.css" rel="stylesheet"></head>
+                    <body>challenge</body></html>
+                    """.getBytes(StandardCharsets.UTF_8);
+            try (exchange) {
+                exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+        });
+        proxy.start();
+        try {
+            var exception = assertThrows(SourceCollectionException.class,
+                    () -> transportThrough(proxy).get(request(URI.create("http://target.test/search?format=json"), 1)));
+            assertEquals("TEST_CRAWLER_CHALLENGE_ANUBIS", exception.errorCode());
+            assertEquals(Optional.of("ANUBIS"), exception.challengeKind());
+            assertEquals(200, exception.statusCode());
+            assertTrue(exception.blocked());
+        } finally {
+            proxy.stop(0);
+        }
+    }
+
+    @Test
     void classifiesCloudflareTurnstileWithoutAttemptingBypassWhenDisabled() throws IOException {
         var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         proxy.createContext("/gate", exchange -> {

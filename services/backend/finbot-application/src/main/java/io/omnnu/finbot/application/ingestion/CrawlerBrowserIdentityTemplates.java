@@ -32,17 +32,21 @@ public final class CrawlerBrowserIdentityTemplates {
                         userAgent,
                         "Chrome",
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                                + "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
+                                + "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
                 putIfAbsent(headers, "sec-ch-ua",
-                        "\"Not/A)Brand\";v=\"8\", \"Chromium\";v=\"126\", \"Google Chrome\";v=\"126\"");
+                        "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"");
                 putIfAbsent(headers, "sec-ch-ua-mobile", "?0");
                 putIfAbsent(headers, "sec-ch-ua-platform", "\"Windows\"");
+                putIfAbsent(headers, "sec-ch-ua-full-version-list",
+                        "\"Google Chrome\";v=\"131.0.6778.86\", \"Chromium\";v=\"131.0.6778.86\", \"Not_A Brand\";v=\"10.0.2.3\"");
                 putIfAbsent(headers, "sec-fetch-dest", "document");
                 putIfAbsent(headers, "sec-fetch-mode", "navigate");
                 putIfAbsent(headers, "sec-fetch-site", "none");
                 putIfAbsent(headers, "sec-fetch-user", "?1");
                 putIfAbsent(headers, "upgrade-insecure-requests", "1");
+                putIfAbsent(headers, "accept-encoding", "gzip, deflate, br, zstd");
                 putIfAbsent(headers, "dnt", "1");
+                putIfAbsent(headers, "cache-control", "max-age=0");
                 resolvedAccept = prefer(accept,
                         "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,"
                                 + "image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7");
@@ -53,9 +57,9 @@ public final class CrawlerBrowserIdentityTemplates {
                         userAgent,
                         "Chrome",
                         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-                                + "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
+                                + "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
                 putIfAbsent(headers, "sec-ch-ua",
-                        "\"Not/A)Brand\";v=\"8\", \"Chromium\";v=\"126\", \"Google Chrome\";v=\"126\"");
+                        "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"");
                 putIfAbsent(headers, "sec-ch-ua-mobile", "?0");
                 putIfAbsent(headers, "sec-ch-ua-platform", "\"macOS\"");
                 putIfAbsent(headers, "sec-fetch-dest", "document");
@@ -63,6 +67,7 @@ public final class CrawlerBrowserIdentityTemplates {
                 putIfAbsent(headers, "sec-fetch-site", "none");
                 putIfAbsent(headers, "sec-fetch-user", "?1");
                 putIfAbsent(headers, "upgrade-insecure-requests", "1");
+                putIfAbsent(headers, "accept-encoding", "gzip, deflate, br, zstd");
                 resolvedAccept = prefer(accept,
                         "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,"
                                 + "image/webp,image/apng,*/*;q=0.8");
@@ -89,9 +94,9 @@ public final class CrawlerBrowserIdentityTemplates {
                         userAgent,
                         "Edg/",
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                                + "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0");
+                                + "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0");
                 putIfAbsent(headers, "sec-ch-ua",
-                        "\"Not/A)Brand\";v=\"8\", \"Chromium\";v=\"126\", \"Microsoft Edge\";v=\"126\"");
+                        "\"Microsoft Edge\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"");
                 putIfAbsent(headers, "sec-ch-ua-mobile", "?0");
                 putIfAbsent(headers, "sec-ch-ua-platform", "\"Windows\"");
                 putIfAbsent(headers, "sec-fetch-dest", "document");
@@ -99,6 +104,7 @@ public final class CrawlerBrowserIdentityTemplates {
                 putIfAbsent(headers, "sec-fetch-site", "none");
                 putIfAbsent(headers, "sec-fetch-user", "?1");
                 putIfAbsent(headers, "upgrade-insecure-requests", "1");
+                putIfAbsent(headers, "accept-encoding", "gzip, deflate, br, zstd");
                 resolvedAccept = prefer(accept,
                         "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,"
                                 + "image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7");

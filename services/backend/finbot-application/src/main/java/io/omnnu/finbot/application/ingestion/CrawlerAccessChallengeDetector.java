@@ -10,8 +10,8 @@ import java.util.regex.Pattern;
 /**
  * Heuristic detector for CAPTCHA / WAF interstitial pages (C1 classification).
  *
- * <p>Detection is best-effort and never executes challenge JavaScript. Results drive error codes,
- * fetch-attempt observability, and optional C3 bypass selection.
+ * <p>Also classifies HTTP 200 challenge interstitials (Anubis / bot walls) that never expose the
+ * intended JSON API. Detection is best-effort and never executes challenge JavaScript.
  */
 public final class CrawlerAccessChallengeDetector {
     private static final Pattern TURNSTILE_SITEKEY = Pattern.compile(
@@ -21,6 +21,8 @@ public final class CrawlerAccessChallengeDetector {
             Pattern.CASE_INSENSITIVE);
     private static final Pattern HCAPTCHA_SITEKEY = Pattern.compile(
             "data-sitekey\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TITLE = Pattern.compile(
+            "<title>\\s*(.*?)\\s*</title>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     public Optional<CrawlerAccessChallenge> detect(
             URI pageUrl,
@@ -34,6 +36,8 @@ public final class CrawlerAccessChallengeDetector {
         var cfRay = header(responseHeaders, "cf-ray");
         var server = header(responseHeaders, "server").toLowerCase(Locale.ROOT);
         var setCookie = header(responseHeaders, "set-cookie").toLowerCase(Locale.ROOT);
+        var title = title(text).toLowerCase(Locale.ROOT);
+        var html = isHtmlOrText(type) || type.isBlank() || lower.contains("<html") || lower.contains("<!doctype");
 
         if (containsAny(lower,
                 "cf-turnstile",
@@ -47,7 +51,7 @@ public final class CrawlerAccessChallengeDetector {
                     responseHeaders,
                     statusCode);
         }
-        if ((statusCode == 403 || statusCode == 503 || statusCode == 429)
+        if ((statusCode == 403 || statusCode == 503 || statusCode == 429 || statusCode == 200)
                 && (isPresent(cfRay)
                 || server.contains("cloudflare")
                 || containsAny(lower,
@@ -60,6 +64,26 @@ public final class CrawlerAccessChallengeDetector {
                     CrawlerAccessChallenge.Kind.CLOUDFLARE_MANAGED,
                     pageUrl,
                     firstGroup(TURNSTILE_SITEKEY, text),
+                    text,
+                    responseHeaders,
+                    statusCode);
+        }
+        // Anubis / Techaro wall — common on public SearXNG (including HTTP 200/400 challenge pages).
+        if (html && (containsAny(lower,
+                "anubis",
+                "withanubis",
+                "oh noes",
+                "/.within.website/",
+                "xess.min.css",
+                "making sure you're not a bot",
+                "making sure you&#39;re not a bot",
+                "proof-of-work",
+                "techaro")
+                || containsAny(title, "oh noes", "not a bot", "anubis"))) {
+            return challenge(
+                    CrawlerAccessChallenge.Kind.ANUBIS,
+                    pageUrl,
+                    null,
                     text,
                     responseHeaders,
                     statusCode);
@@ -79,21 +103,12 @@ public final class CrawlerAccessChallengeDetector {
                     responseHeaders,
                     statusCode);
         }
-        if (containsAny(lower, "recaptcha", "www.google.com/recaptcha", "grecaptcha")) {
+        if (containsAny(lower, "recaptcha", "www.google.com/recaptcha", "grecaptcha")
+                && (statusCode >= 400 || containsAny(title, "captcha", "verify", "bot", "human"))) {
             return challenge(
                     CrawlerAccessChallenge.Kind.RECAPTCHA_V2,
                     pageUrl,
                     firstGroup(RECAPTCHA_SITEKEY, text),
-                    text,
-                    responseHeaders,
-                    statusCode);
-        }
-        if (containsAny(lower, "anubis", "withanubis")
-                && containsAny(lower, "challenge", "proof-of-work", "pow", "difficulty")) {
-            return challenge(
-                    CrawlerAccessChallenge.Kind.ANUBIS,
-                    pageUrl,
-                    null,
                     text,
                     responseHeaders,
                     statusCode);
@@ -120,8 +135,9 @@ public final class CrawlerAccessChallengeDetector {
                     statusCode);
         }
         if (statusCode == 429
-                && (type.contains("text/html") || type.contains("text/plain") || type.contains("application/json")
-                || text.isBlank() || containsAny(lower, "rate limit", "too many requests", "retry later"))) {
+                && (html || type.contains("application/json")
+                || text.isBlank()
+                || containsAny(lower, "rate limit", "too many requests", "retry later"))) {
             return challenge(
                     CrawlerAccessChallenge.Kind.RATE_LIMITED,
                     pageUrl,
@@ -130,8 +146,9 @@ public final class CrawlerAccessChallengeDetector {
                     responseHeaders,
                     statusCode);
         }
-        if ((statusCode == 401 || statusCode == 403 || statusCode == 429 || statusCode == 503)
-                && (isHtmlOrText(type) || type.isBlank())
+        if ((statusCode == 401 || statusCode == 403 || statusCode == 429 || statusCode == 503
+                || (statusCode == 200 && html && !looksLikeJson(text)))
+                && html
                 && containsAny(lower,
                         "captcha",
                         "challenge",
@@ -140,7 +157,9 @@ public final class CrawlerAccessChallengeDetector {
                         "enable javascript",
                         "verify you are human",
                         "are you a robot",
-                        "checking your browser")) {
+                        "checking your browser",
+                        "not a bot",
+                        "browser check")) {
             return challenge(
                     CrawlerAccessChallenge.Kind.GENERIC_JS_CHALLENGE,
                     pageUrl,
@@ -159,6 +178,19 @@ public final class CrawlerAccessChallengeDetector {
                     statusCode);
         }
         return Optional.empty();
+    }
+
+    private static boolean looksLikeJson(String text) {
+        var trimmed = text.stripLeading();
+        return trimmed.startsWith("{") || trimmed.startsWith("[");
+    }
+
+    private static String title(String html) {
+        var matcher = TITLE.matcher(html);
+        if (!matcher.find()) {
+            return "";
+        }
+        return matcher.group(1).replaceAll("\\s+", " ").strip();
     }
 
     private static Optional<CrawlerAccessChallenge> challenge(
