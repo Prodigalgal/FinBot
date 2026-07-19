@@ -7,7 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8082 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    HOME=/home/finbot
+    HOME=/home/finbot \
+    PATH=/app/.venv/bin:$PATH \
+    VIRTUAL_ENV=/app/.venv
 
 WORKDIR /app
 
@@ -16,6 +18,7 @@ USER root
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ca-certificates \
+        python3-venv \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,8 +29,9 @@ RUN groupadd --gid 10001 finbot \
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN python -m pip install --upgrade pip \
-    && python -m pip install . \
+RUN python3 -m venv /app/.venv \
+    && /app/.venv/bin/pip install --upgrade pip \
+    && /app/.venv/bin/pip install . \
     && chown -R finbot:finbot /app /ms-playwright
 
 USER 10001:10001
