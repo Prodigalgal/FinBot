@@ -253,10 +253,6 @@ spec:
         app.kubernetes.io/component: proxy-gateway
     spec:
       automountServiceAccountToken: false
-      # Hysteria2 uses QUIC/UDP. The OCI/Cilium pod path drops these
-      # handshakes, while the node network has been verified end to end.
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
         infra.mnnu/location: sg
       imagePullSecrets:
