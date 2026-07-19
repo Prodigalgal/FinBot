@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
+# Keep base image and Python package versions locked together.
 FROM mcr.microsoft.com/playwright/python:v1.52.0-noble
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
