@@ -48,3 +48,10 @@
 - Web：Vitest 8 个测试文件 / 18 个测试通过；`npm run contract:check` 校验 91 条路径、106 个 Controller operation；`npm run build` 通过。
 - 静态检查：`defaultQuery` 在应用服务只有一个编译点；采集模块没有残留硬编码 User-Agent、伪造转发头或跨域敏感头转发；`git diff --check` 无错误。
 - PostgreSQL Testcontainers 集成测试在当前 Windows 工作站因 Docker 不可用而按项目 Assumption 跳过，需在 CI 或 K8S 发布前用真实 PostgreSQL 执行 050 迁移和 JDBC Profile CRUD smoke。
+
+## 生产验收（2026-07-19）
+
+- CI run `29677076437` 全部通过；backend/quant/web 镜像为 `sha-afcff2fb2b647c93371fd8e28d737fb34a3e1b7b`，代理镜像保持 `sha-a650505805d21fd766066704e1468dbce4fcd1ac`。
+- GitOps commit `cf6ad4ef17fcd4267ff6a464f2fdde567ef045a9` 已由 ArgoCD 同步，应用状态为 `Synced/Healthy/Succeeded`；backend、quant、web、PostgreSQL、SearXNG 和三类代理均为单副本 `1/1 Ready`、零重启。
+- 真实 PostgreSQL migration Job 已执行 `050-crawler-header-profiles`，累计 52 个 changeset；公网主页、readiness、匿名认证状态、新 Profile API 未授权边界和浏览器全流程 smoke 均通过。
+- 运行态外部风险单独跟踪：Bybit 代理当前目标探测 `0/4`，应用按设计回退 direct；网页采集代理自身 `16/16` healthy，但公共 SearXNG 上游仍可能耗尽或限流。该风险不改变本任务的 fail-closed 与“不绕过访问控制”边界。
