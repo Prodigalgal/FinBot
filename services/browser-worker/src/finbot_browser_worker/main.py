@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import os
 
+from fastapi import FastAPI
 import uvicorn
 
 from finbot_browser_worker.service import create_app
 
 
-def application():
+def application() -> FastAPI:
     return create_app()
 
 
