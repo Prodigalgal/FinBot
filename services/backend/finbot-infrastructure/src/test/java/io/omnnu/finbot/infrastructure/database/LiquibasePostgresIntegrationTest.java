@@ -443,7 +443,7 @@ class LiquibasePostgresIntegrationTest {
                           (select version_id from workflow_definition_version
                            where status = 'PUBLISHED') as published_version_id,
                           (select operation from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v6'
+                           where version_id = 'workflowversion_standard_v7'
                              and node_type = 'QUANT') as published_quant_operation,
                           (select count(*) from information_source where deleted_at is null)
                             as source_count,
@@ -479,27 +479,34 @@ class LiquibasePostgresIntegrationTest {
                           (select base_url from ai_provider_profile
                            where profile_id = 'provider_mimo_default') as mimo_base_url,
                           (select provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v6'
+                           where version_id = 'workflowversion_standard_v7'
                              and node_id = 'node_bull_analyst') as bull_provider,
                           (select fallback_provider_profile_id from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v6'
+                           where version_id = 'workflowversion_standard_v7'
                              and node_id = 'node_bull_analyst') as bull_fallback_provider,
                           (select fallback_model_name from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v6'
+                           where version_id = 'workflowversion_standard_v7'
                              and node_id = 'node_chair_arbiter') as chair_fallback_model,
                           (select count(*) from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v6'
+                           where version_id = 'workflowversion_standard_v7'
                              and node_type = 'AI_CLEANER') as ai_cleaner_count,
                           (select count(*) from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v6'
+                           where version_id = 'workflowversion_standard_v7'
                              and node_type = 'COMPRESSOR') as compressor_count,
                           (select count(*) from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v6'
+                           where version_id = 'workflowversion_standard_v7'
                              and node_type = 'COMPRESSION_VALIDATOR') as compression_validator_count,
+                          (select count(*) from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v7'
+                             and node_type in ('AI_CLEANER', 'COMPRESSOR', 'COMPRESSION_VALIDATOR',
+                                               'AGENT', 'CHAIR', 'EXECUTION_REVIEW')
+                             and (provider_profile_id in ('provider_gemini_default', 'provider_mimo_default')
+                                  or fallback_provider_profile_id in ('provider_gemini_default', 'provider_mimo_default')))
+                            as unavailable_default_binding_count,
                           (select count(*) from (
                              select role_template_id
                              from workflow_node_definition
-                             where version_id = 'workflowversion_standard_v6'
+                             where version_id = 'workflowversion_standard_v7'
                                and node_type = 'AGENT'
                              group by role_template_id
                              having count(*) = 2
@@ -507,7 +514,7 @@ class LiquibasePostgresIntegrationTest {
                           (select count(*) from (
                              select role_template_id
                              from workflow_node_definition
-                             where version_id = 'workflowversion_standard_v6'
+                             where version_id = 'workflowversion_standard_v7'
                                and node_type = 'AI_CLEANER'
                              group by role_template_id
                              having count(*) = 2 and count(distinct provider_profile_id) = 2
@@ -515,13 +522,13 @@ class LiquibasePostgresIntegrationTest {
                           (select count(*) from (
                              select role_template_id
                              from workflow_node_definition
-                             where version_id = 'workflowversion_standard_v6'
+                             where version_id = 'workflowversion_standard_v7'
                                and node_type = 'COMPRESSOR'
                              group by role_template_id
                              having count(*) = 2 and count(distinct provider_profile_id) = 2
                            ) grouped_roles) as compressor_two_seat_role_count,
                           (select count(*) from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v6'
+                           where version_id = 'workflowversion_standard_v7'
                              and node_type = 'COMPRESSION_VALIDATOR'
                              and role_template_id = 'role_compression_validator')
                             as validator_role_count,
@@ -703,10 +710,10 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(2, result.getInt("account_count"));
                 assertEquals(10, result.getInt("schedule_count"));
                 assertEquals(9, result.getInt("role_count"));
-                assertEquals(87, result.getInt("node_count"));
+                assertEquals(110, result.getInt("node_count"));
                 assertEquals(23, result.getInt("published_node_count"));
-                assertEquals(6, result.getInt("workflow_version_count"));
-                assertEquals("workflowversion_standard_v6", result.getString("published_version_id"));
+                assertEquals(7, result.getInt("workflow_version_count"));
+                assertEquals("workflowversion_standard_v7", result.getString("published_version_id"));
                 assertEquals("multi_strategy_ensemble", result.getString("published_quant_operation"));
                 assertEquals(62, result.getInt("source_count"));
                 assertEquals(57, result.getInt("enabled_source_count"));
@@ -733,6 +740,7 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(2, result.getInt("ai_cleaner_count"));
                 assertEquals(2, result.getInt("compressor_count"));
                 assertEquals(1, result.getInt("compression_validator_count"));
+                assertEquals(0, result.getInt("unavailable_default_binding_count"));
                 assertEquals(5, result.getInt("two_seat_role_count"));
                 assertEquals(1, result.getInt("cleaner_two_seat_role_count"));
                 assertEquals(1, result.getInt("compressor_two_seat_role_count"));
@@ -837,7 +845,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(55, result.getInt("changeset_count"));
+                     assertEquals(56, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
