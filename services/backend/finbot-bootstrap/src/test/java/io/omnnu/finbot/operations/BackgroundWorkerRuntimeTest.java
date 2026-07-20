@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -120,6 +121,65 @@ class BackgroundWorkerRuntimeTest {
             assertEquals(2.0, registry.get("finbot.worker.lease.recovered").counter().count());
         } finally {
             runtime.destroy();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void isolatesTransientHeartbeatFailureFromTheScheduledLoop() {
+        var coordinator = mock(BackgroundTaskCoordinator.class);
+        doThrow(new IllegalStateException("database unavailable")).when(coordinator).heartbeatWorker(any());
+        var registry = new SimpleMeterRegistry();
+        var executor = Executors.newSingleThreadExecutor();
+        var runtime = new BackgroundWorkerRuntime(
+                coordinator,
+                properties(1, 1),
+                executor,
+                java.util.List.of(),
+                prefix -> prefix + "runtime_test",
+                registry);
+        try {
+            runtime.heartbeat();
+
+            verify(coordinator, times(1)).heartbeatWorker(any());
+            assertEquals(1.0, registry.get("finbot.worker.heartbeat.failed").counter().count());
+        } finally {
+            runtime.destroy();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void stillRenewsTaskLeasesWhenWorkerHeartbeatFails() throws Exception {
+        var coordinator = mock(BackgroundTaskCoordinator.class);
+        var task = task("task_heartbeat_survives", BackgroundTaskType.INSTANT_RESEARCH);
+        var handlerStarted = new CountDownLatch(1);
+        var handlerResult = new CompletableFuture<Void>();
+        when(coordinator.count(BackgroundTaskStatus.PENDING)).thenReturn(1L);
+        when(coordinator.claim(any(), any(), any())).thenReturn(Optional.of(task));
+        doThrow(new IllegalStateException("worker heartbeat unavailable")).when(coordinator).heartbeatWorker(any());
+        when(coordinator.heartbeat(eq(task), any(), any())).thenReturn(true);
+        var registry = new SimpleMeterRegistry();
+        var executor = Executors.newSingleThreadExecutor();
+        var runtime = new BackgroundWorkerRuntime(
+                coordinator,
+                properties(1, 1),
+                executor,
+                java.util.List.of(handler(BackgroundTaskType.INSTANT_RESEARCH, handlerStarted, handlerResult)),
+                prefix -> prefix + "runtime_test",
+                registry);
+        try {
+            runtime.claimAvailableTask();
+            assertTrue(handlerStarted.await(1, TimeUnit.SECONDS));
+
+            runtime.heartbeat();
+
+            verify(coordinator, times(1)).heartbeat(eq(task), any(), any());
+            assertEquals(1.0, registry.get("finbot.worker.heartbeat.failed").counter().count());
+            assertTrue(registry.get("finbot.worker.lease.lost").counter().count() == 0);
+        } finally {
+            runtime.destroy();
+            handlerResult.cancel(true);
             executor.shutdownNow();
         }
     }

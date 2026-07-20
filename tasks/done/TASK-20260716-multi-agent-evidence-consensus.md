@@ -22,4 +22,4 @@
 
 ## 状态
 
-In progress.
+Done。031 migration 已执行，`AI_CLEANER`、多压缩席位、`COMPRESSION_VALIDATOR`、审计记录与默认工作流契约已进入生产代码。

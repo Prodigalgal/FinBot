@@ -1,6 +1,6 @@
 # TASK-20260713 PostgreSQL + SSE breaking migration
 
-状态：In Progress
+状态：Done。生产数据库为 PostgreSQL `finbot_v2`，前端 `/api/v2` 与 Operations/Workflow SSE 已通过生产浏览器 smoke。
 
 目标：一次性把生产数据库从 SQLite 切到 PostgreSQL，并以 SSE 替换高频完整状态轮询。
 

@@ -16,14 +16,18 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public final class JdbcEncryptedRuntimeSecretStore implements RuntimeSecretStore {
+    private static final long STORED_SECRET_CACHE_TTL_NANOS = java.time.Duration.ofSeconds(3).toNanos();
     private static final String AI_PROVIDER_KEYS_ENV = "FINBOT_AI_PROVIDER_KEYS_JSON";
     private static final String EXCHANGE_ACCOUNT_CREDENTIALS_ENV =
             "FINBOT_EXCHANGE_ACCOUNT_CREDENTIALS_JSON";
@@ -37,6 +41,7 @@ public final class JdbcEncryptedRuntimeSecretStore implements RuntimeSecretStore
     private final EnvironmentValueResolver environment;
     private final AesGcmRuntimeSecretCipher cipher;
     private final ObjectMapper objectMapper;
+    private final ConcurrentHashMap<RuntimeSecretScope, CachedScope> storedSecretCache = new ConcurrentHashMap<>();
 
     public JdbcEncryptedRuntimeSecretStore(
             JdbcClient jdbcClient,
@@ -128,6 +133,7 @@ public final class JdbcEncryptedRuntimeSecretStore implements RuntimeSecretStore
         if (changed != 1) {
             return Optional.empty();
         }
+        storedSecretCache.remove(scope);
         audit(scope, targetId, secretName, "SET", secretFingerprint, expectedVersion + 1, updatedAt);
         return Optional.of(status(
                 scope, targetId, secretName, fallbackEnvironmentVariable, find(scope, targetId, secretName)));
@@ -173,22 +179,37 @@ public final class JdbcEncryptedRuntimeSecretStore implements RuntimeSecretStore
         if (changed != 1) {
             return Optional.empty();
         }
+        storedSecretCache.remove(scope);
         audit(scope, targetId, secretName, "CLEAR", null, expectedVersion + 1, updatedAt);
         return Optional.of(status(
                 scope, targetId, secretName, fallbackEnvironmentVariable, find(scope, targetId, secretName)));
     }
 
     private Optional<StoredSecret> find(RuntimeSecretScope scope, String targetId, String secretName) {
-        return jdbcClient.sql("""
-                select ciphertext, nonce, fingerprint, encryption_key_version, version, updated_at
+        var now = System.nanoTime();
+        var cached = storedSecretCache.get(scope);
+        if (cached == null || cached.expiresAtNanos() <= now) {
+            cached = storedSecretCache.compute(scope, (key, current) ->
+                    current != null && current.expiresAtNanos() > now ? current : loadScope(key, now));
+        }
+        return Optional.ofNullable(cached.values().get(new SecretKey(targetId, secretName)));
+    }
+
+    private CachedScope loadScope(RuntimeSecretScope scope, long loadedAtNanos) {
+        var values = jdbcClient.sql("""
+                select target_id, secret_name, ciphertext, nonce, fingerprint,
+                       encryption_key_version, version, updated_at
                 from runtime_secret_override
-                where scope_type = :scopeType and target_id = :targetId and secret_name = :secretName
+                where scope_type = :scopeType
                 """)
                 .param("scopeType", scope.name())
-                .param("targetId", targetId)
-                .param("secretName", secretName)
-                .query((resultSet, rowNumber) -> stored(resultSet))
-                .optional();
+                .query((resultSet, rowNumber) -> Map.entry(
+                        new SecretKey(resultSet.getString("target_id"), resultSet.getString("secret_name")),
+                        stored(resultSet)))
+                .list();
+        var snapshot = new HashMap<SecretKey, StoredSecret>(values.size());
+        values.forEach(entry -> snapshot.put(entry.getKey(), entry.getValue()));
+        return new CachedScope(Map.copyOf(snapshot), loadedAtNanos + STORED_SECRET_CACHE_TTL_NANOS);
     }
 
     private RuntimeSecretStatus status(
@@ -356,5 +377,11 @@ public final class JdbcEncryptedRuntimeSecretStore implements RuntimeSecretStore
             int encryptionKeyVersion,
             long version,
             Instant updatedAt) {
+    }
+
+    private record SecretKey(String targetId, String secretName) {
+    }
+
+    private record CachedScope(Map<SecretKey, StoredSecret> values, long expiresAtNanos) {
     }
 }

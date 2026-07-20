@@ -16,6 +16,7 @@ FinBot 是面向自动研究与模拟交易的 AI 决策平台。系统按定时
 - Gate TestNet 与 Bybit Demo 仅对已验证且开启 `execution_enabled` 的合约允许策略约束内的自动模拟执行；Mainnet/Live 私有写入在多层代码门禁中永久阻断。
 - 产品使用 `canonical_product -> venue_instrument -> exchange_account` 三层模型；关闭交易所账户会同时阻止其行情候选、账户同步、风控候选和新订单，但保留产品与历史账本。
 - 每个 LLM 工作流节点和最终交易机器人阶段可独立配置主模型、兜底模型、思考强度、超时和重试；执行顺序固定为主模型重试耗尽后再进入兜底模型。
+- First-party crawler 默认执行 C1 challenge 分类；只有来源绑定了显式启用的 Header Profile 时，才会调用 C2 Playwright Browser Worker 或 C3 外部求解器。部署 Browser Worker 不等于默认绕过访问挑战。
 - 生产采用单副本应用服务，不承诺高可用；允许发布期间短暂中断。
 
 ```mermaid
@@ -42,17 +43,22 @@ flowchart TB
         Backend --- Ledger
 
         Backend <-->|"类型化 HTTP/1.1 + SSE"| Quant["Quant Pod<br/>Python 3.13 + FastAPI"]
+        Backend -->|"Bearer 鉴权<br/>显式 Profile 启用"| BrowserWorker["Browser Worker Pod<br/>Python 3.13 + Playwright Chromium"]
         Backend --> PG[("PostgreSQL 18<br/>finbot_v2")]
         Longhorn["Longhorn PVC / Snapshot"] --- PG
 
         Backend -. "显式启用后" .-> FireProxy["Firecrawl Proxy Pod<br/>默认 disabled / fail-closed"]
-        Backend -. "按路由启用" .-> ExchangeProxy["Exchange Proxy Pod<br/>备用"]
+        Backend --> Searxng["SearXNG Pod<br/>内部多引擎搜索"]
+        Searxng --> WebProxy["Web Crawl Proxy Pod<br/>sing-box"]
+        Backend -. "按路由启用" .-> ExchangeProxy["Exchange Proxy Pod<br/>Xray / sing-box"]
         Monitor["ServiceMonitor / PrometheusRule"] -. "metrics / alerts" .-> Backend
-        Policies["7 NetworkPolicy<br/>default deny"] -. "隔离" .-> Backend
+        Policies["9 NetworkPolicy<br/>default deny"] -. "隔离" .-> Backend
     end
 
     FireProxy -. "显式启用后" .-> IPv4Pool["Firecrawl 私有四节点池"]
     IPv4Pool --> Sources["官方站点 / 新闻 / Firecrawl keyless"]
+    WebProxy --> Sources
+    BrowserWorker -. "每个 context 强制经<br/>WEB_CRAWL proxy<br/>C2 未启用" .-> WebProxy
     Backend --> AI["MiMo2API / Sub2API<br/>DeepSeek 配置保留、运行停用"]
     Backend --> Gate["Gate TestNet"]
     Backend --> Bybit["Bybit Demo"]
@@ -68,16 +74,16 @@ flowchart TB
     Argo --> Cluster
 ```
 
-生产 Kustomize 当前渲染 30 个声明对象，但常驻计算只有 6 个 Pod：
+生产 Kustomize 当前渲染 37 个声明对象，稳态常驻计算为 9 个 Pod：
 
 | 类型 | 数量 | 是否常驻计算 | 说明 |
 | --- | ---: | --- | --- |
-| Deployment | 6 | 5 个 Pod | Backend、Web、Quant、两个 Proxy 各 1；legacy freeze 固定 0 副本 |
+| Deployment | 8 | 8 个 Pod | Backend、Web、Quant、Browser Worker、SearXNG、三个 Proxy Gateway 各 1 |
 | StatefulSet | 1 | 1 个 Pod | PostgreSQL 单实例 |
-| Job | 3 | 否 | DB bootstrap、Liquibase、历史导入，仅 Argo Hook 期间存在 |
-| Service / HTTPRoute | 6 / 2 | 否 | 集群寻址、HTTPS 路由与 HTTP 重定向 |
-| NetworkPolicy | 7 | 否 | 默认拒绝及按组件放行 |
-| Namespace / ConfigMap / PVC | 1 / 1 / 1 | 否 | 隔离、非敏感配置和持久卷声明 |
+| Job | 2 | 否 | DB bootstrap、Liquibase，仅 Argo Hook 期间存在 |
+| Service / HTTPRoute | 9 / 2 | 否 | 集群寻址、HTTPS 路由与 HTTP 重定向 |
+| NetworkPolicy | 9 | 否 | 默认拒绝及按组件放行 |
+| Namespace / ConfigMap / PVC | 1 / 2 / 1 | 否 | 隔离、应用与 SearXNG 配置、持久卷声明 |
 | ServiceMonitor / PrometheusRule | 1 / 1 | 否 | 指标抓取与告警规则 |
 
 ## 仓库结构
@@ -88,8 +94,9 @@ FinBot/
 │  └─ web/                    React + TypeScript 管理台
 ├─ services/
 │  ├─ backend/                Java 多模块主系统与一次性迁移工具
+│  ├─ browser-worker/         Python + Playwright 访问挑战处理服务
 │  ├─ quant/                  Python 无状态量化服务
-│  └─ proxy-gateway/          Python + sing-box 代理控制面
+│  └─ proxy-gateway/          Python + sing-box/Xray 双内核代理控制面
 ├─ platform/
 │  └─ k8s/                    Kustomize、迁移 Hook、NetworkPolicy 与运行手册
 ├─ contracts/                 跨服务 OpenAPI 契约
@@ -111,8 +118,9 @@ FinBot/
 | `services/backend/finbot-application` | Java | 用例、端口、异步任务和跨聚合编排 |
 | `services/backend/finbot-infrastructure` | Spring Data JDBC、`JdbcClient`、Liquibase | PostgreSQL、AI、交易所、Firecrawl 和 Quant adapter |
 | `services/backend/finbot-migration` | Java 26 | 只读历史导入；不进入在线运行时 |
+| `services/browser-worker` | Python 3.13、FastAPI、Playwright Chromium | C2 JavaScript/WAF challenge 结算，返回 cookie、最终 URL 与浏览器身份；无业务状态 |
 | `services/quant` | Python 3.13、FastAPI | 回测、指标、组合优化与 HTTP/SSE 量化输出 |
-| `services/proxy-gateway` | Python 3.13、sing-box | VLESS/Hysteria2 订阅、健康选择和 HTTP proxy bridge |
+| `services/proxy-gateway` | Python 3.13、sing-box、Xray | VLESS/Hysteria2 订阅、目标感知健康选择和 HTTP proxy bridge；每个 Profile 显式选择内核 |
 | `apps/web` | React、TypeScript、Vite、MUI | 单管理员运营台、产品库、研究、DAG、交易与运维视图 |
 
 ## 环境要求
@@ -146,6 +154,10 @@ python -m ruff check src tests
 python -m mypy src tests
 python -m pytest -q
 
+Set-Location ..\browser-worker
+python -m pip install -e ".[dev]"
+python -m pytest -q
+
 Set-Location ..\..\apps\web
 npm ci
 npx tsc -b --clean
@@ -171,15 +183,20 @@ $env:JAVA_HOME = 'D:\DevlopEnv\JDK\jdk-26.0.1'
 # Terminal 3: Web
 Set-Location apps/web
 npm run dev
+
+# Terminal 4: Browser Worker（仅在测试 C2 challenge 路径时需要）
+Set-Location services/browser-worker
+$env:FINBOT_BROWSER_WORKER_TOKEN = '<与 Java 配置一致的内部 token>'
+python -m finbot_browser_worker.main
 ```
 
-默认端口为 Java `8080`、Quant `8081`、Vite `5173`。管理员登录要求用户名/密码、一次性数学验证码和 SHA-256 PoW；账号密码只从环境变量注入。
+默认端口为 Java `8080`、Quant `8081`、Browser Worker `8082`、Vite `5173`。管理员登录要求用户名/密码、一次性数学验证码和 SHA-256 PoW；账号密码只从环境变量注入。
 
 ## 生产发布
 
 `main` 分支使用两条独立流水线：
 
-- Core CI：Java、Quant、React、PostgreSQL、浏览器 smoke、Secret scan、Kustomize、Trivy、SBOM 与 Cosign。
+- Core CI：Java、Quant、Browser Worker、React、PostgreSQL、浏览器 smoke、Secret scan、Kustomize、Trivy、SBOM 与 Cosign。
 - Proxy CI：Proxy 类型检查、测试、ARM64 镜像、Trivy、SBOM 与 Cosign。
 
 镜像推送到 `docker.io/speedproxy`，随后流水线只修改私有 GitOps 仓库 `Prodigalgal/ircs-prod-config/finbot`。Argo CD Application `finbot` 在 Oracle ARM64 K8S 中以单副本同步；CI 不持有 kubeconfig，也不直接写生产集群。

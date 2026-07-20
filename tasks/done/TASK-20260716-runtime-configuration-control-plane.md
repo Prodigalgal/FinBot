@@ -26,7 +26,7 @@
 
 ## 状态
 
-In progress. 在既有热配置控制面上继续修复 Provider 创建/模型探测和 Firecrawl 完整代理池发现问题；本地实现与门禁完成，等待 CI/GitOps 和生产在线验收。
+Done。032-034 migration、Provider/Model/来源/交易所/代理的资源级热配置、模型探测、测活和 Secret Override 已通过 CI/GitOps 与生产验收。Firecrawl 出口信誉和上游 403/429 是外部可用性风险，继续保持默认关闭与 fail-closed，不再作为本任务未完成项。
 
 ### 本轮增量（2026-07-17）
 

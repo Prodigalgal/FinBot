@@ -58,9 +58,11 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: services/quant/pyproject.toml
+          cache-dependency-path: |
+            services/quant/pyproject.toml
+            services/browser-worker/pyproject.toml
       - name: Install typed Python services
-        run: python -m pip install './services/quant[dev]'
+        run: python -m pip install './services/quant[dev]' './services/browser-worker[dev]'
       - name: Quant service quality gates
         working-directory: services/quant
         run: |
@@ -69,6 +71,12 @@ jobs:
           python -m pytest -q
           python -m openapi_spec_validator ../../contracts/quant-research.openapi.yaml
           python -m openapi_spec_validator ../../contracts/finbot-control-plane.openapi.yaml
+      - name: Browser worker quality gates
+        working-directory: services/browser-worker
+        run: |
+          python -m ruff check src tests
+          python -m mypy src tests
+          python -m pytest -q
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -170,8 +178,27 @@ jobs:
                       return True
               return False
 
+          def egress_allows(policy_name: str, destination_name: str, port: int) -> bool:
+              for rule in policies[policy_name]["spec"].get("egress", []):
+                  destinations = rule.get("to", [])
+                  ports = rule.get("ports", [])
+                  destination_matches = any(
+                      destination.get("podSelector", {}).get("matchLabels", {}).get(
+                          "app.kubernetes.io/name"
+                      ) == destination_name
+                      for destination in destinations
+                  )
+                  if destination_matches and any(value.get("port") == port for value in ports):
+                      return True
+              return False
+
+          browser_egress = policies["finbot-browser-worker"]["spec"].get("egress", [])
+
           assert ingress_allows("finbot-proxy-gateways", "finbot-searxng", 8080)
+          assert ingress_allows("finbot-proxy-gateways", "finbot-browser-worker", 8080)
           assert not ingress_allows("finbot-quant", "finbot-searxng", 8080)
+          assert egress_allows("finbot-browser-worker", "finbot-web-crawl-proxy", 8080)
+          assert not any("to" not in rule for rule in browser_egress)
           PY
 
       - name: Install browser runtime

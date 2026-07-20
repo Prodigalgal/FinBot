@@ -417,6 +417,21 @@ spec:
                 secretKeyRef:
                   name: finbot-secrets
                   key: FINBOT_JAVA_SERVICE_TOKEN
+            - name: FINBOT_BROWSER_WORKER_PROXY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: finbot-env
+                  key: FINBOT_BROWSER_WORKER_PROXY_URL
+            - name: FINBOT_BROWSER_WORKER_MAX_CONCURRENT_SOLVES
+              valueFrom:
+                configMapKeyRef:
+                  name: finbot-env
+                  key: FINBOT_BROWSER_WORKER_MAX_CONCURRENT_SOLVES
+            - name: FINBOT_BROWSER_WORKER_ACQUIRE_TIMEOUT_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: finbot-env
+                  key: FINBOT_BROWSER_WORKER_ACQUIRE_TIMEOUT_MS
           ports:
             - name: http
               containerPort: 8082

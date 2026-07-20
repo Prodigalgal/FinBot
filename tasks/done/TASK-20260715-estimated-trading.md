@@ -1,5 +1,7 @@
 # TASK-20260715 TradFi/CFD 预估交易
 
+状态：Done。`023-estimated-trading` 已在生产执行，领域计算、永久记录、API 和交易面板均保留在当前 Java 主系统。
+
 ## 目标
 
 - 对 `execution_enabled=false` 但仍可研究的产品生成可审计的预估交易，展示数量、入场、止盈、止损、杠杆、保证金及预估净盈利/亏损。

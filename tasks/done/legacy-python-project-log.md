@@ -29,7 +29,7 @@
 
 ## P3 产品研究工作台专案（进行中）
 
-目标：把产品库、用户 Watchlist、Hybrid Universe、研究历史、Council 工作流和建议治理收敛为一个长期专案。当前推进 P3.1 产品中心与 Watchlist 端到端闭环，详细范围与状态见 `docs/requirements/22-p3-product-research-workspace.md`、`docs/decisions/005-p3-product-catalog-watchlist-universe.md` 和 `tasks/in-progress/P3-product-research-workspace.md`。
+目标：把产品库、用户 Watchlist、Hybrid Universe、研究历史、Council 工作流和建议治理收敛为一个长期专案。该旧 Python 阶段任务已完成并归档，详细范围与状态见 `docs/requirements/22-p3-product-research-workspace.md`、`docs/decisions/005-p3-product-catalog-watchlist-universe.md` 和 `tasks/done/P3-product-research-workspace.md`。
 
 状态：P3.1-P3.4 与 P3.1B 已完成；Gate TestNet 与 Bybit Demo 首次受控并发模拟写入已通过，提交开关已恢复关闭，正式 K8S 部署另行推进。
 

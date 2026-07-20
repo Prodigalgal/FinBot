@@ -4,18 +4,34 @@ import os
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Protocol
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
 from finbot_browser_worker.models import (
+    BrowserWorkerRuntimeStatus,
     ChallengeSolveRequest,
     ChallengeSolveResponse,
     HealthResponse,
 )
-from finbot_browser_worker.solver import BrowserChallengeSolver
+from finbot_browser_worker.solver import BrowserChallengeSolver, BrowserWorkerCapacityError
 
 
-def create_app(solver: BrowserChallengeSolver | None = None, service_token: str | None = None) -> FastAPI:
+class BrowserSolver(Protocol):
+    @property
+    def ready(self) -> bool: ...
+
+    @property
+    def status(self) -> BrowserWorkerRuntimeStatus: ...
+
+    async def start(self) -> None: ...
+
+    async def stop(self) -> None: ...
+
+    async def solve(self, request: ChallengeSolveRequest) -> ChallengeSolveResponse: ...
+
+
+def create_app(solver: BrowserSolver | None = None, service_token: str | None = None) -> FastAPI:
     token = (service_token if service_token is not None else os.getenv("FINBOT_BROWSER_WORKER_TOKEN", "")).strip()
     if not token:
         raise RuntimeError("FINBOT_BROWSER_WORKER_TOKEN is required")
@@ -39,12 +55,14 @@ def create_app(solver: BrowserChallengeSolver | None = None, service_token: str 
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid bearer token")
 
     @app.get("/internal/v1/health", response_model=HealthResponse)
-    async def health() -> HealthResponse:
+    async def health(response: Response) -> HealthResponse:
+        if not engine.ready:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return HealthResponse(
             status="ok" if engine.ready else "starting",
             engine="playwright-chromium",
             ready=engine.ready,
-            detail={"component": "browser-worker"},
+            detail=engine.status,
         )
 
     @app.post(
@@ -55,6 +73,12 @@ def create_app(solver: BrowserChallengeSolver | None = None, service_token: str 
     async def solve(request: ChallengeSolveRequest) -> ChallengeSolveResponse:
         try:
             return await engine.solve(request)
+        except BrowserWorkerCapacityError as error:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="browser solve capacity exhausted",
+                headers={"Retry-After": "1"},
+            ) from error
         except Exception as error:  # noqa: BLE001 - map all browser failures to 502
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

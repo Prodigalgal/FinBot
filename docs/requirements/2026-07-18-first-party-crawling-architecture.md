@@ -1,5 +1,7 @@
 # 自研信息采集架构需求
 
+> 状态：核心已实现。035-043 migration、统一 transport、协议 Collector、安全边界和证据块已上线；后续 C1/C2/C3 扩展见 [requirement 37](./37-crawler-challenge-runtime.md)。
+
 ## 1. 目标与边界
 
 FinBot 的主要价值是研究分析，而不是依赖第三方服务完成网页抓取。本需求建立由 FinBot 自己控制请求、代理、解析、规范化、去重和可观测性的采集内核；Firecrawl 与 first-party 是相互独立的采集渠道，默认关闭 Firecrawl，但不把它定义为 first-party 的 fallback。

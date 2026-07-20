@@ -1,5 +1,7 @@
 # S3: 统一运行时配置控制面
 
+> 状态：已实现。032-034 migration 与 Provider、Model、交易所、信息源、代理的资源级热配置/测活已上线；上游余额、地区和出口信誉属于外部运行风险。
+
 ## 目标
 
 将外部服务凭据和代理路由从仅 ENV 注入升级为可审计的后台热配置。配置必须绑定业务资源而不是模型名称：AI Key 绑定 `AiProviderProfile`，模型只引用 Provider；交易所 Key 绑定 `ExchangeAccount`；代理 URL 绑定 `NetworkProxyRoute`；信息源 Key 绑定 `InformationSource`。

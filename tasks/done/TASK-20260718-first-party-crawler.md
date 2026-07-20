@@ -2,7 +2,7 @@
 
 ## 状态
 
-生产验收完成：first-party 协议、ContentEnvelope、生产控制面和目录 v1/v2/v3/v4 已落地，国内外新闻、内部/公共 SearXNG 与 AI Web Search 已生产发布；047 已将来源级引擎配置编译为 SearXNG 官方支持的 `!shortcut` 查询语法，048 已增加显式可用引擎冗余，049 已增加强制代理、低频、冷却且不绕过访问控制的公共实例池，长 source ID 异步采集与信息源在线测试异步化均已完成 CI/GitOps 和公网验收；不设置 14 天影子比较门禁。
+已完成并归档：first-party 协议、ContentEnvelope、生产控制面和目录 v1/v2/v3/v4 已落地，国内外新闻、内部/公共 SearXNG 与 AI Web Search 已生产发布；047-049、长 source ID 异步采集与信息源在线测试异步化均已完成 CI/GitOps 和公网验收。后续 C1/C2/C3 challenge 能力由 ADR 026 与 requirement 37 独立跟踪，不回写本任务的第一阶段范围。
 
 ## 目标
 
@@ -30,11 +30,11 @@
 2. Provider 工具协议测活后再按需启用 Grok/Gemini AI Web Search 默认来源，继续保持独立 token 与引用审计。
 3. 扩充行业和地区来源时优先官方 API/RSS；新增搜索 engine 必须先通过代理出口真实结果 smoke。
 4. 保留 Firecrawl 独立渠道及三个显式操作模式；默认关闭，任何渠道失败不得隐式切换，不以日历等待作为条件。
-5. 公共 SearXNG 仅调用运营者明确开放的 JSON API；持续按真实成功率调整静态门槛和冷却，不增加浏览器指纹、Cookie、JS challenge 或 CAPTCHA 绕过。
+5. 公共 SearXNG 只把明确 JSON 响应作为成功；后续显式 Browser Profile 不得改变来源身份、冷却和独立错误语义。
 
 ## 非目标
 
-- 本任务第一阶段不实现浏览器渲染。
+- 本任务第一阶段没有实现浏览器渲染；后续独立 Browser Worker 已上线，但生产来源尚未启用。
 - 不改变研究压缩、多 Agent 辩论、量化预测和模拟交易流程。
 - Firecrawl 是显式可选渠道；默认关闭且只能通过来源配置调用，不参与 first-party 失败后的隐式跳转。
 

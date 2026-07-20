@@ -1,10 +1,20 @@
 # Java Breaking Migration 验收记录
 
+> 本文保留 2026-07-14 首次切流证据。文中的 8 页面、双副本、11 changeset 和账户同步阻断是当时快照；当前状态见下方“最终收口”。
+
 日期：2026-07-14
 
 ## 结论
 
-Java 26 主系统、PostgreSQL 权威存储、Python Quant、代理控制面和 React `/api/v2` 管理台已完成生产切流。GitHub Actions、GitOps、Argo CD 和数据库迁移门禁已通过；运行态观察发现账户同步与公共行情代理失败，CAP-19 暂不关闭。
+Java 26 主系统、PostgreSQL 权威存储、Python Quant、代理控制面和 React `/api/v2` 管理台已完成生产切流。首次切流时账户同步与公共行情代理仍有阻断，后续修复和生产门禁已经完成。
+
+## 最终收口（2026-07-19）
+
+- CAP-01 至 CAP-19 全部完成，Migration 010 状态已关闭。
+- 生产累计 55 个 Liquibase changeset；React 为 13 个业务工作区，登录、CSRF、Operations SSE、桌面和移动端 smoke 通过。
+- 稳态为 Backend、Web、Quant、Browser Worker、SearXNG、三个 Proxy Gateway 与 PostgreSQL 共 9 个单副本 Pod。
+- Core CI run `29691886390` 成功；FinBot 发布 commit `40119fa96aaa0c0a88aa91958cdb77675e227048` 已同步，后续共享 GitOps revision 前进不改变 FinBot 镜像状态。
+- 旧 Python Web/Worker、SQLite 入口、历史导入 Hook 与迁移 Pod 已退出生产；独立归档不参与当前 CI/CD 或回滚。
 
 ## 数据迁移证据
 
@@ -21,9 +31,9 @@ Java 26 主系统、PostgreSQL 权威存储、Python Quant、代理控制面和 
 - 8 个核心页面完成真实登录和 API 加载；桌面 1536x1024 与移动 390x844 无横向溢出，浏览器无 warning/error。
 - Firecrawl 与 Exchange 代理分别独立部署；无路由或无节点时 fail-closed。
 - GitHub Actions run `29303691356` 已完成 ARM64 镜像构建、Trivy High/Critical 扫描、Cosign 签名和 GitOps 更新。
-- Argo CD Application `finbot` 最终为 `Synced / Healthy`，同步操作为 `Succeeded`；Backend、Quant、Web 各 2 个副本，Firecrawl Proxy、Exchange Proxy 与 PostgreSQL 均 Ready。
+- 首次切流时 Argo CD Application `finbot` 为 `Synced / Healthy`；当时 Backend、Quant、Web 各 2 个副本，Firecrawl Proxy、Exchange Proxy 与 PostgreSQL 均 Ready。该拓扑已被上方最终单副本拓扑取代。
 - 活跃 JDBC 目标为 `finbot_v2`；Liquibase 11/11 changeset 成功，旧 `finbot` 数据库仅作为短期回滚证据保留。
-- 当前阻断：`ACCOUNT_SYNC` 持续出现 `Connection reset`，定时研究无法取得可用公共 Kline。修复并连续通过三轮调度前，旧回滚资源保持不变。
+- 首次切流阻断：`ACCOUNT_SYNC` 曾出现 `Connection reset`，定时研究曾无法取得可用公共 Kline；后续已增加连接清理、重签名、有限退避和路由恢复，该阻断不再作为 Migration 010 门禁。
 
 ## 发布与回滚
 

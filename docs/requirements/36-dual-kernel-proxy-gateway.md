@@ -1,5 +1,7 @@
 # 双内核代理网关
 
+> 状态：已实现。051 migration、sing-box/Xray 双内核镜像、控制面与 UI 热切换均已上线；生产 Exchange Proxy 使用 Xray 4/4，Web Crawl Proxy 使用 sing-box 16/16。
+
 ## 目标
 
 让每个代理池可在后台选择 `SING_BOX` 或 `XRAY` 内核并热加载，统一向业务服务暴露 HTTP proxy 与健康接口。四台新建 VLESS REALITY 节点用于恢复交易所代理池；既有 HY2 节点与 Firecrawl 路由不被静默删除。

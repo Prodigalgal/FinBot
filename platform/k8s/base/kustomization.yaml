@@ -17,8 +17,9 @@ configMapGenerator:
     literals:
       - FINBOT_DATABASE_URL=jdbc:postgresql://finbot-postgres:5432/finbot_v2
       - FINBOT_DATABASE_USERNAME=finbot
-      - FINBOT_DATABASE_POOL_SIZE=20
-      - FINBOT_DATABASE_MIN_IDLE=2
+      - FINBOT_DATABASE_POOL_SIZE=32
+      - FINBOT_DATABASE_MIN_IDLE=4
+      - FINBOT_DATABASE_CONNECTION_TIMEOUT_MS=15000
       - FINBOT_INTERNAL_BASE_URL=http://finbot-backend:8080
       - FINBOT_QUANT_SERVICE_URL=http://finbot-quant-service:8081
       - FINBOT_SUB2API_BASE_URL=http://100.64.0.2:8181/v1
@@ -35,6 +36,9 @@ configMapGenerator:
       - FINBOT_TRADING_LEDGER_STALE_AFTER=PT10M
       - FINBOT_CRAWLER_USER_AGENT=FinBot/2.0 (+https://github.com/Prodigalgal/FinBot; contact=finbot@omnnu.xyz)
       - FINBOT_BROWSER_WORKER_URL=http://finbot-browser-worker:8082
+      - FINBOT_BROWSER_WORKER_PROXY_URL=http://finbot-web-crawl-proxy:8080
+      - FINBOT_BROWSER_WORKER_MAX_CONCURRENT_SOLVES=2
+      - FINBOT_BROWSER_WORKER_ACQUIRE_TIMEOUT_MS=5000
       - FINBOT_SEARXNG_ALLOWED_HOSTS=finbot-searxng,finbot-searxng.finbot.svc,finbot-searxng.finbot.svc.cluster.local
 generatorOptions:
   annotations:

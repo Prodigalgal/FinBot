@@ -51,6 +51,7 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
     private final AtomicInteger pendingTasks = new AtomicInteger();
     private final Counter capacityDeferredCounter;
     private final Counter rejectedExecutionCounter;
+    private final Counter heartbeatFailureCounter;
     private final Counter lostLeaseCounter;
     private final Counter recoveredLeaseCounter;
     private final WorkerId workerId;
@@ -75,6 +76,9 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
                 .register(registry);
         this.rejectedExecutionCounter = Counter.builder("finbot.worker.execution.rejected")
                 .description("Claimed tasks rejected by the worker executor")
+                .register(registry);
+        this.heartbeatFailureCounter = Counter.builder("finbot.worker.heartbeat.failed")
+                .description("Worker or task lease heartbeats that failed with a transient runtime error")
                 .register(registry);
         this.lostLeaseCounter = Counter.builder("finbot.worker.lease.lost")
                 .description("Running tasks cancelled after lease renewal failed")
@@ -135,13 +139,28 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
 
     @Scheduled(fixedDelayString = "${finbot.worker.heartbeat-interval:PT5S}")
     public void heartbeat() {
-        coordinator.heartbeatWorker(workerId);
+        try {
+            coordinator.heartbeatWorker(workerId);
+        } catch (RuntimeException exception) {
+            heartbeatFailureCounter.increment();
+            LOGGER.warn("Worker heartbeat failed; task lease heartbeats will still be attempted", exception);
+        }
         runningTasks.values().forEach(running -> {
-            if (running.leaseActive()
-                    && !coordinator.heartbeat(running.task(), workerId, properties.leaseDuration())) {
-                lostLeaseCounter.increment();
-                running.cancelForLostLease();
-                LOGGER.error("Lost lease for task {}; local execution cancelled", running.task().taskId().value());
+            if (!running.leaseActive()) {
+                return;
+            }
+            try {
+                if (!coordinator.heartbeat(running.task(), workerId, properties.leaseDuration())) {
+                    lostLeaseCounter.increment();
+                    running.cancelForLostLease();
+                    LOGGER.error("Lost lease for task {}; local execution cancelled", running.task().taskId().value());
+                }
+            } catch (RuntimeException exception) {
+                heartbeatFailureCounter.increment();
+                LOGGER.warn(
+                        "Task lease heartbeat failed for {}; lease will be checked again on the next interval",
+                        running.task().taskId().value(),
+                        exception);
             }
         });
     }

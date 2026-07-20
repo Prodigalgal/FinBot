@@ -2,7 +2,7 @@
 
 ## 当前阶段：P3.1-P3.4 与 P3.1B 首次双交易所模拟写入已完成
 
-> P0 数据可信度、运行恢复以及 P3.2-P3.4 的统一推进由 `tasks/in-progress/P0-P1-quality-closure.md` 跟踪；本文件保留产品工作台里程碑状态。
+> P0 数据可信度、运行恢复以及 P3.2-P3.4 的统一推进已由 `tasks/done/P0-P1-quality-closure.md` 完成；本文件保留产品工作台里程碑状态。
 
 - [x] 审计现有产品目录、场所合约、Hybrid Universe、API 和 Web UI。
 - [x] 固化需求边界与产品/Watchlist/Universe 架构决策。

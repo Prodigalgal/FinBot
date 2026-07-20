@@ -1,5 +1,7 @@
 # S3 Java 主系统与 Python 量化服务 Breaking Migration
 
+> 状态：已实现。Java 26/PostgreSQL `/api/v2` 是唯一生产主系统，Python 仅保留 Quant 与无业务状态辅助服务；旧 SQLite 和 Python Web/Worker 不参与生产。
+
 ## 目标
 
 将 FinBot 主系统重建为 Java 26 + Spring Boot 4.1 应用，保留 Python 作为独立量化研究服务。新系统以强类型领域模型、异步命令、可恢复事件流、Liquibase 原生 PostgreSQL Schema 和 K8S 常驻运行为基础，不复用 Python 运行时的 SQLite Store 契约、字符串状态、数据库兼容层或旧 API。

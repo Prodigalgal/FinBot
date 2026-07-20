@@ -1,5 +1,7 @@
 # TASK-20260719：工作台信息架构与 Bybit HY2 运行态收口
 
+状态：Done。导航与运行态层级已上线；HY2 的 K8S UDP/QUIC 边界最终通过四台独立 VLESS REALITY 节点和 Xray 代理池收口，生产 Exchange Proxy 为 4/4 healthy。
+
 ## 目标
 
 在不删除既有功能的前提下，整理前端导航与运行态信息层级，并通过真实生产链路定位四条 Hysteria2 节点无法访问 Bybit 的具体边界。

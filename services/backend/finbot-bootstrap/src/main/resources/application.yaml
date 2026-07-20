@@ -11,9 +11,9 @@ spring:
     username: ${FINBOT_DATABASE_USERNAME:finbot}
     password: ${FINBOT_DATABASE_PASSWORD:}
     hikari:
-      maximum-pool-size: ${FINBOT_DATABASE_POOL_SIZE:20}
-      minimum-idle: ${FINBOT_DATABASE_MIN_IDLE:2}
-      connection-timeout: 10000
+      maximum-pool-size: ${FINBOT_DATABASE_POOL_SIZE:32}
+      minimum-idle: ${FINBOT_DATABASE_MIN_IDLE:4}
+      connection-timeout: ${FINBOT_DATABASE_CONNECTION_TIMEOUT_MS:15000}
       validation-timeout: 3000
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml

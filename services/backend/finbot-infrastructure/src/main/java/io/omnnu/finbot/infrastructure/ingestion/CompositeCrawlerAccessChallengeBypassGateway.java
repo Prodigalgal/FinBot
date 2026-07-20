@@ -124,6 +124,7 @@ public final class CompositeCrawlerAccessChallengeBypassGateway
                         "BROWSER_WORKER",
                         "challenge still present after browser settle (" + challenge.kind().name() + ")");
             }
+            validateBrowserWorkerResult(challenge.pageUrl(), payload);
             var cookies = new LinkedHashMap<String, String>();
             var cookieNode = payload.path("cookies");
             if (cookieNode.isObject()) {
@@ -135,21 +136,55 @@ public final class CompositeCrawlerAccessChallengeBypassGateway
             }
             var headers = new LinkedHashMap<String, String>();
             var userAgent = payload.path("user_agent").asText("");
-            if (!userAgent.isBlank()) {
-                headers.put("User-Agent", userAgent);
+            if (userAgent.isBlank()) {
+                throw bypassFailure("BROWSER_WORKER", "browser worker returned no user agent");
             }
+            headers.put("User-Agent", userAgent);
             return new CrawlerAccessChallengeBypass(
                     headers,
                     cookies,
                     "browser-worker-" + detail);
         } catch (SourceCollectionException exception) {
             throw exception;
+        } catch (IllegalArgumentException exception) {
+            throw bypassFailure("BROWSER_WORKER", "browser worker returned invalid replay material");
         } catch (IOException | InterruptedException exception) {
             if (exception instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
             throw bypassFailure("BROWSER_WORKER", exception.getClass().getSimpleName());
         }
+    }
+
+    private static void validateBrowserWorkerResult(URI requestedUri, JsonNode payload) {
+        var finalUrl = payload.path("final_url").asText("");
+        URI finalUri;
+        try {
+            finalUri = URI.create(finalUrl);
+        } catch (IllegalArgumentException exception) {
+            throw bypassFailure("BROWSER_WORKER", "browser worker returned an invalid final URL");
+        }
+        if (!sameOrigin(requestedUri, finalUri)) {
+            throw bypassFailure("BROWSER_WORKER", "browser worker crossed the requested origin");
+        }
+        var statusCode = payload.path("status_code").asInt(0);
+        if (statusCode < 200 || statusCode >= 400) {
+            throw bypassFailure("BROWSER_WORKER", "browser worker final HTTP status was not successful");
+        }
+    }
+
+    private static boolean sameOrigin(URI left, URI right) {
+        return Objects.equals(left.getScheme(), right.getScheme())
+                && left.getHost() != null
+                && left.getHost().equalsIgnoreCase(right.getHost())
+                && effectivePort(left) == effectivePort(right);
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() >= 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
 
     private CrawlerAccessChallengeBypass solveCapSolver(CrawlerAccessChallenge challenge) {

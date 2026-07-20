@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -24,8 +22,19 @@ class ChallengeSolveResponse(BaseModel):
     detail: str = ""
 
 
+class BrowserWorkerRuntimeStatus(BaseModel):
+    proxy_configured: bool
+    proxy_origin: str
+    maximum_concurrent_solves: int
+    active_solves: int
+    waiting_solves: int
+    rejected_solves: int
+    completed_solves: int
+    failed_solves: int
+
+
 class HealthResponse(BaseModel):
     status: str
     engine: str
     ready: bool
-    detail: dict[str, Any] = Field(default_factory=dict)
+    detail: BrowserWorkerRuntimeStatus

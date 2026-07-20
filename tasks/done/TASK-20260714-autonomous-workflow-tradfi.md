@@ -1,5 +1,7 @@
 # TASK-20260714 自主工作流、TradFi 与模型兜底
 
+状态：Done。代码、Liquibase、全量 CI、GitOps、Argo CD 和生产浏览器门禁均已完成；Bybit/Binance TradFi 账户资格仍作为外部交易所边界保留。
+
 - [x] P0：完成上一轮 provider timeout/budget/自动恢复的生产闭环验证。
 - [x] P0：实现节点级自由主模型/兜底模型绑定及完整重试顺序。
 - [x] P0：发布宽预算、长超时、全阶段内置主工作流新版本。
@@ -10,7 +12,7 @@
 - [x] P1：完成 Binance Spot/USDM/COINM Demo 公共目录调查；发现 TradFi Perpetual，等待独立 Demo Futures key 后做私有开平仓验收。
 - [x] P1：支持多个工作流定义同时激活与独立调度。
 - [x] P2：完成工作流、设置、产品中心和运行详情 UI/UX 收口。
-- [ ] P2：完成 Java/Python/前端、Liquibase、HTTP、浏览器和 K8S 生产验收。
+- [x] P2：完成 Java/Python/前端、Liquibase、HTTP、浏览器和 K8S 生产验收。
 - [x] P2：更新 README、架构图、ADR、调查报告与回滚边界。
 
 ## 当前外部边界

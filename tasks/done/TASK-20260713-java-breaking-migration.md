@@ -1,6 +1,6 @@
 # TASK-20260713 Java Breaking Migration
 
-状态：In Progress
+状态：Done。Java 26/PostgreSQL `/api/v2` 已成为唯一生产主系统；旧 Python Web/Worker、SQLite 运行入口和迁移 Pod 已退出生产。本文件中的双副本、早期 changeset 数量和账户同步故障是切流阶段历史证据，不代表当前拓扑。
 
 ## 目标
 

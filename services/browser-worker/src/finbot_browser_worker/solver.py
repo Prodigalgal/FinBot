@@ -6,7 +6,12 @@ from typing import Any
 
 from playwright.async_api import Browser, Page, Playwright, async_playwright
 
-from finbot_browser_worker.models import ChallengeSolveRequest, ChallengeSolveResponse
+from finbot_browser_worker.models import (
+    BrowserWorkerRuntimeStatus,
+    ChallengeSolveRequest,
+    ChallengeSolveResponse,
+)
+from finbot_browser_worker.settings import BrowserWorkerSettings
 
 LOGGER = logging.getLogger(__name__)
 
@@ -45,14 +50,25 @@ if (originalQuery) {
 """
 
 
+class BrowserWorkerCapacityError(RuntimeError):
+    pass
+
+
 class BrowserChallengeSolver:
-    def __init__(self) -> None:
+    def __init__(self, settings: BrowserWorkerSettings | None = None) -> None:
+        self._settings = settings or BrowserWorkerSettings.from_environment()
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
-        self._lock = asyncio.Lock()
+        self._lifecycle_lock = asyncio.Lock()
+        self._capacity = asyncio.Semaphore(self._settings.maximum_concurrent_solves)
+        self._active_solves = 0
+        self._waiting_solves = 0
+        self._rejected_solves = 0
+        self._completed_solves = 0
+        self._failed_solves = 0
 
     async def start(self) -> None:
-        async with self._lock:
+        async with self._lifecycle_lock:
             if self._browser is not None:
                 return
             self._playwright = await async_playwright().start()
@@ -71,10 +87,10 @@ class BrowserChallengeSolver:
                     "--lang=zh-CN,zh,en-US,en",
                 ],
             )
-            LOGGER.info("chromium browser launched (stealth args enabled)")
+            LOGGER.info("chromium browser launched with mandatory proxy (stealth args enabled)")
 
     async def stop(self) -> None:
-        async with self._lock:
+        async with self._lifecycle_lock:
             if self._browser is not None:
                 await self._browser.close()
                 self._browser = None
@@ -86,9 +102,49 @@ class BrowserChallengeSolver:
     def ready(self) -> bool:
         return self._browser is not None and self._browser.is_connected()
 
+    @property
+    def status(self) -> BrowserWorkerRuntimeStatus:
+        return BrowserWorkerRuntimeStatus(
+            proxy_configured=True,
+            proxy_origin=self._settings.proxy_origin,
+            maximum_concurrent_solves=self._settings.maximum_concurrent_solves,
+            active_solves=self._active_solves,
+            waiting_solves=self._waiting_solves,
+            rejected_solves=self._rejected_solves,
+            completed_solves=self._completed_solves,
+            failed_solves=self._failed_solves,
+        )
+
     async def solve(self, request: ChallengeSolveRequest) -> ChallengeSolveResponse:
-        if self._browser is None or not self._browser.is_connected():
+        if not self.ready:
             await self.start()
+
+        self._waiting_solves += 1
+        try:
+            await asyncio.wait_for(
+                self._capacity.acquire(),
+                timeout=self._settings.acquire_timeout_ms / 1_000,
+            )
+        except TimeoutError as error:
+            self._rejected_solves += 1
+            raise BrowserWorkerCapacityError("browser solve capacity exhausted") from error
+        finally:
+            self._waiting_solves -= 1
+
+        self._active_solves += 1
+        try:
+            response = await self._solve_once(request)
+        except Exception:
+            self._failed_solves += 1
+            raise
+        else:
+            self._completed_solves += 1
+            return response
+        finally:
+            self._active_solves -= 1
+            self._capacity.release()
+
+    async def _solve_once(self, request: ChallengeSolveRequest) -> ChallengeSolveResponse:
         assert self._browser is not None
 
         user_agent = request.user_agent or (
@@ -103,6 +159,7 @@ class BrowserChallengeSolver:
             "timezone_id": "Asia/Shanghai",
             "color_scheme": "light",
             "user_agent": user_agent,
+            "proxy": {"server": self._settings.proxy_url},
             "extra_http_headers": {
                 "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
                 "Upgrade-Insecure-Requests": "1",
@@ -209,19 +266,22 @@ class BrowserChallengeSolver:
         title_l = (title or "").lower()
         if any(token in title_l for token in _STILL_CHALLENGED_TITLES):
             return True
-        if "anubis" in hints or "cloudflare" in hints:
-            if any(
-                token in body_text
-                for token in (
-                    "oh noes",
-                    "not a bot",
-                    "just a moment",
-                    "proof-of-work",
-                    "cf-turnstile",
-                    "/.within.website/",
-                )
-            ):
-                return True
+        if hints and any(
+            token in body_text
+            for token in (
+                "oh noes",
+                "not a bot",
+                "just a moment",
+                "proof-of-work",
+                "cf-turnstile",
+                "grecaptcha",
+                "h-captcha",
+                "captcha-delivery",
+                "px-captcha",
+                "/.within.website/",
+            )
+        ):
+            return True
         # JSON success body is never a challenge wall.
         stripped = body_text.lstrip()
         if stripped.startswith("{") or stripped.startswith("["):

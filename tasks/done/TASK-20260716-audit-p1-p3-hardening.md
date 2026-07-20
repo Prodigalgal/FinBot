@@ -1,6 +1,6 @@
 # TASK-20260716：审计 P1-P3 工程加固
 
-- 状态：进行中
+- 状态：Done。Worker 背压、行情完整性、交易恢复测试、OpenAPI、代理 TLS 和 Web 回归门禁已进入当前代码与 CI；新的运行时性能观察由 `tasks/current.md` 独立跟踪。
 - 目标：完成 Worker、行情、交易恢复测试、OpenAPI、代理 TLS 和 Web 测试六项审计修复。
 - 非目标：不改变研究和交易业务规则，不做 UI redesign，不启用真实盘交易。
 - 验收：见 `docs/requirements/33-audit-p1-p3-hardening.md`。

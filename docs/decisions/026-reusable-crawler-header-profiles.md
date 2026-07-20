@@ -38,12 +38,20 @@ Accepted，2026-07-19；**修订为 A+B+C1+C2+C3**（伪装、挑战分类、Pla
 8. 系统默认 `header_default` 仍可保持较保守身份，但**不再强制** FinBot UA 或禁止浏览器伪装；使用中 Profile 不可停用/删除的并发保护保持不变。
 9. UI、OpenAPI 与 PostgreSQL 为同一控制面契约；变更见 `052-crawler-header-camouflage` 与 `053-crawler-browser-worker-provider`。
 
+## 生产启用状态
+
+- 052/053 已执行，`finbot-browser-worker` 单副本和 Chromium health 已上线。
+- C1 不依赖 Profile 开关，已经在生产对 Cloudflare、Anubis/JS wall 和普通阻断输出稳定分类。
+- 当前只有 `header_default`，绑定 62 个来源，`browserTemplate=NONE`、`captchaBypassEnabled=false`、`captchaBypassProvider=NONE`；C2/C3 solve 调用为 0。
+- Browser Worker 每个 context 已强制绑定 `WEB_CRAWL` HTTP proxy，NetworkPolicy 只允许 DNS 和 proxy gateway 8080；C2/C3 solve 调用仍为 0，生产来源在受控 smoke 前不得启用 `BROWSER_WORKER`。
+
 ## 取舍
 
 - C1 启发式分类提高可观测性，但站点改版可能导致误判；未知 401/403 统一记为 `ACCESS_BLOCKED`，不伪装成成功。
 - 伪装与 C3 自动绕过提高对抗限流/challenge 的成功率，但增加密钥依赖与上游 ToS 风险；默认 Profile 关闭绕过，按信源显式开启。
 - 浏览器模板降低指纹不一致概率，但不伪造 TLS/JA3；深度指纹对抗仍依赖出口代理与可选 Firecrawl 浏览器通道。
 - 敏感头可跨域保留，便于防爬站点的会话链路，但扩大了凭据泄漏面；仅对显式配置的 Profile 生效。
+- C2 已有独立 semaphore、等待/拒绝计数和 solver/Java adapter fixture；真实生产 solve、证据落库和关闭回滚仍是启用门禁，不因 Pod Ready 而视为完成。
 
 ## 回滚
 

@@ -64,7 +64,7 @@ spec:
           expr: |
             kube_deployment_status_replicas_available{
               namespace="finbot",
-              deployment=~"finbot-(backend|quant|web|searxng|firecrawl-proxy|web-crawl-proxy|exchange-proxy)"
+              deployment=~"finbot-(backend|quant|web|browser-worker|searxng|firecrawl-proxy|web-crawl-proxy|exchange-proxy)"
             } < 1
           for: 5m
           labels:
@@ -90,6 +90,20 @@ spec:
             severity: warning
           annotations:
             summary: "FinBot container {{ $labels.container }} is restarting repeatedly"
+        - alert: FinBotWorkerHeartbeatFailures
+          expr: increase(finbot_worker_heartbeat_failed_total{namespace="finbot"}[10m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: FinBot worker heartbeat failures were observed in the last 10 minutes
+        - alert: FinBotWorkerLostLeases
+          expr: increase(finbot_worker_lease_lost_total{namespace="finbot"}[10m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: FinBot worker lost one or more persistent task leases
         - alert: FinBotPersistentVolumeNearlyFull
           expr: |
             kubelet_volume_stats_available_bytes{

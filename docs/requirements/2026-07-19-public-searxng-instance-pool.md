@@ -1,5 +1,7 @@
 # S3：公共 SearXNG 实例池渠道
 
+> 状态：核心渠道和 049 migration 已实现。请求身份/challenge 控制已由 ADR 026 扩展；生产当前仍使用透明默认 Profile，C2/C3 未启用。
+
 ## 目标
 
 新增独立的 `searxng_public_pool` 搜索发现渠道，从 `https://searx.space/data/instances.json` 获取公共实例目录，经 `WEB_CRAWL` 代理筛选并调用明确开放 JSON Search API 的实例。该渠道补充自建 `searxng_internal`，不替换它，也不作为其他渠道失败后的隐式 fallback。
@@ -16,11 +18,12 @@
 
 ## 安全与访问规则
 
-1. 使用明确的 `FinBot/2.0` User-Agent 和联系信息，不伪装浏览器，不生成虚假 Cookie、浏览器指纹或转发 IP。
-2. 不执行或绕过 Anubis、CAPTCHA、JavaScript challenge、WAF 或实例 limiter；HTTP 401/403/418/429 直接进入冷却。
+1. 默认 `header_default` 使用明确的 `FinBot/2.0` User-Agent 和联系信息，不生成虚假转发 IP；管理员可以显式绑定其他 Browser Profile，但不得隐式切换。
+2. C1 对 Anubis、CAPTCHA、JavaScript challenge、WAF 和 limiter 始终分类。默认 Profile 不执行求解；显式 C2/C3 失败仍进入公共池冷却并保留原分类。
 3. `CrawlerTransport` 在每次请求和重定向前执行 DNS/地址安全检查，拒绝 loopback、link-local、private、ULA 和保留地址。
 4. searx.space 目录入口固定为精确 HTTPS URL；管理员不能用该 provider 将目录改为任意站点。
 5. 公共实例可观察查询内容，因此来源只用于公开市场、行业和新闻研究，不发送 Secret、账户数据、未发布交易指令或用户凭据。
+6. 公共池固定 `WEB_CRAWL requireProxy=true`。Browser Worker 在接入同一代理且验证 fail-closed 前，不允许为该来源启用 `BROWSER_WORKER`。
 
 ## 失败与冷却
 
@@ -42,4 +45,4 @@
 1. 单元测试覆盖目录筛选、IPv4/IPv6 元数据、轮转、代理必需、JSON 成功、HTML challenge、429 冷却、候选耗尽、恶意 URL 和响应上限。
 2. PostgreSQL 集成测试验证 v4 manifest、来源字段、历史 manifest 保留和幂等迁移。
 3. 本地 Java 全量测试、OpenAPI、Web、Quant、Kustomize 和 Secret scan 通过。
-4. 生产通过代理读取 searx.space 目录；公共实例调用只接受诚实 User-Agent 下的真实 JSON 成功。若当前无合格实例，验收结果必须明确记录 `BLOCKED`，不得修改筛选规则规避访问控制。
+4. 生产通过代理读取 searx.space 目录；只有真实 JSON 结果才算成功。若当前无合格实例，验收结果必须明确记录 `BLOCKED`，不得把 challenge HTML、Browser Worker 部分成功或其他渠道结果伪装成本渠道成功。
