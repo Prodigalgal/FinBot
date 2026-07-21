@@ -19,6 +19,8 @@ public record AiProviderView(
         boolean enabled,
         int connectTimeoutSeconds,
         int requestTimeoutSeconds,
+        int maximumConcurrentRequests,
+        int acquireTimeoutSeconds,
         long workflowNodeUsageCount,
         long roleTemplateUsageCount,
         long executionStageUsageCount,

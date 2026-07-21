@@ -62,6 +62,8 @@ public final class ConfigurationController {
                 request.enabled(),
                 request.connectTimeoutSeconds(),
                 request.requestTimeoutSeconds(),
+                request.maximumConcurrentRequests(),
+                request.acquireTimeoutSeconds(),
                 request.expectedVersion()));
     }
 
@@ -75,7 +77,9 @@ public final class ConfigurationController {
                 request.baseUrl(),
                 request.enabled(),
                 request.connectTimeoutSeconds(),
-                request.requestTimeoutSeconds()));
+                request.requestTimeoutSeconds(),
+                request.maximumConcurrentRequests(),
+                request.acquireTimeoutSeconds()));
     }
 
     @DeleteMapping("/providers/{profileId}")

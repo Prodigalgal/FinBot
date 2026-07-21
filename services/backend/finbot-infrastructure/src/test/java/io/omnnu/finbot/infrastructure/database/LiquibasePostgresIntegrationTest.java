@@ -27,6 +27,7 @@ import io.omnnu.finbot.infrastructure.exchange.JdbcExchangeAccountControlReposit
 import io.omnnu.finbot.infrastructure.catalog.JdbcProductCatalogSyncStore;
 import io.omnnu.finbot.infrastructure.ingestion.JdbcIngestionRepository;
 import io.omnnu.finbot.infrastructure.ai.JdbcAiRuntimeProfileResolver;
+import io.omnnu.finbot.infrastructure.ai.JdbcAiInvocationRecoveryStore;
 import io.omnnu.finbot.infrastructure.configuration.AesGcmRuntimeSecretCipher;
 import io.omnnu.finbot.infrastructure.configuration.JdbcConfigurationRepository;
 import io.omnnu.finbot.infrastructure.configuration.JdbcEncryptedRuntimeSecretStore;
@@ -66,6 +67,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.Base64;
@@ -227,6 +229,7 @@ class LiquibasePostgresIntegrationTest {
 
         assertEquals(AiProtocol.RESPONSES, resolved.protocol());
         assertEquals(ReasoningEffort.XHIGH, resolved.maximumReasoningEffort());
+        assertEquals(Duration.ofMinutes(30), resolved.capacityWaitTimeout());
         assertThrows(AiProviderUnavailableException.class, () -> resolver.resolve(new AiModelBinding(
                 new AiProviderProfileId("provider_grok_sub2api"),
                 "grok-4.5",
@@ -254,6 +257,8 @@ class LiquibasePostgresIntegrationTest {
                 true,
                 10,
                 1800,
+                5,
+                3600,
                 0,
                 now);
         var primaryModel = new AiModelProfile(
@@ -269,6 +274,12 @@ class LiquibasePostgresIntegrationTest {
                 now);
 
         assertTrue(repository.createProvider(provider, now).isPresent());
+        var persistedProvider = repository.listProviders().stream()
+                .filter(candidate -> candidate.profileId().equals(providerId))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(5, persistedProvider.maximumConcurrentRequests());
+        assertEquals(3600, persistedProvider.acquireTimeoutSeconds());
         assertTrue(repository.createModel(primaryModel, now).isPresent());
         assertTrue(repository.createModel(new AiModelProfile(
                 "model_runtime_secondary_" + suffix,
@@ -853,7 +864,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                     assertEquals(57, result.getInt("changeset_count"));
+                    assertEquals(58, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
@@ -1356,6 +1367,72 @@ class LiquibasePostgresIntegrationTest {
         assertEquals("workflowversion_standard_v4", assignment.get(1));
         assertEquals("experiment_routing_test", assignment.get(2));
         assertEquals("CANDIDATE", assignment.get(3));
+    }
+
+    @Test
+    void failsOnlyOrphanedAiInvocationsDuringWorkerStartupRecovery() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        var runId = new WorkflowRunId("run_recovery_" + suffix);
+        var acceptedAt = Instant.parse("2026-07-21T11:00:00Z");
+        var objectMapper = new ObjectMapper().findAndRegisterModules();
+        var workflowStore = new JdbcWorkflowStore(jdbcClient, new WorkflowEventCodec(objectMapper));
+        var command = new StartWorkflowCommand(
+                WorkflowType.INSTANT_RESEARCH,
+                WorkflowTrigger.MANUAL,
+                new WorkflowVersionId("workflowversion_standard_v8"),
+                "AI invocation recovery integration test",
+                "ai-recovery:" + suffix);
+        workflowStore.accept(command, new WorkflowAccepted(
+                new WorkflowEventId("event_recovery_" + suffix),
+                runId,
+                1,
+                command.workflowType(),
+                acceptedAt));
+        jdbcClient.sql("""
+                insert into ai_invocation (
+                  invocation_id, run_id, node_id, provider_profile_id, protocol,
+                  model_name, reasoning_effort, prompt_version, request_hash,
+                  status, started_at, completed_at
+                ) values
+                  (:orphanedId, :runId, 'node_bull_analyst', 'provider_grok_sub2api',
+                   'RESPONSES', 'grok-4.5', 'XHIGH', 'test-v1', repeat('a', 64),
+                   'STREAMING', :startedAt, null),
+                  (:completedId, :runId, 'node_bull_analyst', 'provider_grok_sub2api',
+                   'RESPONSES', 'grok-4.5', 'XHIGH', 'test-v1', repeat('b', 64),
+                   'COMPLETED', :startedAt, :completedAt)
+                """)
+                .param("orphanedId", "invocation_orphaned_" + suffix)
+                .param("completedId", "invocation_completed_" + suffix)
+                .param("runId", runId.value())
+                .param("startedAt", OffsetDateTime.parse("2026-07-21T11:00:10Z"))
+                .param("completedAt", OffsetDateTime.parse("2026-07-21T11:00:20Z"))
+                .update();
+
+        var recovered = new JdbcAiInvocationRecoveryStore(jdbcClient)
+                .failOrphanedInvocations(Instant.parse("2026-07-21T11:01:10Z"));
+
+        assertEquals(1, recovered);
+        var statuses = jdbcClient.sql("""
+                select invocation_id, status, error_code, latency_milliseconds
+                from ai_invocation
+                where run_id = :runId
+                order by invocation_id
+                """)
+                .param("runId", runId.value())
+                .query((resultSet, rowNumber) -> List.of(
+                        resultSet.getString("invocation_id"),
+                        resultSet.getString("status"),
+                        Objects.toString(resultSet.getString("error_code"), ""),
+                        Long.toString(resultSet.getLong("latency_milliseconds"))))
+                .list();
+        assertEquals("COMPLETED", statuses.getFirst().get(1));
+        assertEquals("FAILED", statuses.get(1).get(1));
+        assertEquals("WORKER_RESTART_RECOVERY", statuses.get(1).get(2));
+        assertEquals("60000", statuses.get(1).get(3));
     }
 
     private static void updateSchema() throws Exception {

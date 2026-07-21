@@ -32,7 +32,8 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
     AiRuntimeProfile resolve(AiProviderProfileId profileId) {
         var stored = jdbcClient.sql("""
                 select protocol, reasoning_parameter_style, base_url, base_url_env, api_key_env,
-                       enabled, request_timeout_seconds
+                       enabled, request_timeout_seconds,
+                       maximum_concurrent_requests, acquire_timeout_seconds, version
                 from ai_provider_profile
                 where profile_id = :profileId and deleted_at is null
                 """)
@@ -44,7 +45,10 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
                         resultSet.getString("base_url_env"),
                         resultSet.getString("api_key_env"),
                         resultSet.getBoolean("enabled"),
-                        resultSet.getInt("request_timeout_seconds")))
+                        resultSet.getInt("request_timeout_seconds"),
+                        resultSet.getInt("maximum_concurrent_requests"),
+                        resultSet.getInt("acquire_timeout_seconds"),
+                        resultSet.getLong("version")))
                 .optional()
                 .orElseThrow(() -> new AiProviderConfigurationException("AI provider profile does not exist"));
         if (!stored.enabled()) {
@@ -67,13 +71,17 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
                 stored.reasoningParameterStyle(),
                 uri,
                 apiKey,
-                stored.requestTimeoutSeconds());
+                stored.requestTimeoutSeconds(),
+                stored.maximumConcurrentRequests(),
+                stored.acquireTimeoutSeconds(),
+                stored.configurationVersion());
     }
 
     @Override
     public AiRuntimeBinding resolve(AiModelBinding binding) {
         var resolved = jdbcClient.sql("""
-                select provider.protocol, model.maximum_reasoning_effort
+                select provider.protocol, model.maximum_reasoning_effort,
+                       provider.acquire_timeout_seconds
                 from ai_provider_profile provider
                 join ai_model_profile model
                   on model.provider_profile_id = provider.profile_id
@@ -88,7 +96,8 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
                 .query((resultSet, rowNumber) -> new AiRuntimeBinding(
                         AiProtocol.valueOf(resultSet.getString("protocol")),
                         io.omnnu.finbot.domain.configuration.ReasoningEffort.valueOf(
-                                resultSet.getString("maximum_reasoning_effort"))))
+                                resultSet.getString("maximum_reasoning_effort")),
+                        java.time.Duration.ofSeconds(resultSet.getInt("acquire_timeout_seconds"))))
                 .optional()
                 .orElseThrow(() -> new AiProviderConfigurationException(
                         "AI provider or model profile does not exist or is disabled"));
@@ -159,6 +168,9 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
             String baseUrlEnv,
             String apiKeyEnv,
             boolean enabled,
-            int requestTimeoutSeconds) {
+            int requestTimeoutSeconds,
+            int maximumConcurrentRequests,
+            int acquireTimeoutSeconds,
+            long configurationVersion) {
     }
 }

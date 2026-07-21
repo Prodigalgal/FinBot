@@ -44,8 +44,8 @@ public record WorkflowNodeDefinition(
         if (maximumOutputTokens < 64 || maximumOutputTokens > 65_536) {
             throw new IllegalArgumentException("maximumOutputTokens must be between 64 and 65536");
         }
-        if (timeoutSeconds < 5 || timeoutSeconds > 1_800) {
-            throw new IllegalArgumentException("timeoutSeconds must be between 5 and 1800");
+        if (timeoutSeconds < 5 || timeoutSeconds > 3_600) {
+            throw new IllegalArgumentException("timeoutSeconds must be between 5 and 3600");
         }
         requireLlmBinding(nodeType, primaryAiBinding, fallbackAiBinding, systemPrompt, outputContract);
     }

@@ -16,10 +16,10 @@ class ProviderConcurrencyLimiterTest {
 
     @Test
     void queuesFairlyUntilProviderCapacityIsReleased() throws Exception {
-        var limiter = new ProviderConcurrencyLimiter(1, Duration.ofSeconds(5));
-        var first = limiter.acquire(PROVIDER, Duration.ofSeconds(5));
+        var limiter = new ProviderConcurrencyLimiter();
+        var first = limiter.acquire(PROVIDER, 1, 0, Duration.ofSeconds(5));
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var waiting = CompletableFuture.supplyAsync(() -> acquire(limiter), executor);
+            var waiting = CompletableFuture.supplyAsync(() -> acquire(limiter, 1, 0), executor);
 
             while (limiter.queueDepth(PROVIDER) == 0) {
                 Thread.onSpinWait();
@@ -40,21 +40,45 @@ class ProviderConcurrencyLimiterTest {
     }
 
     @Test
+    void appliesNewerCapacityImmediatelyAndRejectsStaleConfiguration() throws Exception {
+        var limiter = new ProviderConcurrencyLimiter();
+        var first = limiter.acquire(PROVIDER, 1, 0, Duration.ofSeconds(5));
+        try {
+            var second = limiter.acquire(PROVIDER, 2, 1, Duration.ofSeconds(5));
+            try {
+                assertEquals(2, limiter.activeCount(PROVIDER));
+                assertEquals(2, limiter.configuredLimit(PROVIDER));
+                assertThrows(
+                        ProviderConcurrencyLimiter.ProviderCapacityTimeoutException.class,
+                        () -> limiter.acquire(PROVIDER, 1, 0, Duration.ofMillis(50)));
+                assertEquals(2, limiter.configuredLimit(PROVIDER));
+            } finally {
+                second.close();
+            }
+        } finally {
+            first.close();
+        }
+    }
+
+    @Test
     void failsWhenQueueWaitExceedsConfiguredTimeout() throws Exception {
-        var limiter = new ProviderConcurrencyLimiter(1, Duration.ofSeconds(5));
-        var permit = limiter.acquire(PROVIDER, Duration.ofSeconds(5));
+        var limiter = new ProviderConcurrencyLimiter();
+        var permit = limiter.acquire(PROVIDER, 1, 0, Duration.ofSeconds(5));
         try {
             assertThrows(
                     ProviderConcurrencyLimiter.ProviderCapacityTimeoutException.class,
-                    () -> limiter.acquire(PROVIDER, Duration.ofMillis(50)));
+                    () -> limiter.acquire(PROVIDER, 1, 0, Duration.ofMillis(50)));
         } finally {
             permit.close();
         }
     }
 
-    private static ProviderConcurrencyLimiter.Permit acquire(ProviderConcurrencyLimiter limiter) {
+    private static ProviderConcurrencyLimiter.Permit acquire(
+            ProviderConcurrencyLimiter limiter,
+            int limit,
+            long configurationVersion) {
         try {
-            return limiter.acquire(PROVIDER, Duration.ofSeconds(5));
+            return limiter.acquire(PROVIDER, limit, configurationVersion, Duration.ofSeconds(5));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);

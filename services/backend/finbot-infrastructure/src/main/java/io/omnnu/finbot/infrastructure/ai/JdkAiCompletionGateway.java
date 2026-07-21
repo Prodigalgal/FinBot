@@ -84,10 +84,14 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             SubmissionPublisher<AiCompletionEvent> publisher) {
         ProviderConcurrencyLimiter.Permit permit = null;
         try {
+            var profile = profileResolver.resolve(request.providerProfileId());
             permit = concurrencyLimiter.acquire(
                     request.providerProfileId(),
-                    request.timeout());
-            var profile = profileResolver.resolve(request.providerProfileId());
+                    profile.maximumConcurrentRequests(),
+                    profile.configurationVersion(),
+                    minimum(
+                            Duration.ofSeconds(profile.acquireTimeoutSeconds()),
+                            request.capacityWaitTimeout()));
             if (profile.protocol() != request.protocol()) {
                 throw new AiProviderConfigurationException("Workflow protocol does not match AI provider profile");
             }

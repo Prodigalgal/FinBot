@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { AiProvider } from './types';
+
 describe('control-plane API transport', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -77,6 +79,47 @@ describe('control-plane API transport', () => {
         }),
       }),
     );
+  });
+
+  it('submits provider capacity and timeout hot configuration', async () => {
+    document.cookie = 'XSRF-TOKEN=csrf-cookie; Path=/';
+    const provider: AiProvider = {
+      profileId: 'provider_runtime_test',
+      displayName: 'Runtime provider',
+      protocol: 'RESPONSES',
+      reasoningParameterStyle: 'NESTED',
+      baseUrl: 'https://provider.example/v1',
+      baseUrlConfigured: true,
+      apiKeyConfigured: true,
+      credentialSource: 'DATABASE_OVERRIDE',
+      credentialFingerprint: '0123456789abcdef',
+      credentialVersion: 2,
+      credentialUpdatedAt: '2026-07-21T00:00:00Z',
+      enabled: true,
+      connectTimeoutSeconds: 10,
+      requestTimeoutSeconds: 3600,
+      maximumConcurrentRequests: 7,
+      acquireTimeoutSeconds: 5400,
+      workflowNodeUsageCount: 1,
+      roleTemplateUsageCount: 0,
+      executionStageUsageCount: 0,
+      totalUsageCount: 1,
+      version: 3,
+      updatedAt: '2026-07-21T00:00:00Z',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(provider, 200));
+    vi.stubGlobal('fetch', fetchMock);
+    const { api } = await import('./api');
+
+    await api.updateProvider(provider);
+
+    const options = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(options.body as string)).toEqual(expect.objectContaining({
+      requestTimeoutSeconds: 3600,
+      maximumConcurrentRequests: 7,
+      acquireTimeoutSeconds: 5400,
+      expectedVersion: 3,
+    }));
   });
 });
 

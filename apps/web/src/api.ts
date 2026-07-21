@@ -195,6 +195,8 @@ export const api = {
       enabled: provider.enabled,
       connectTimeoutSeconds: provider.connectTimeoutSeconds,
       requestTimeoutSeconds: provider.requestTimeoutSeconds,
+      maximumConcurrentRequests: provider.maximumConcurrentRequests,
+      acquireTimeoutSeconds: provider.acquireTimeoutSeconds,
       expectedVersion: provider.version,
     }),
   }),

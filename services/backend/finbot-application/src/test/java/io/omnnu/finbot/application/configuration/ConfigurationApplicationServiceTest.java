@@ -59,9 +59,13 @@ class ConfigurationApplicationServiceTest {
                 "https://provider.example/v1",
                 true,
                 10,
-                1800));
+                1800,
+                5,
+                3600));
 
         assertEquals("provider_test_generated_id", created.profileId());
+        assertEquals(5, created.maximumConcurrentRequests());
+        assertEquals(3600, created.acquireTimeoutSeconds());
         assertEquals(
                 "FINBOT_AI_PROVIDER_KEYS_JSON",
                 repository.providers.getFirst().apiKeyEnv());
@@ -79,7 +83,9 @@ class ConfigurationApplicationServiceTest {
                 "https://provider.example/v1",
                 true,
                 10,
-                120));
+                120,
+                5,
+                1800));
         repository.usages = Map.of(created.profileId(), new AiProviderUsage(1, 0, 0));
 
         assertThrows(ConfigurationConflictException.class, () -> service.deleteProvider(

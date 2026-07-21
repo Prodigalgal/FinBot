@@ -48,7 +48,8 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
         return jdbcClient.sql("""
                 select profile_id, display_name, protocol, reasoning_parameter_style,
                        base_url, base_url_env, api_key_env,
-                       enabled, connect_timeout_seconds, request_timeout_seconds, version, updated_at
+                       enabled, connect_timeout_seconds, request_timeout_seconds,
+                       maximum_concurrent_requests, acquire_timeout_seconds, version, updated_at
                 from ai_provider_profile
                 where deleted_at is null
                 order by display_name, profile_id
@@ -118,11 +119,14 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                   profile_id, display_name, protocol, reasoning_parameter_style,
                   base_url, base_url_env, api_key_env, enabled,
                   connect_timeout_seconds, request_timeout_seconds,
+                  maximum_concurrent_requests, acquire_timeout_seconds,
                   version, created_at, updated_at
                 ) values (
                   :profileId, :displayName, :protocol, :reasoningStyle,
                   :baseUrl, :baseUrlEnv, :apiKeyEnv, :enabled,
-                  :connectTimeout, :requestTimeout, 0, :createdAt, :createdAt
+                  :connectTimeout, :requestTimeout,
+                  :maximumConcurrentRequests, :acquireTimeoutSeconds,
+                  0, :createdAt, :createdAt
                 ) on conflict (profile_id) do nothing
                 """)
                 .param("profileId", provider.profileId())
@@ -135,6 +139,8 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 .param("enabled", provider.enabled())
                 .param("connectTimeout", provider.connectTimeoutSeconds())
                 .param("requestTimeout", provider.requestTimeoutSeconds())
+                .param("maximumConcurrentRequests", provider.maximumConcurrentRequests())
+                .param("acquireTimeoutSeconds", provider.acquireTimeoutSeconds())
                 .param("createdAt", timestamp(createdAt))
                 .update();
         if (changed != 1) {
@@ -191,6 +197,8 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                     enabled = :enabled,
                     connect_timeout_seconds = :connectTimeout,
                     request_timeout_seconds = :requestTimeout,
+                    maximum_concurrent_requests = :maximumConcurrentRequests,
+                    acquire_timeout_seconds = :acquireTimeoutSeconds,
                     version = version + 1,
                     updated_at = :updatedAt
                 where profile_id = :profileId
@@ -207,6 +215,8 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 .param("enabled", profile.enabled())
                 .param("connectTimeout", profile.connectTimeoutSeconds())
                 .param("requestTimeout", profile.requestTimeoutSeconds())
+                .param("maximumConcurrentRequests", profile.maximumConcurrentRequests())
+                .param("acquireTimeoutSeconds", profile.acquireTimeoutSeconds())
                 .param("expectedVersion", expectedVersion)
                 .param("updatedAt", timestamp(updatedAt))
                 .update();
@@ -313,7 +323,8 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
         return jdbcClient.sql("""
                 select profile_id, display_name, protocol, reasoning_parameter_style,
                        base_url, base_url_env, api_key_env,
-                       enabled, connect_timeout_seconds, request_timeout_seconds, version, updated_at
+                       enabled, connect_timeout_seconds, request_timeout_seconds,
+                       maximum_concurrent_requests, acquire_timeout_seconds, version, updated_at
                 from ai_provider_profile
                 where profile_id = :profileId and deleted_at is null
                 """)
@@ -388,6 +399,8 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 resultSet.getBoolean("enabled"),
                 resultSet.getInt("connect_timeout_seconds"),
                 resultSet.getInt("request_timeout_seconds"),
+                resultSet.getInt("maximum_concurrent_requests"),
+                resultSet.getInt("acquire_timeout_seconds"),
                 resultSet.getLong("version"),
                 instant(resultSet.getObject("updated_at", OffsetDateTime.class)));
     }

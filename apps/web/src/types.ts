@@ -418,7 +418,8 @@ export interface AiProvider {
   credentialSource: 'DATABASE_OVERRIDE' | 'ENVIRONMENT_FALLBACK' | 'UNCONFIGURED';
   credentialFingerprint: string | null; credentialVersion: number; credentialUpdatedAt: string | null;
   enabled: boolean; connectTimeoutSeconds: number;
-  requestTimeoutSeconds: number; workflowNodeUsageCount: number; roleTemplateUsageCount: number;
+  requestTimeoutSeconds: number; maximumConcurrentRequests: number; acquireTimeoutSeconds: number;
+  workflowNodeUsageCount: number; roleTemplateUsageCount: number;
   executionStageUsageCount: number; totalUsageCount: number; version: number; updatedAt: string;
 }
 export interface AiModel {

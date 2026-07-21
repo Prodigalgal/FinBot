@@ -24,7 +24,7 @@ public record TradeExecutionAiStageConfig(
         if (maximumOutputTokens < 256 || maximumOutputTokens > 65_536) {
             throw new IllegalArgumentException("maximumOutputTokens must be between 256 and 65536");
         }
-        if (timeoutSeconds < 10 || timeoutSeconds > 1_800 || version < 0) {
+        if (timeoutSeconds < 10 || timeoutSeconds > 3_600 || version < 0) {
             throw new IllegalArgumentException("Invalid execution AI stage limits");
         }
     }

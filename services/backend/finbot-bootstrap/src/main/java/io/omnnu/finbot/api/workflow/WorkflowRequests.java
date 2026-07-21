@@ -74,7 +74,7 @@ public final class WorkflowRequests {
             @Min(0) @Max(8) int contextHistoryRounds,
             @Min(0) @Max(64) int contextMaximumMessages,
             @Min(64) @Max(65536) int maximumOutputTokens,
-            @Min(5) @Max(1800) int timeoutSeconds,
+            @Min(5) @Max(3600) int timeoutSeconds,
             @Min(1) @Max(5) int retryMaximumAttempts,
             @Min(0) @Max(300) int retryBackoffSeconds,
             @Size(max = 80) String operation,

@@ -54,6 +54,7 @@ public final class JdkAiWebSearchGateway implements AiWebSearchGateway {
     private final AiWebSearchAuditStore auditStore;
     private final SortableIdGenerator idGenerator;
     private final Clock clock;
+    private final ProviderConcurrencyLimiter concurrencyLimiter;
 
     public JdkAiWebSearchGateway(
             @Qualifier("aiHttpClient") HttpClient httpClient,
@@ -61,13 +62,15 @@ public final class JdkAiWebSearchGateway implements AiWebSearchGateway {
             ObjectMapper objectMapper,
             AiWebSearchAuditStore auditStore,
             SortableIdGenerator idGenerator,
-            Clock clock) {
+            Clock clock,
+            ProviderConcurrencyLimiter concurrencyLimiter) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.runtimeResolver = Objects.requireNonNull(runtimeResolver, "runtimeResolver");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.auditStore = Objects.requireNonNull(auditStore, "auditStore");
         this.idGenerator = Objects.requireNonNull(idGenerator, "idGenerator");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.concurrencyLimiter = Objects.requireNonNull(concurrencyLimiter, "concurrencyLimiter");
     }
 
     @Override
@@ -87,7 +90,17 @@ public final class JdkAiWebSearchGateway implements AiWebSearchGateway {
         auditStore.start(invocationId, sourceId, binding, sha256(normalizedQuery), startedAt);
         try {
             var profile = runtimeResolver.resolve(binding);
-            var response = send(profile, binding, normalizedQuery);
+            HttpResponse<byte[]> response;
+            var permit = concurrencyLimiter.acquire(
+                    binding.providerProfileId(),
+                    profile.maximumConcurrentRequests(),
+                    profile.configurationVersion(),
+                    Duration.ofSeconds(profile.acquireTimeoutSeconds()));
+            try {
+                response = send(profile, binding, normalizedQuery);
+            } finally {
+                permit.close();
+            }
             var parsed = parseResponse(response.body());
             var answer = answer(parsed, profile.protocol());
             var citations = citations(parsed, Math.max(1, Math.min(maximumResults, 100)));
@@ -129,6 +142,14 @@ public final class JdkAiWebSearchGateway implements AiWebSearchGateway {
                     null);
             auditStore.fail(invocationId, failure.errorCode(), failure.getMessage(), clock.instant());
             throw failure;
+        } catch (ProviderConcurrencyLimiter.ProviderCapacityTimeoutException exception) {
+            var failure = failure(
+                    "AI_WEB_SEARCH_PROVIDER_CAPACITY_TIMEOUT",
+                    "AI web search provider concurrency queue exceeded its wait timeout",
+                    false,
+                    null);
+            auditStore.fail(invocationId, failure.errorCode(), failure.getMessage(), clock.instant());
+            throw failure;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             var failure = failure("AI_WEB_SEARCH_INTERRUPTED", "AI web search was interrupted", true, null);
@@ -150,7 +171,7 @@ public final class JdkAiWebSearchGateway implements AiWebSearchGateway {
             AiWebSearchBinding binding,
             String query) throws IOException, InterruptedException {
         var endpoint = endpoint(profile.baseUri(), profile.protocol());
-        var timeout = Duration.ofSeconds(Math.min(profile.requestTimeoutSeconds(), 600));
+        var timeout = Duration.ofSeconds(profile.requestTimeoutSeconds());
         var request = HttpRequest.newBuilder(endpoint)
                 .timeout(timeout)
                 .header("Accept", "application/json")

@@ -10,5 +10,7 @@ public record CreateProviderCommand(
         String baseUrl,
         boolean enabled,
         int connectTimeoutSeconds,
-        int requestTimeoutSeconds) {
+        int requestTimeoutSeconds,
+        int maximumConcurrentRequests,
+        int acquireTimeoutSeconds) {
 }

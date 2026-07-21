@@ -109,3 +109,5 @@ databaseChangeLog:
       file: db/changelog/releases/054-operational-workflow-provider-routing.sql
   - include:
       file: db/changelog/releases/055-fact-extraction-workflow.sql
+  - include:
+      file: db/changelog/releases/056-provider-runtime-capacity.sql

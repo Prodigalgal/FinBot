@@ -11,5 +11,8 @@ record AiRuntimeProfile(
         ReasoningParameterStyle reasoningParameterStyle,
         URI baseUri,
         String apiKey,
-        int requestTimeoutSeconds) {
+        int requestTimeoutSeconds,
+        int maximumConcurrentRequests,
+        int acquireTimeoutSeconds,
+        long configurationVersion) {
 }

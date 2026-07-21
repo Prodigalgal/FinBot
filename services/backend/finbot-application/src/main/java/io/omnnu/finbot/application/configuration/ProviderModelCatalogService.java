@@ -58,7 +58,7 @@ public final class ProviderModelCatalogService implements ProviderModelCatalogUs
         if (apiKey.isBlank()) {
             throw new IllegalArgumentException("AI provider API key is required");
         }
-        if (command.requestTimeoutSeconds() < 5 || command.requestTimeoutSeconds() > 1800) {
+        if (command.requestTimeoutSeconds() < 5 || command.requestTimeoutSeconds() > 3600) {
             throw new IllegalArgumentException("AI provider request timeout is out of range");
         }
         var baseUri = URI.create(baseUrl);

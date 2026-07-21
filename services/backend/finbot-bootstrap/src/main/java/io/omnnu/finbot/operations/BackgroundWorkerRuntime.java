@@ -3,6 +3,7 @@ package io.omnnu.finbot.operations;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.omnnu.finbot.application.ai.AiInvocationRecoveryStore;
 import io.omnnu.finbot.application.operations.BackgroundTask;
 import io.omnnu.finbot.application.operations.BackgroundTaskCoordinator;
 import io.omnnu.finbot.application.operations.BackgroundTaskHandler;
@@ -12,6 +13,7 @@ import io.omnnu.finbot.domain.operations.BackgroundTaskId;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.operations.WorkerId;
+import java.time.Clock;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
@@ -42,6 +44,7 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
     private static final Logger LOGGER = LoggerFactory.getLogger(BackgroundWorkerRuntime.class);
 
     private final BackgroundTaskCoordinator coordinator;
+    private final AiInvocationRecoveryStore aiInvocationRecoveryStore;
     private final WorkerProperties properties;
     private final Executor executor;
     private final Map<BackgroundTaskType, BackgroundTaskHandler> handlers;
@@ -54,22 +57,30 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
     private final Counter heartbeatFailureCounter;
     private final Counter lostLeaseCounter;
     private final Counter recoveredLeaseCounter;
+    private final Counter recoveredAiInvocationCounter;
     private final WorkerId workerId;
     private final String instanceName;
+    private final Clock clock;
 
     public BackgroundWorkerRuntime(
             BackgroundTaskCoordinator coordinator,
+            AiInvocationRecoveryStore aiInvocationRecoveryStore,
             WorkerProperties properties,
             @Qualifier("workflowVirtualThreadExecutor") Executor executor,
             List<BackgroundTaskHandler> taskHandlers,
             SortableIdGenerator idGenerator,
+            Clock clock,
             MeterRegistry meterRegistry) {
         this.coordinator = Objects.requireNonNull(coordinator, "coordinator");
+        this.aiInvocationRecoveryStore = Objects.requireNonNull(
+                aiInvocationRecoveryStore,
+                "aiInvocationRecoveryStore");
         this.properties = Objects.requireNonNull(properties, "properties");
         this.executor = Objects.requireNonNull(executor, "executor");
         this.handlers = handlers(taskHandlers);
         this.workerId = new WorkerId(idGenerator.next("worker_"));
         this.instanceName = Objects.requireNonNullElse(System.getenv("HOSTNAME"), "finbot-local");
+        this.clock = Objects.requireNonNull(clock, "clock");
         var registry = Objects.requireNonNull(meterRegistry, "meterRegistry");
         this.capacityDeferredCounter = Counter.builder("finbot.worker.claim.deferred")
                 .description("Task claim polls deferred because worker capacity was exhausted")
@@ -85,6 +96,9 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
                 .register(registry);
         this.recoveredLeaseCounter = Counter.builder("finbot.worker.lease.recovered")
                 .description("Expired task leases recovered for retry or terminal failure")
+                .register(registry);
+        this.recoveredAiInvocationCounter = Counter.builder("finbot.worker.ai.invocations.recovered")
+                .description("Orphaned AI invocations failed during single-worker startup recovery")
                 .register(registry);
         Gauge.builder("finbot.worker.tasks.running", runningTasks, Map::size)
                 .description("Tasks currently executing in this worker")
@@ -105,10 +119,16 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
 
     @Override
     public void afterPropertiesSet() {
+        var recoveredInvocations = aiInvocationRecoveryStore.failOrphanedInvocations(clock.instant());
+        recoveredAiInvocationCounter.increment(recoveredInvocations);
         coordinator.registerWorker(workerId, instanceName);
         var recovered = coordinator.recoverExpiredLeases();
         recoveredLeaseCounter.increment(recovered);
-        LOGGER.info("FinBot worker {} started; recovered {} expired leases", workerId.value(), recovered);
+        LOGGER.info(
+                "FinBot worker {} started; recovered {} expired leases and {} orphaned AI invocations",
+                workerId.value(),
+                recovered,
+                recoveredInvocations);
     }
 
     @Scheduled(fixedDelayString = "${finbot.worker.poll-delay:PT2S}")

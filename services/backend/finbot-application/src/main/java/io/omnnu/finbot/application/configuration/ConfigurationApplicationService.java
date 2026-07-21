@@ -59,6 +59,8 @@ public final class ConfigurationApplicationService implements ConfigurationUseCa
                 command.enabled(),
                 command.connectTimeoutSeconds(),
                 command.requestTimeoutSeconds(),
+                command.maximumConcurrentRequests(),
+                command.acquireTimeoutSeconds(),
                 0,
                 now);
         return repository.createProvider(provider, now)
@@ -134,6 +136,8 @@ public final class ConfigurationApplicationService implements ConfigurationUseCa
                 command.enabled(),
                 command.connectTimeoutSeconds(),
                 command.requestTimeoutSeconds(),
+                command.maximumConcurrentRequests(),
+                command.acquireTimeoutSeconds(),
                 command.expectedVersion() + 1,
                 clock.instant());
         return repository.updateProvider(profile, command.expectedVersion(), clock.instant())
@@ -208,6 +212,8 @@ public final class ConfigurationApplicationService implements ConfigurationUseCa
                 profile.enabled(),
                 profile.connectTimeoutSeconds(),
                 profile.requestTimeoutSeconds(),
+                profile.maximumConcurrentRequests(),
+                profile.acquireTimeoutSeconds(),
                 usage.workflowNodeCount(),
                 usage.roleTemplateCount(),
                 usage.executionStageCount(),

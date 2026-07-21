@@ -16,6 +16,8 @@ public record AiProviderProfile(
         boolean enabled,
         int connectTimeoutSeconds,
         int requestTimeoutSeconds,
+        int maximumConcurrentRequests,
+        int acquireTimeoutSeconds,
         long version,
         Instant updatedAt) {
     public AiProviderProfile {
@@ -32,8 +34,14 @@ public record AiProviderProfile(
         if (connectTimeoutSeconds < 1 || connectTimeoutSeconds > 60) {
             throw new IllegalArgumentException("connectTimeoutSeconds must be between 1 and 60");
         }
-        if (requestTimeoutSeconds < 5 || requestTimeoutSeconds > 1800) {
-            throw new IllegalArgumentException("requestTimeoutSeconds must be between 5 and 1800");
+        if (requestTimeoutSeconds < 5 || requestTimeoutSeconds > 3600) {
+            throw new IllegalArgumentException("requestTimeoutSeconds must be between 5 and 3600");
+        }
+        if (maximumConcurrentRequests < 1 || maximumConcurrentRequests > 32) {
+            throw new IllegalArgumentException("maximumConcurrentRequests must be between 1 and 32");
+        }
+        if (acquireTimeoutSeconds < 5 || acquireTimeoutSeconds > 7200) {
+            throw new IllegalArgumentException("acquireTimeoutSeconds must be between 5 and 7200");
         }
         if (version < 0) {
             throw new IllegalArgumentException("version must not be negative");

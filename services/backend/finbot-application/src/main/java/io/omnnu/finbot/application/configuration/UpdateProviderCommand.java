@@ -12,5 +12,7 @@ public record UpdateProviderCommand(
         boolean enabled,
         int connectTimeoutSeconds,
         int requestTimeoutSeconds,
+        int maximumConcurrentRequests,
+        int acquireTimeoutSeconds,
         long expectedVersion) {
 }

@@ -113,11 +113,15 @@ class JdkAiWebSearchGatewayTest {
                         ReasoningParameterStyle.NESTED,
                         baseUri,
                         "test-key",
-                        120),
+                        120,
+                        5,
+                        1800,
+                        0),
                 new ObjectMapper(),
                 auditStore,
                 prefix -> prefix + "0000000000001_0123456789abcdef0123",
-                Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
+                new ProviderConcurrencyLimiter());
     }
 
     private static AiWebSearchBinding binding() {

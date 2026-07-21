@@ -27,6 +27,9 @@ public final class JdbcAiWebSearchRuntimeResolver implements AiWebSearchRuntimeR
                 profile.reasoningParameterStyle(),
                 profile.baseUri(),
                 profile.apiKey(),
-                profile.requestTimeoutSeconds());
+                profile.requestTimeoutSeconds(),
+                profile.maximumConcurrentRequests(),
+                profile.acquireTimeoutSeconds(),
+                profile.configurationVersion());
     }
 }

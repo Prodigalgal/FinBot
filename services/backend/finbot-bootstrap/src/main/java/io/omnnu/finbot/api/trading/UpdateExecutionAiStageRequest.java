@@ -16,7 +16,7 @@ public record UpdateExecutionAiStageRequest(
         @NotBlank @Size(max = 20_000) String systemPrompt,
         @NotBlank @Size(max = 20_000) String userPromptTemplate,
         @Min(256) @Max(65_536) int maximumOutputTokens,
-        @Min(10) @Max(1_800) int timeoutSeconds,
+        @Min(10) @Max(3_600) int timeoutSeconds,
         @Min(1) @Max(5) int retryMaximumAttempts,
         @Min(0) @Max(300) int retryBackoffSeconds,
         boolean enabled,

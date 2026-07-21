@@ -22,6 +22,7 @@ public record AiCompletionRequest(
         String userPrompt,
         int maximumOutputTokens,
         Duration timeout,
+        Duration capacityWaitTimeout,
         String promptVersion) {
     public AiCompletionRequest {
         Objects.requireNonNull(invocationId, "invocationId");
@@ -34,13 +35,18 @@ public record AiCompletionRequest(
         systemPrompt = DomainText.required(systemPrompt, "systemPrompt", 32_000);
         userPrompt = DomainText.required(userPrompt, "userPrompt", 200_000);
         Objects.requireNonNull(timeout, "timeout");
+        Objects.requireNonNull(capacityWaitTimeout, "capacityWaitTimeout");
         promptVersion = DomainText.required(promptVersion, "promptVersion", 80);
         if (maximumOutputTokens < 64 || maximumOutputTokens > 65_536) {
             throw new IllegalArgumentException("maximumOutputTokens must be between 64 and 65536");
         }
         if (timeout.compareTo(Duration.ofSeconds(5)) < 0
-                || timeout.compareTo(Duration.ofMinutes(30)) > 0) {
-            throw new IllegalArgumentException("timeout must be between five seconds and thirty minutes");
+                || timeout.compareTo(Duration.ofHours(1)) > 0) {
+            throw new IllegalArgumentException("timeout must be between five seconds and one hour");
+        }
+        if (capacityWaitTimeout.compareTo(Duration.ofSeconds(5)) < 0
+                || capacityWaitTimeout.compareTo(Duration.ofHours(2)) > 0) {
+            throw new IllegalArgumentException("capacityWaitTimeout must be between five seconds and two hours");
         }
     }
 }

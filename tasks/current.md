@@ -26,6 +26,15 @@
 - 已执行真实启动 smoke：认证、幂等、任务认领、共享 artifact 和双分支均有生产数据库证据；最终 `EVIDENCE=COMPLETED`，`LIVE_RESEARCH/DEMO_AUTOTRADE=FAILED`，任务第 5/5 次以 `TerminalWorkflowFailure` 结束。由于 Gemini `HTTP_503`、MiMo `PROVIDER_ERROR`，尚未得到双分支成功结果，因此仍不把该任务标记为完成。
 - 需求：[`../docs/requirements/32-segmented-dual-environment-research.md`](../docs/requirements/32-segmented-dual-environment-research.md)。
 
+## P1：AI Provider 容量与慢请求治理
+
+- 目标：将每个 Provider 的最大并发、容量排队等待和单次请求超时纳入后台热配置，默认最大并发 5，并允许高负载厂商使用小时级等待时间。
+- 范围：Provider 数据契约、Liquibase、运行时公平限流、工作流计时、OpenAPI、设置页和直接回归测试。
+- 非目标：不修改模型/工作流的厂商分配，不自动扩大业务任务总截止时间，不把部署级中间件参数放回 UI。
+- 影响文件：`finbot-application`、`finbot-infrastructure`、`finbot-bootstrap`、`contracts/`、`apps/web/`、Kustomize。
+- 验收标准：保存后新请求无需重启即采用新容量；排队等待与实际 HTTP 请求分别计时；超时错误可区分；默认并发为 5；API/Web/数据库约束一致。
+- 测试方式：Java 单元与 PostgreSQL 集成测试、OpenAPI 契约检查、Web 测试与构建、Kustomize 渲染、CI/GitOps 和生产 API 验证。
+
 ## 外部可用性观察
 
 - Firecrawl 保持独立渠道、默认关闭、无健康出口时 fail-closed。

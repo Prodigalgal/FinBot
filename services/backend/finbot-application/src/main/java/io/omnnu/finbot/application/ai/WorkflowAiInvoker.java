@@ -80,7 +80,8 @@ public final class WorkflowAiInvoker {
         Objects.requireNonNull(deadline, "deadline");
         var invocationId = new AiInvocationId(idGenerator.next("invocation_"));
         var timeout = requestTimeout(node, deadline);
-        var protocol = resolveBinding(binding).protocol();
+        var runtimeBinding = resolveBinding(binding);
+        var protocol = runtimeBinding.protocol();
         var request = new AiCompletionRequest(
                 invocationId,
                 runId,
@@ -93,6 +94,7 @@ public final class WorkflowAiInvoker {
                 userPrompt,
                 node.maximumOutputTokens(),
                 timeout,
+                runtimeBinding.capacityWaitTimeout(),
                 version.checksum().substring(0, 16));
         var startedAt = clock.instant();
         auditStore.start(new AiInvocationStart(
@@ -113,7 +115,7 @@ public final class WorkflowAiInvoker {
             reserved = true;
             var collector = new CompletionCollector(request);
             completionGateway.stream(request).subscribe(collector);
-            var completion = collector.await(timeout);
+            var completion = collector.await(timeout, request.capacityWaitTimeout());
             if (completion.output().isBlank()) {
                 throw new AiInvocationRejectedException(
                         "AI_EMPTY_OUTPUT",
@@ -231,6 +233,7 @@ public final class WorkflowAiInvoker {
     private final class CompletionCollector implements Flow.Subscriber<AiCompletionEvent> {
         private final AiCompletionRequest request;
         private final CompletableFuture<StreamCompletion> result = new CompletableFuture<>();
+        private final CompletableFuture<Void> streamStarted = new CompletableFuture<>();
         private final StringBuilder output = new StringBuilder();
         private final StringBuilder pendingChunk = new StringBuilder();
         private Flow.Subscription subscription;
@@ -259,8 +262,7 @@ public final class WorkflowAiInvoker {
             }
             try {
                 switch (event) {
-                    case AiStreamStarted ignored -> {
-                    }
+                    case AiStreamStarted ignored -> streamStarted.complete(null);
                     case AiTextDelta delta -> append(delta);
                     case AiUsageReported usage -> {
                         inputTokens = usage.inputTokens();
@@ -339,8 +341,11 @@ public final class WorkflowAiInvoker {
             }
         }
 
-        private StreamCompletion await(Duration timeout) {
+        private StreamCompletion await(Duration timeout, Duration capacityWaitTimeout) {
             try {
+                CompletableFuture.anyOf(streamStarted, result).get(
+                        Math.addExact(capacityWaitTimeout.toMillis(), STREAM_GRACE_MILLISECONDS),
+                        TimeUnit.MILLISECONDS);
                 return result.get(
                         Math.addExact(timeout.toMillis(), STREAM_GRACE_MILLISECONDS),
                         TimeUnit.MILLISECONDS);
@@ -353,6 +358,12 @@ public final class WorkflowAiInvoker {
                         true);
             } catch (TimeoutException exception) {
                 cancel();
+                if (!streamStarted.isDone()) {
+                    throw new AiInvocationRejectedException(
+                            "AI_PROVIDER_CAPACITY_TIMEOUT",
+                            "AI provider concurrency queue exceeded its wait timeout",
+                            true);
+                }
                 throw new AiInvocationRejectedException(
                         "AI_INVOCATION_TIMEOUT",
                         "AI invocation exceeded its timeout",

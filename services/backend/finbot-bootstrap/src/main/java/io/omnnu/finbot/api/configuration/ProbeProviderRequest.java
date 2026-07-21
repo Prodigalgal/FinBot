@@ -8,5 +8,5 @@ import jakarta.validation.constraints.Size;
 public record ProbeProviderRequest(
         @NotBlank @Size(max = 1000) String baseUrl,
         @NotBlank @Size(min = 8, max = 16384) String apiKey,
-        @Min(5) @Max(1800) int requestTimeoutSeconds) {
+        @Min(5) @Max(3600) int requestTimeoutSeconds) {
 }

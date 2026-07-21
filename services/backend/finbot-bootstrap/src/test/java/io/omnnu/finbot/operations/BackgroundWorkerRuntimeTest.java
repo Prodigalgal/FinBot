@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.omnnu.finbot.application.ai.AiInvocationRecoveryStore;
 import io.omnnu.finbot.application.operations.BackgroundTask;
 import io.omnnu.finbot.application.operations.BackgroundTaskCoordinator;
 import io.omnnu.finbot.application.operations.BackgroundTaskHandler;
@@ -20,6 +21,7 @@ import io.omnnu.finbot.configuration.WorkerProperties;
 import io.omnnu.finbot.domain.operations.BackgroundTaskId;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Optional;
@@ -44,10 +46,12 @@ class BackgroundWorkerRuntimeTest {
         var executor = Executors.newSingleThreadExecutor();
         var runtime = new BackgroundWorkerRuntime(
                 coordinator,
+                mock(AiInvocationRecoveryStore.class),
                 properties(1, 1),
                 executor,
                 java.util.List.of(handler),
                 prefix -> prefix + "runtime_test",
+                Clock.systemUTC(),
                 registry);
         try {
             runtime.claimAvailableTask();
@@ -79,10 +83,12 @@ class BackgroundWorkerRuntimeTest {
         var executor = Executors.newSingleThreadExecutor();
         var runtime = new BackgroundWorkerRuntime(
                 coordinator,
+                mock(AiInvocationRecoveryStore.class),
                 properties(1, 1),
                 executor,
                 java.util.List.of(handler),
                 prefix -> prefix + "runtime_test",
+                Clock.systemUTC(),
                 registry);
         try {
             runtime.claimAvailableTask();
@@ -109,10 +115,12 @@ class BackgroundWorkerRuntimeTest {
         var executor = Executors.newSingleThreadExecutor();
         var runtime = new BackgroundWorkerRuntime(
                 coordinator,
+                mock(AiInvocationRecoveryStore.class),
                 properties(1, 1),
                 executor,
                 java.util.List.of(),
                 prefix -> prefix + "runtime_test",
+                Clock.systemUTC(),
                 registry);
         try {
             runtime.recoverExpiredLeases();
@@ -133,10 +141,12 @@ class BackgroundWorkerRuntimeTest {
         var executor = Executors.newSingleThreadExecutor();
         var runtime = new BackgroundWorkerRuntime(
                 coordinator,
+                mock(AiInvocationRecoveryStore.class),
                 properties(1, 1),
                 executor,
                 java.util.List.of(),
                 prefix -> prefix + "runtime_test",
+                Clock.systemUTC(),
                 registry);
         try {
             runtime.heartbeat();
@@ -163,10 +173,12 @@ class BackgroundWorkerRuntimeTest {
         var executor = Executors.newSingleThreadExecutor();
         var runtime = new BackgroundWorkerRuntime(
                 coordinator,
+                mock(AiInvocationRecoveryStore.class),
                 properties(1, 1),
                 executor,
                 java.util.List.of(handler(BackgroundTaskType.INSTANT_RESEARCH, handlerStarted, handlerResult)),
                 prefix -> prefix + "runtime_test",
+                Clock.systemUTC(),
                 registry);
         try {
             runtime.claimAvailableTask();
@@ -180,6 +192,34 @@ class BackgroundWorkerRuntimeTest {
         } finally {
             runtime.destroy();
             handlerResult.cancel(true);
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void recoversOrphanedAiInvocationsBeforeRegisteringWorker() {
+        var coordinator = mock(BackgroundTaskCoordinator.class);
+        var aiRecovery = mock(AiInvocationRecoveryStore.class);
+        when(aiRecovery.failOrphanedInvocations(any())).thenReturn(3);
+        var registry = new SimpleMeterRegistry();
+        var executor = Executors.newSingleThreadExecutor();
+        var runtime = new BackgroundWorkerRuntime(
+                coordinator,
+                aiRecovery,
+                properties(1, 1),
+                executor,
+                java.util.List.of(),
+                prefix -> prefix + "runtime_test",
+                Clock.systemUTC(),
+                registry);
+        try {
+            runtime.afterPropertiesSet();
+
+            verify(aiRecovery, times(1)).failOrphanedInvocations(any());
+            verify(coordinator, times(1)).registerWorker(any(), any());
+            assertEquals(3.0, registry.get("finbot.worker.ai.invocations.recovered").counter().count());
+        } finally {
+            runtime.destroy();
             executor.shutdownNow();
         }
     }

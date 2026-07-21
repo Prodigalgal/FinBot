@@ -15,5 +15,7 @@ public record CreateProviderRequest(
         @NotBlank @Size(max = 1000) String baseUrl,
         boolean enabled,
         @Min(1) @Max(60) int connectTimeoutSeconds,
-        @Min(5) @Max(1800) int requestTimeoutSeconds) {
+        @Min(5) @Max(3600) int requestTimeoutSeconds,
+        @Min(1) @Max(32) int maximumConcurrentRequests,
+        @Min(5) @Max(7200) int acquireTimeoutSeconds) {
 }

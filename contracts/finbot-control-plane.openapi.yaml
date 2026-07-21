@@ -1830,13 +1830,17 @@ components:
             type: string
             minLength: 1
             maxLength: 4096
-          description: >
-            Full request-header camouflage map. Supports Sec-*, X-Forwarded-*, Cookie,
-            Authorization, Origin, Referer, Host and hop-by-hop headers except framing-managed
-            Content-Length / Transfer-Encoding.
+          description: |
+            Full request-header camouflage map. Supports Sec-*, X-Forwarded-*, Cookie, Authorization, Origin, Referer, Host and hop-by-hop headers except framing-managed Content-Length / Transfer-Encoding.
         browserTemplate:
           type: string
-          enum: [NONE, CHROME_WINDOWS, CHROME_MAC, FIREFOX_WINDOWS, EDGE_WINDOWS, CUSTOM]
+          enum:
+            - NONE
+            - CHROME_WINDOWS
+            - CHROME_MAC
+            - FIREFOX_WINDOWS
+            - EDGE_WINDOWS
+            - CUSTOM
         retainSensitiveHeadersOnCrossOriginRedirect:
           type: boolean
           description: When true, keep Authorization/Cookie/Origin/Referer/tokens across origins.
@@ -1852,7 +1856,12 @@ components:
           type: boolean
         captchaBypassProvider:
           type: string
-          enum: [NONE, CAPSOLVER, TWOCAPTCHA, FIRECRAWL_BROWSER, BROWSER_WORKER]
+          enum:
+            - NONE
+            - CAPSOLVER
+            - TWOCAPTCHA
+            - FIRECRAWL_BROWSER
+            - BROWSER_WORKER
         enabled:
           type: boolean
     CrawlerHeaderProfileResponse:
@@ -2251,6 +2260,8 @@ components:
         - enabled
         - connectTimeoutSeconds
         - requestTimeoutSeconds
+        - maximumConcurrentRequests
+        - acquireTimeoutSeconds
         - workflowNodeUsageCount
         - roleTemplateUsageCount
         - executionStageUsageCount
@@ -2314,7 +2325,15 @@ components:
         requestTimeoutSeconds:
           type: integer
           minimum: 5
-          maximum: 1800
+          maximum: 3600
+        maximumConcurrentRequests:
+          type: integer
+          minimum: 1
+          maximum: 32
+        acquireTimeoutSeconds:
+          type: integer
+          minimum: 5
+          maximum: 7200
         workflowNodeUsageCount:
           type: integer
           format: int64
@@ -2392,6 +2411,8 @@ components:
         - enabled
         - connectTimeoutSeconds
         - requestTimeoutSeconds
+        - maximumConcurrentRequests
+        - acquireTimeoutSeconds
       properties:
         displayName:
           type: string
@@ -2421,7 +2442,15 @@ components:
         requestTimeoutSeconds:
           type: integer
           minimum: 5
-          maximum: 1800
+          maximum: 3600
+        maximumConcurrentRequests:
+          type: integer
+          minimum: 1
+          maximum: 32
+        acquireTimeoutSeconds:
+          type: integer
+          minimum: 5
+          maximum: 7200
     ProbeAiProviderRequest:
       type: object
       additionalProperties: false
@@ -2442,7 +2471,7 @@ components:
         requestTimeoutSeconds:
           type: integer
           minimum: 5
-          maximum: 1800
+          maximum: 3600
     CreateAiModelRequest:
       type: object
       additionalProperties: false
@@ -2485,6 +2514,8 @@ components:
         - enabled
         - connectTimeoutSeconds
         - requestTimeoutSeconds
+        - maximumConcurrentRequests
+        - acquireTimeoutSeconds
         - expectedVersion
       properties:
         displayName:
@@ -2515,7 +2546,15 @@ components:
         requestTimeoutSeconds:
           type: integer
           minimum: 5
-          maximum: 1800
+          maximum: 3600
+        maximumConcurrentRequests:
+          type: integer
+          minimum: 1
+          maximum: 32
+        acquireTimeoutSeconds:
+          type: integer
+          minimum: 5
+          maximum: 7200
         expectedVersion:
           type: integer
           format: int64
