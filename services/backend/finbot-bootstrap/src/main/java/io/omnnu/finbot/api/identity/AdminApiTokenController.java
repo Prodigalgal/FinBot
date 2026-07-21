@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v2/api-tokens")
-public final class AdminApiTokenController {
+public class AdminApiTokenController {
     private final AdminApiTokenUseCase useCase;
     private final Clock clock;
 

@@ -1,6 +1,7 @@
 package io.omnnu.finbot.api.identity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -16,6 +17,7 @@ import io.omnnu.finbot.application.identity.CreatedAdminApiToken;
 import io.omnnu.finbot.domain.identity.AdminApiToken;
 import io.omnnu.finbot.domain.identity.AdminApiTokenId;
 import io.omnnu.finbot.security.AdminApiTokenPrincipal;
+import java.lang.reflect.Modifier;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -32,6 +34,8 @@ class AdminApiTokenControllerTest {
 
     @Test
     void createsOneTimeTokenWithoutCachingAndUsesAuthenticatedTokenOwner() throws Exception {
+        assertFalse(Modifier.isFinal(AdminApiTokenController.class.getModifiers()),
+                "@Validated controllers must remain proxyable");
         var useCase = mock(AdminApiTokenUseCase.class);
         var token = token();
         var rawToken = "finbot_pat_" + "A".repeat(43);
