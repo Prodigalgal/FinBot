@@ -10,10 +10,11 @@ import { SecretTextField } from './SecretTextField';
 import type { AgentRole, AiExperiment, AiModel, AiModelBinding, AiProvider, ConfigurationSnapshot, ExecutionAiStage, ProviderModelCatalog, ReasoningEffort, RiskPolicy, SetupProfileDefinition, TradeAutomationConfiguration, WorkflowDefinitionSummary } from './types';
 import { ErrorBlock, LoadingBlock, SectionTitle } from './ui';
 import { AgentRolesPanel, AiExperimentsPanel, SetupProfilesPanel } from './SettingsAdvancedPanels';
+import { ApiTokensPanel } from './ApiTokensPanel';
 import { replaceWorkspaceLocation, workspaceSubview } from './workspaceLocation';
 
 const efforts: ReasoningEffort[] = ['PROVIDER_DEFAULT', 'NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH', 'XHIGH', 'MAX'];
-const settingsTabs = ['setup', 'runtime', 'providers', 'models', 'roles', 'execution', 'experiments'] as const;
+const settingsTabs = ['setup', 'runtime', 'providers', 'models', 'roles', 'execution', 'experiments', 'tokens'] as const;
 type SettingsTab = typeof settingsTabs[number];
 
 export function SettingsPage() {
@@ -70,7 +71,7 @@ export function SettingsPage() {
   if (!config || !trading) return <LoadingBlock label="正在读取默认配置与密钥状态" />;
   return <Stack spacing={3}>
     {error !== null && <ErrorBlock error={error} />}{message && <Alert severity="success">{message}</Alert>}
-    <Tabs value={tab} onChange={(_event, value: SettingsTab) => changeTab(value)} variant="scrollable" scrollButtons="auto"><Tab value="setup" label="快速启用" /><Tab value="runtime" label="运行基础" /><Tab value="providers" label="模型服务" /><Tab value="models" label="模型与费率" /><Tab value="roles" label="角色与提示词" /><Tab value="execution" label="交易机器人与风险" /><Tab value="experiments" label="A/B 实验" /></Tabs>
+    <Tabs value={tab} onChange={(_event, value: SettingsTab) => changeTab(value)} variant="scrollable" scrollButtons="auto"><Tab value="setup" label="快速启用" /><Tab value="runtime" label="运行基础" /><Tab value="providers" label="模型服务" /><Tab value="models" label="模型与费率" /><Tab value="roles" label="角色与提示词" /><Tab value="execution" label="交易机器人与风险" /><Tab value="experiments" label="A/B 实验" /><Tab value="tokens" label="API Token" /></Tabs>
     {tab === 'setup' && <SetupProfilesPanel profiles={profiles} onApplied={load} />}
     {tab === 'runtime' && <Box><SectionTitle title="运行参数" /><Stack spacing={1}>{config.settings.map((setting) => <Paper key={setting.key} variant="outlined" sx={{ p: 1.5 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}><Box sx={{ flex: 1 }}><Typography fontWeight={700}>{setting.description}</Typography><Typography variant="caption" color="text.secondary">{setting.key} · {setting.source}</Typography></Box><TextField defaultValue={setting.value} onBlur={(event) => { if (event.target.value !== setting.value) void saved(api.updateSetting(setting, event.target.value)); }} sx={{ width: { md: 260 } }} /></Stack></Paper>)}</Stack></Box>}
     {tab === 'providers' && <Box><SectionTitle title="AI 厂商" /><Stack spacing={1.25}><ProviderCreatePanel create={createProvider} />{config.providers.map((provider) => <ProviderEditor key={provider.profileId} provider={provider} models={config.models.filter((model) => model.providerProfileId === provider.profileId)} save={(next) => saved(api.updateProvider(next))} remove={() => saved(api.deleteProvider(provider.profileId, provider.version))} putCredential={(value, version) => saved(api.putRuntimeSecret('AI_PROVIDER', provider.profileId, 'API_KEY', value, version))} clearCredential={(version) => saved(api.clearRuntimeSecret('AI_PROVIDER', provider.profileId, 'API_KEY', version))} importModels={(modelNames, effort) => importProviderModels(provider.profileId, modelNames, effort)} />)}</Stack></Box>}
@@ -80,6 +81,7 @@ export function SettingsPage() {
       void saved(api.updateExecutionStage(next.stage, { primaryAiBinding: requestBinding(next.primaryAiBinding), fallbackAiBinding: next.fallbackAiBinding ? requestBinding(next.fallbackAiBinding) : null, systemPrompt: next.systemPrompt, userPromptTemplate: next.userPromptTemplate, maximumOutputTokens: next.maximumOutputTokens, timeoutSeconds: next.timeoutSeconds, retryMaximumAttempts: next.retryPolicy.maximumAttempts, retryBackoffSeconds: durationSeconds(next.retryPolicy.backoff), enabled: next.enabled, expectedVersion: next.version }));
     }} />)}</Stack></Box><RiskPolicyEditor policy={trading.activeRiskPolicy} save={(next) => saved(api.activateRiskPolicy(next))} /></>}
     {tab === 'experiments' && <AiExperimentsPanel experiments={experiments} definitions={definitions} onChanged={load} />}
+    {tab === 'tokens' && <ApiTokensPanel />}
   </Stack>;
 }
 

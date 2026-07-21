@@ -27,7 +27,7 @@ public class SecurityConfiguration {
     @Bean
     SecurityFilterChain finBotSecurityFilterChain(
             HttpSecurity http,
-            SessionAuthenticationFilter sessionAuthenticationFilter) throws Exception {
+            AdminAuthenticationFilter adminAuthenticationFilter) throws Exception {
         var csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrfRepository.setCookieName("XSRF-TOKEN");
         csrfRepository.setHeaderName("X-XSRF-TOKEN");
@@ -40,7 +40,8 @@ public class SecurityConfiguration {
                         .ignoringRequestMatchers(
                                 "/api/v2/auth/challenge",
                                 "/api/v2/auth/login",
-                                "/internal/**"))
+                                "/internal/**")
+                        .ignoringRequestMatchers(AdminAuthenticationFilter::hasBearerAuthorization))
                 .authorizeHttpRequests(authorize -> authorize
                         .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers("/health", "/health/**", "/actuator/health/**").permitAll()
@@ -61,7 +62,7 @@ public class SecurityConfiguration {
                                 "Access denied",
                                 "请求缺少有效的 CSRF 凭据或权限",
                                 "ACCESS_DENIED_OR_INVALID_CSRF")))
-                .addFilterBefore(sessionAuthenticationFilter, AnonymousAuthenticationFilter.class)
+                .addFilterBefore(adminAuthenticationFilter, AnonymousAuthenticationFilter.class)
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
                 .logout(logout -> logout.disable());

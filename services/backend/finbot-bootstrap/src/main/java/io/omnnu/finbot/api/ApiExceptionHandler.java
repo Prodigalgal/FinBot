@@ -1,6 +1,7 @@
 package io.omnnu.finbot.api;
 
 import io.omnnu.finbot.application.identity.AuthenticationRejectedException;
+import io.omnnu.finbot.application.identity.AdminApiTokenConflictException;
 import io.omnnu.finbot.application.configuration.ConfigurationConflictException;
 import io.omnnu.finbot.application.catalog.CatalogConflictException;
 import io.omnnu.finbot.application.catalog.CatalogNotFoundException;
@@ -30,6 +31,7 @@ public final class ApiExceptionHandler {
         WorkflowIdempotencyConflictException.class,
         TradeAutomationConfigurationConflictException.class,
         ScheduleConfigurationConflictException.class,
+        AdminApiTokenConflictException.class,
         DataIntegrityViolationException.class
     })
     ProblemDetail handleCatalogConflict(RuntimeException exception) {

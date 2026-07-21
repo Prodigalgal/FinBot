@@ -8,6 +8,9 @@ import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
 import io.omnnu.finbot.application.autonomous.AutonomousResearchService;
 import io.omnnu.finbot.application.autonomous.AutonomousResearchUseCase;
 import io.omnnu.finbot.application.identity.AdminCredentialVerifier;
+import io.omnnu.finbot.application.identity.AdminApiTokenApplicationService;
+import io.omnnu.finbot.application.identity.AdminApiTokenStore;
+import io.omnnu.finbot.application.identity.AdminApiTokenUseCase;
 import io.omnnu.finbot.application.ingestion.EvidenceNormalizer;
 import io.omnnu.finbot.application.ingestion.IngestionApplicationService;
 import io.omnnu.finbot.application.ingestion.CrawlerHeaderProfileRepository;
@@ -208,6 +211,15 @@ public class RuntimeConfiguration {
                 policy,
                 clock,
                 authenticationRandomGenerator);
+    }
+
+    @Bean
+    AdminApiTokenUseCase adminApiTokenUseCase(
+            SortableIdGenerator idGenerator,
+            AdminApiTokenStore store,
+            AuthenticationCryptography cryptography,
+            Clock clock) {
+        return new AdminApiTokenApplicationService(idGenerator, store, cryptography, clock);
     }
 
     @Bean

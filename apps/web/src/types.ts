@@ -429,6 +429,25 @@ export interface AiModel {
 }
 export interface ConfigurationSnapshot { settings: SystemSetting[]; providers: AiProvider[]; models: AiModel[] }
 
+export interface AdminApiToken {
+  tokenId: string;
+  displayName: string;
+  fingerprint: string;
+  username: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface CreatedAdminApiToken {
+  token: AdminApiToken;
+  rawToken: string;
+}
+
 export interface SourceRecord {
   sourceId: string;
   displayName: string;

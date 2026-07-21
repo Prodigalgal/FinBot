@@ -10,8 +10,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
+import io.omnnu.finbot.application.identity.AdminApiTokenUseCase;
 import io.omnnu.finbot.application.identity.AdminSession;
 import io.omnnu.finbot.application.identity.AuthenticationUseCase;
+import io.omnnu.finbot.domain.identity.AdminApiToken;
+import io.omnnu.finbot.domain.identity.AdminApiTokenId;
 import io.omnnu.finbot.domain.identity.AdminSessionId;
 import jakarta.servlet.Filter;
 import jakarta.servlet.http.Cookie;
@@ -55,7 +58,7 @@ class SecurityConfigurationTest {
     @Test
     void permitsAsyncRedispatchAfterInitialSessionAuthentication() throws Exception {
         var pending = mockMvc.perform(get("/api/v2/test/async")
-                        .cookie(new Cookie(SessionAuthenticationFilter.SESSION_COOKIE_NAME, "valid-session-token")))
+                        .cookie(new Cookie(AdminAuthenticationFilter.SESSION_COOKIE_NAME, "valid-session-token")))
                 .andExpect(request().asyncStarted())
                 .andReturn();
 
@@ -75,7 +78,7 @@ class SecurityConfigurationTest {
     @Test
     void acceptsRawCookieCsrfTokenFromSpaHeader() throws Exception {
         var sessionCookie = new Cookie(
-                SessionAuthenticationFilter.SESSION_COOKIE_NAME,
+                AdminAuthenticationFilter.SESSION_COOKIE_NAME,
                 "valid-session-token");
         var tokenResponse = mockMvc.perform(get("/api/v2/test/csrf").cookie(sessionCookie))
                 .andExpect(status().isOk())
@@ -93,7 +96,7 @@ class SecurityConfigurationTest {
     @Test
     void identifiesInvalidSpaCsrfSeparatelyFromAuthentication() throws Exception {
         var sessionCookie = new Cookie(
-                SessionAuthenticationFilter.SESSION_COOKIE_NAME,
+                AdminAuthenticationFilter.SESSION_COOKIE_NAME,
                 "valid-session-token");
 
         mockMvc.perform(put("/api/v2/test/csrf")
@@ -101,6 +104,24 @@ class SecurityConfigurationTest {
                         .header("X-XSRF-TOKEN", "invalid-token"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED_OR_INVALID_CSRF"));
+    }
+
+    @Test
+    void acceptsValidBearerTokenForMutationWithoutCsrf() throws Exception {
+        mockMvc.perform(put("/api/v2/test/csrf")
+                        .header("Authorization", "Bearer finbot_pat_" + "A".repeat(43)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("updated"));
+    }
+
+    @Test
+    void invalidBearerDoesNotFallBackToValidSessionCookie() throws Exception {
+        mockMvc.perform(get("/api/v2/test/async")
+                        .header("Authorization", "Bearer invalid-token")
+                        .cookie(new Cookie(AdminAuthenticationFilter.SESSION_COOKIE_NAME, "valid-session-token")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"))
+                .andExpect(request().asyncNotStarted());
     }
 
     @Configuration(proxyBeanMethods = false)
@@ -128,8 +149,29 @@ class SecurityConfigurationTest {
         }
 
         @Bean
-        SessionAuthenticationFilter sessionAuthenticationFilter(AuthenticationUseCase authenticationUseCase) {
-            return new SessionAuthenticationFilter(authenticationUseCase);
+        AdminApiTokenUseCase adminApiTokenUseCase() {
+            var useCase = mock(AdminApiTokenUseCase.class);
+            var now = Instant.parse("2026-07-14T08:00:00Z");
+            var token = new AdminApiToken(
+                    new AdminApiTokenId("apitoken_security_test"),
+                    "Security test",
+                    "0123456789abcdef",
+                    "admin",
+                    now.plusSeconds(3_600),
+                    null,
+                    null,
+                    now,
+                    now,
+                    0);
+            when(useCase.authenticate("finbot_pat_" + "A".repeat(43))).thenReturn(Optional.of(token));
+            return useCase;
+        }
+
+        @Bean
+        AdminAuthenticationFilter adminAuthenticationFilter(
+                AuthenticationUseCase authenticationUseCase,
+                AdminApiTokenUseCase adminApiTokenUseCase) {
+            return new AdminAuthenticationFilter(authenticationUseCase, adminApiTokenUseCase);
         }
 
         @Bean

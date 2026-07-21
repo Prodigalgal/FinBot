@@ -7,6 +7,8 @@ export type ControlPlanePath =
   | "/api/v2/analysis/forecasts"
   | "/api/v2/analysis/market-runs"
   | "/api/v2/analysis/market-runs/{runId}/forecast"
+  | "/api/v2/api-tokens"
+  | "/api/v2/api-tokens/{tokenId}"
   | "/api/v2/auth/challenge"
   | "/api/v2/auth/login"
   | "/api/v2/auth/logout"
@@ -100,6 +102,8 @@ export type ControlPlaneRequestPathBase =
   | `/api/v2/analysis/forecasts`
   | `/api/v2/analysis/market-runs`
   | `/api/v2/analysis/market-runs/${string}/forecast`
+  | `/api/v2/api-tokens`
+  | `/api/v2/api-tokens/${string}`
   | `/api/v2/auth/challenge`
   | `/api/v2/auth/login`
   | `/api/v2/auth/logout`
@@ -192,6 +196,7 @@ export type ControlPlaneGetRequestPathBase =
   | `/api/v2/ai-experiments`
   | `/api/v2/analysis/forecasts`
   | `/api/v2/analysis/market-runs/${string}/forecast`
+  | `/api/v2/api-tokens`
   | `/api/v2/auth/challenge`
   | `/api/v2/auth/status`
   | `/api/v2/autonomous`
@@ -247,6 +252,7 @@ export type ControlPlanePostRequestPathBase =
   | `/api/v2/agent-roles`
   | `/api/v2/ai-experiments`
   | `/api/v2/analysis/market-runs`
+  | `/api/v2/api-tokens`
   | `/api/v2/auth/login`
   | `/api/v2/auth/logout`
   | `/api/v2/autonomous/runs`
@@ -300,6 +306,7 @@ export type ControlPlanePutRequestPath = ControlPlanePutRequestPathBase | `${Con
 
 export type ControlPlaneDeleteRequestPathBase =
   | `/api/v2/agent-roles/${string}`
+  | `/api/v2/api-tokens/${string}`
   | `/api/v2/configuration/providers/${string}`
   | `/api/v2/crawler/header-profiles/${string}`
   | `/api/v2/runtime-secrets/${string}/${string}/${string}`
@@ -325,6 +332,9 @@ export type ControlPlaneOperation =
   | { method: 'GET'; path: "/analysis/forecasts" }
   | { method: 'POST'; path: "/analysis/market-runs" }
   | { method: 'GET'; path: "/analysis/market-runs/{runId}/forecast" }
+  | { method: 'GET'; path: "/api-tokens" }
+  | { method: 'POST'; path: "/api-tokens" }
+  | { method: 'DELETE'; path: "/api-tokens/{tokenId}" }
   | { method: 'GET'; path: "/auth/challenge" }
   | { method: 'POST'; path: "/auth/login" }
   | { method: 'POST'; path: "/auth/logout" }

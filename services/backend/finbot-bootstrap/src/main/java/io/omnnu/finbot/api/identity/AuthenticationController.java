@@ -4,7 +4,8 @@ import io.omnnu.finbot.application.identity.AuthenticationUseCase;
 import io.omnnu.finbot.application.identity.LoginCommand;
 import io.omnnu.finbot.configuration.AuthenticationProperties;
 import io.omnnu.finbot.domain.identity.AuthChallengeId;
-import io.omnnu.finbot.security.SessionAuthenticationFilter;
+import io.omnnu.finbot.security.AdminAuthenticationFilter;
+import io.omnnu.finbot.security.AdminApiTokenPrincipal;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -65,6 +66,13 @@ public final class AuthenticationController {
         if (authentication == null || !authentication.isAuthenticated()) {
             return AuthStatusResponse.anonymous(csrfToken.getToken());
         }
+        if (authentication.getPrincipal() instanceof AdminApiTokenPrincipal principal) {
+            return new AuthStatusResponse(
+                    true,
+                    principal.username(),
+                    principal.expiresAt(),
+                    csrfToken.getToken());
+        }
         var session = rawSessionToken(request)
                 .flatMap(authenticationUseCase::validateSession)
                 .orElse(null);
@@ -84,7 +92,7 @@ public final class AuthenticationController {
     }
 
     private ResponseCookie sessionCookie(String value, Duration maximumAge) {
-        return ResponseCookie.from(SessionAuthenticationFilter.SESSION_COOKIE_NAME, value)
+        return ResponseCookie.from(AdminAuthenticationFilter.SESSION_COOKIE_NAME, value)
                 .httpOnly(true)
                 .secure(properties.secureCookie())
                 .sameSite("Strict")
@@ -99,7 +107,7 @@ public final class AuthenticationController {
             return java.util.Optional.empty();
         }
         return Arrays.stream(cookies)
-                .filter(cookie -> SessionAuthenticationFilter.SESSION_COOKIE_NAME.equals(cookie.getName()))
+                .filter(cookie -> AdminAuthenticationFilter.SESSION_COOKIE_NAME.equals(cookie.getName()))
                 .map(Cookie::getValue)
                 .filter(value -> !value.isBlank())
                 .findFirst();

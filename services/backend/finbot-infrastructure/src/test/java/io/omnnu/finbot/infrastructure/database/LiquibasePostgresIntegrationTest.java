@@ -28,6 +28,8 @@ import io.omnnu.finbot.infrastructure.catalog.JdbcProductCatalogSyncStore;
 import io.omnnu.finbot.infrastructure.ingestion.JdbcIngestionRepository;
 import io.omnnu.finbot.infrastructure.ai.JdbcAiRuntimeProfileResolver;
 import io.omnnu.finbot.infrastructure.ai.JdbcAiInvocationRecoveryStore;
+import io.omnnu.finbot.infrastructure.identity.JdbcAdminApiTokenStore;
+import io.omnnu.finbot.infrastructure.identity.SecureAuthenticationCryptography;
 import io.omnnu.finbot.infrastructure.configuration.AesGcmRuntimeSecretCipher;
 import io.omnnu.finbot.infrastructure.configuration.JdbcConfigurationRepository;
 import io.omnnu.finbot.infrastructure.configuration.JdbcEncryptedRuntimeSecretStore;
@@ -51,6 +53,8 @@ import io.omnnu.finbot.domain.ingestion.InformationSource;
 import io.omnnu.finbot.domain.ingestion.SourceMode;
 import io.omnnu.finbot.domain.ingestion.SourcePriority;
 import io.omnnu.finbot.domain.ingestion.SourceTier;
+import io.omnnu.finbot.domain.identity.AdminApiToken;
+import io.omnnu.finbot.domain.identity.AdminApiTokenId;
 import io.omnnu.finbot.application.ingestion.SourceCollectionRun;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import io.omnnu.finbot.domain.workflow.WorkflowAccepted;
@@ -210,6 +214,62 @@ class LiquibasePostgresIntegrationTest {
                 "proxygateway_firecrawl",
                 "SUBSCRIPTION_URL",
                 "FINBOT_PROXY_GATEWAY_SECRETS_JSON").orElseThrow());
+    }
+
+    @Test
+    void persistsOnlyApiTokenDigestAndEnforcesExpiryAndRevocation() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var store = new JdbcAdminApiTokenStore(jdbcClient);
+        var suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        var rawToken = "finbot_pat_" + "A".repeat(43);
+        var digest = new SecureAuthenticationCryptography().digest(rawToken);
+        var createdAt = Instant.parse("2026-07-21T08:00:00Z");
+        var token = new AdminApiToken(
+                new AdminApiTokenId("apitoken_runtime_" + suffix),
+                "Runtime token " + suffix,
+                digest.substring(0, 16),
+                "admin",
+                createdAt.plus(Duration.ofDays(90)),
+                null,
+                null,
+                createdAt,
+                createdAt,
+                0);
+
+        store.createToken(token, digest);
+
+        assertEquals(1, store.countActiveTokens(createdAt.plusSeconds(1)));
+        assertEquals(token.tokenId(), store.findActiveToken(digest, createdAt.plusSeconds(1))
+                .orElseThrow().tokenId());
+        assertEquals(digest, jdbcClient.sql("""
+                select token_digest from admin_api_token where token_id = :tokenId
+                """).param("tokenId", token.tokenId().value()).query(String.class).single());
+        assertEquals(0L, jdbcClient.sql("""
+                select count(*) from admin_api_token
+                where token_digest = :rawToken or cast(token_digest as text) like :rawPattern
+                """)
+                .param("rawToken", rawToken)
+                .param("rawPattern", "%" + rawToken + "%")
+                .query(Long.class)
+                .single());
+
+        var usedAt = createdAt.plusSeconds(60);
+        store.touchToken(digest, usedAt);
+        assertEquals(usedAt, store.listTokens().stream()
+                .filter(candidate -> candidate.tokenId().equals(token.tokenId()))
+                .findFirst()
+                .orElseThrow()
+                .lastUsedAt());
+
+        var revokedAt = createdAt.plusSeconds(120);
+        var revoked = store.revokeToken(token.tokenId(), 0, revokedAt).orElseThrow();
+        assertEquals(revokedAt, revoked.revokedAt());
+        assertEquals(1, revoked.version());
+        assertEquals(0, store.countActiveTokens(revokedAt.plusSeconds(1)));
+        assertTrue(store.findActiveToken(digest, revokedAt.plusSeconds(1)).isEmpty());
     }
 
     @Test
@@ -864,7 +924,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(58, result.getInt("changeset_count"));
+                    assertEquals(59, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

@@ -35,6 +35,15 @@
 - 验收标准：保存后新请求无需重启即采用新容量；排队等待与实际 HTTP 请求分别计时；超时错误可区分；默认并发为 5；API/Web/数据库约束一致。
 - 测试方式：Java 单元与 PostgreSQL 集成测试、OpenAPI 契约检查、Web 测试与构建、Kustomize 渲染、CI/GitOps 和生产 API 验证。
 
+## P1：管理员 API Token
+
+- 目标：管理员可在后台申请、查看和吊销 API Token，并通过 `Authorization: Bearer` 调用全部 `/api/v2/**` 管理接口。
+- 范围：Token 哈希持久化、到期/吊销/最后使用审计、Bearer 与 Cookie 双认证、Bearer 免 CSRF、管理 API、OpenAPI 和后台面板。
+- 非目标：不引入多用户、OAuth、细粒度 scope 或跨租户权限；Token 当前等价于唯一管理员的 `ROLE_ADMIN`。
+- 影响文件：identity domain/application/infrastructure、Spring Security、Liquibase、控制面契约、`apps/web` 设置页。
+- 验收标准：明文只在创建响应显示一次；数据库无明文；有效 Token 可无 CSRF 调用读写 API；无效/过期/吊销 Token 返回 401 且不回退 Cookie；Cookie 写请求仍要求 CSRF。
+- 测试方式：应用单测、Security MockMvc、PostgreSQL 集成测试、OpenAPI、Web 组件/API 测试、真实线上 Token 创建/调用/吊销 smoke。
+
 ## 外部可用性观察
 
 - Firecrawl 保持独立渠道、默认关闭、无健康出口时 fail-closed。

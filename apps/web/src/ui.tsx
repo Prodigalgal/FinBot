@@ -43,15 +43,16 @@ export function statusLabel(status: string | null | undefined): string {
     OMS_EVENT: 'OMS 状态变化', SUBMISSION_ATTEMPT: '交易所提交尝试', ACCOUNT: '账户快照',
     BALANCE: '余额变动', ORDER: '交易所订单', FILL: '交易所成交', POSITION: '持仓快照',
     REALIZED_PNL: '已实现盈亏', RECONCILIATION: '交易所对账',
+    ACTIVE: '有效', EXPIRED: '已过期', REVOKED: '已吊销',
   };
   return status ? labels[status] || status : '-';
 }
 
 export function statusColor(status: string | null | undefined): 'default' | 'success' | 'warning' | 'error' | 'info' {
   if (!status) return 'default';
-  if (['COMPLETED', 'FILLED', 'APPROVED', 'SUBMITTED', 'READY', 'ACKNOWLEDGED', 'RUNNING'].includes(status)) return status === 'RUNNING' ? 'info' : 'success';
+  if (['COMPLETED', 'FILLED', 'APPROVED', 'SUBMITTED', 'READY', 'ACKNOWLEDGED', 'RUNNING', 'ACTIVE'].includes(status)) return status === 'RUNNING' ? 'info' : 'success';
   if (status === 'ESTIMATED') return 'info';
-  if (['FAILED', 'REJECTED', 'CANCELLED'].includes(status)) return 'error';
+  if (['FAILED', 'REJECTED', 'CANCELLED', 'EXPIRED', 'REVOKED'].includes(status)) return 'error';
   if (['PARTIAL', 'BLOCKED', 'WARNING', 'ORDER_PLANNED', 'PARTIALLY_FILLED', 'PENDING', 'CLAIMED'].includes(status)) return 'warning';
   if (['ACCEPTED', 'PROPOSED', 'GENERATED', 'ESTIMATE', 'NO_DATA'].includes(status)) return 'info';
   return 'default';

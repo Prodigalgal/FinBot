@@ -7,6 +7,7 @@ servers:
   - url: /api/v2
 security:
   - adminSession: []
+  - adminApiToken: []
 paths:
   /agent-roles:
     get:
@@ -120,6 +121,56 @@ paths:
         "200":
           $ref: "#/components/responses/JsonObject"
         "404":
+          $ref: "#/components/responses/Problem"
+  /api-tokens:
+    get:
+      operationId: listAdminApiTokens
+      responses:
+        "200":
+          description: Persistent API token metadata without token plaintext.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminApiToken"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createAdminApiToken
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAdminApiTokenRequest"
+      responses:
+        "201":
+          description: Created token; rawToken is returned only in this response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedAdminApiToken"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api-tokens/{tokenId}:
+    delete:
+      operationId: revokeAdminApiToken
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^apitoken_[a-z0-9_-]{4,71}$
+        - $ref: "#/components/parameters/ExpectedVersion"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Token revoked.
+        default:
           $ref: "#/components/responses/Problem"
   /auth/challenge:
     get:
@@ -1535,6 +1586,10 @@ components:
       type: apiKey
       in: cookie
       name: FINBOT_SESSION
+    adminApiToken:
+      type: http
+      scheme: bearer
+      bearerFormat: finbot_pat
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -1615,6 +1670,97 @@ components:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
   schemas:
+    AdminApiToken:
+      type: object
+      additionalProperties: false
+      required:
+        - tokenId
+        - displayName
+        - fingerprint
+        - username
+        - status
+        - expiresAt
+        - lastUsedAt
+        - revokedAt
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        tokenId:
+          type: string
+          pattern: ^apitoken_[a-z0-9_-]{4,71}$
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 120
+        fingerprint:
+          type: string
+          pattern: ^[0-9a-f]{16}$
+        username:
+          type: string
+          minLength: 1
+          maxLength: 80
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - EXPIRED
+            - REVOKED
+        expiresAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        lastUsedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        revokedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+    CreateAdminApiTokenRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - displayName
+        - expiresInDays
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 120
+        expiresInDays:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 3650
+    CreatedAdminApiToken:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - rawToken
+      properties:
+        token:
+          $ref: "#/components/schemas/AdminApiToken"
+        rawToken:
+          type: string
+          pattern: ^finbot_pat_[A-Za-z0-9_-]{43}$
+          readOnly: true
     SourceDefinition:
       type: object
       required:

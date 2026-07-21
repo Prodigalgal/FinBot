@@ -1,12 +1,12 @@
 import type {
-  AccountsOverview, ActivityPage, AgentRole, AiExperiment, AiModel, AiProvider,
+  AccountsOverview, ActivityPage, AdminApiToken, AgentRole, AiExperiment, AiModel, AiProvider,
   AuthChallenge, AuthStatus, AutonomousStatus, ConfigurationSnapshot, EvidenceDocument,
   ExecutionAiStage, IngestionWorkspace, NetworkDiagnostic, NetworkWorkspace,
   OperationsOverview, OperationsReport, PlatformReadiness, PositionRecord, ProxyGatewayRuntimeStatus,
   CatalogSyncRun, ProductDetail, ProductPage, ProviderModelCatalog, QuantWorkspace, ResearchComparison,
   ResearchCase, ResearchFeedback, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, ResearchSummary, RiskPolicy,
   ScheduleRecord, SetupProfileApplication, SetupProfileDefinition, SetupProfilePreview,
-  CrawlerHeaderProfile, CrawlerHeaderProfileMutation, SourceHealth, SourceMutation, SourceRecord, SystemSetting, TaskRecord, TradeAutomationConfiguration,
+  CreatedAdminApiToken, CrawlerHeaderProfile, CrawlerHeaderProfileMutation, SourceHealth, SourceMutation, SourceRecord, SystemSetting, TaskRecord, TradeAutomationConfiguration,
   TradeAutomationDetail, TradeAutomationSummary, TradeRiskPreview, WatchlistDetail,
   WatchlistSummary, WorkflowDefinitionSummary, WorkflowEstimate, WorkflowExecutionPlan, WorkflowLearning,
   WorkflowNodeTestResult, WorkflowRun, WorkflowSchema, WorkflowVersion,
@@ -96,6 +96,11 @@ export const api = {
   login: (body: { username: string; password: string; challengeId: string; proofOfWorkSolution: string; mathAnswer: number }) =>
     request<AuthStatus>('/api/v2/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => request<AuthStatus>('/api/v2/auth/logout', { method: 'POST', body: '{}' }),
+  apiTokens: () => request<AdminApiToken[]>('/api/v2/api-tokens'),
+  createApiToken: (body: { displayName: string; expiresInDays: number | null }) =>
+    request<CreatedAdminApiToken>('/api/v2/api-tokens', { method: 'POST', body: JSON.stringify(body) }),
+  revokeApiToken: (tokenId: string, expectedVersion: number) =>
+    request<void>(`/api/v2/api-tokens/${encodeURIComponent(tokenId)}${query({ expectedVersion })}`, { method: 'DELETE' }),
 
   operations: () => request<OperationsOverview>('/api/v2/operations'),
   operationsEventsUrl: () => `${API_BASE}/api/v2/operations/events`,
