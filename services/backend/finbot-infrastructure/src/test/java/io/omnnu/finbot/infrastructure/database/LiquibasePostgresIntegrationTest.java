@@ -549,6 +549,14 @@ class LiquibasePostgresIntegrationTest {
                            where profile_id = 'provider_deepseek_default') as deepseek_enabled,
                           (select base_url from ai_provider_profile
                            where profile_id = 'provider_mimo_default') as mimo_base_url,
+                          (select count(*) from ai_provider_profile
+                           where profile_id in (
+                             'provider_sub2api_default',
+                             'provider_grok_sub2api',
+                             'provider_gemini_default'
+                           )
+                             and base_url = 'https://sub2api-direct.mnnu.eu.org/v1'
+                             and base_url_env is null) as sub2api_direct_endpoint_count,
                           (select provider_profile_id from workflow_node_definition
                            where version_id = 'workflowversion_standard_v8'
                              and node_id = 'node_bull_analyst') as bull_provider,
@@ -812,6 +820,7 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(
                         "http://mimo2api.mimo2api.svc.cluster.local:8080/v1",
                         result.getString("mimo_base_url"));
+                assertEquals(3, result.getInt("sub2api_direct_endpoint_count"));
                 assertEquals("provider_grok_sub2api", result.getString("bull_provider"));
                 assertEquals("provider_sub2api_default", result.getString("bull_fallback_provider"));
                 assertEquals("gpt-5.6-terra", result.getString("chair_fallback_model"));
@@ -924,7 +933,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(59, result.getInt("changeset_count"));
+                    assertEquals(60, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

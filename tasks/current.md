@@ -44,6 +44,15 @@
 - 验收标准：明文只在创建响应显示一次；数据库无明文；有效 Token 可无 CSRF 调用读写 API；无效/过期/吊销 Token 返回 401 且不回退 Cookie；Cookie 写请求仍要求 CSRF。
 - 测试方式：应用单测、Security MockMvc、PostgreSQL 集成测试、OpenAPI、Web 组件/API 测试、真实线上 Token 创建/调用/吊销 smoke。
 
+## P1：Sub2API 直连端点
+
+- 目标：GPT、Grok、Gemini 三个 Sub2API 渠道统一改用跳过 Cloudflare 的 `sub2api-direct.mnnu.eu.org`，改善长连接稳定性。
+- 范围：K8S 默认环境变量、现有 Provider 数据迁移、Liquibase 集成断言和生产测活。
+- 非目标：不调整模型绑定、API Key、并发配额、超时策略或 MiMo 独立端点。
+- 影响文件：`platform/k8s/base/kustomization.yaml`、Liquibase 058、数据库集成测试、CI Kustomize 工具版本。
+- 验收标准：三个内置 Provider 的 `base_url` 均为 `https://sub2api-direct.mnnu.eu.org/v1`，模型探测和最小真实调用可达。
+- 测试方式：Liquibase/PostgreSQL、Kustomize 渲染、CI、生产数据库查询及 Provider 测活。
+
 ## 外部可用性观察
 
 - Firecrawl 保持独立渠道、默认关闭、无健康出口时 fail-closed。
