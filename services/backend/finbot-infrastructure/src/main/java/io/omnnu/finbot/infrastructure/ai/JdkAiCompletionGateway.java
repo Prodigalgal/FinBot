@@ -44,18 +44,21 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final Executor executor;
+    private final ProviderConcurrencyLimiter concurrencyLimiter;
 
     public JdkAiCompletionGateway(
             @Qualifier("aiHttpClient") HttpClient httpClient,
             JdbcAiRuntimeProfileResolver profileResolver,
             ObjectMapper objectMapper,
             Clock clock,
-            @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
+            @Qualifier("workflowVirtualThreadExecutor") Executor executor,
+            ProviderConcurrencyLimiter concurrencyLimiter) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.profileResolver = Objects.requireNonNull(profileResolver, "profileResolver");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.executor = Objects.requireNonNull(executor, "executor");
+        this.concurrencyLimiter = Objects.requireNonNull(concurrencyLimiter, "concurrencyLimiter");
     }
 
     @Override
@@ -79,7 +82,11 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
     private void execute(
             AiCompletionRequest request,
             SubmissionPublisher<AiCompletionEvent> publisher) {
+        ProviderConcurrencyLimiter.Permit permit = null;
         try {
+            permit = concurrencyLimiter.acquire(
+                    request.providerProfileId(),
+                    request.timeout());
             var profile = profileResolver.resolve(request.providerProfileId());
             if (profile.protocol() != request.protocol()) {
                 throw new AiProviderConfigurationException("Workflow protocol does not match AI provider profile");
@@ -103,6 +110,13 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             Thread.currentThread().interrupt();
             publisher.submit(new AiCompletionFailed(
                     request.invocationId(), "INTERRUPTED", "AI request was interrupted", true, clock.instant()));
+        } catch (ProviderConcurrencyLimiter.ProviderCapacityTimeoutException exception) {
+            publisher.submit(new AiCompletionFailed(
+                    request.invocationId(),
+                    "AI_PROVIDER_CAPACITY_TIMEOUT",
+                    "AI provider concurrency queue exceeded its wait timeout",
+                    true,
+                    clock.instant()));
         } catch (RuntimeException | IOException exception) {
             publisher.submit(new AiCompletionFailed(
                     request.invocationId(),
@@ -111,6 +125,9 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
                     retryable(exception),
                     clock.instant()));
         } finally {
+            if (permit != null) {
+                permit.close();
+            }
             publisher.close();
         }
     }
@@ -208,8 +225,7 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             SubmissionPublisher<AiCompletionEvent> publisher,
             long sequence) {
         if (root.has("error")) {
-            publisher.submit(new AiCompletionFailed(
-                    request.invocationId(), "PROVIDER_ERROR", "AI provider reported an error", false, clock.instant()));
+            submitProviderFailure(request, root, publisher);
             return new StreamOutcome(sequence, true);
         }
         reportUsage(request, root.path("usage"), publisher);
@@ -252,11 +268,23 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
                     request.invocationId(), response.path("status").asText("completed"), clock.instant()));
             return new StreamOutcome(sequence, true);
         } else if ("response.failed".equals(type) || "error".equals(type)) {
-            publisher.submit(new AiCompletionFailed(
-                    request.invocationId(), "PROVIDER_ERROR", "AI provider reported an error", false, clock.instant()));
+            submitProviderFailure(request, root, publisher);
             return new StreamOutcome(sequence, true);
         }
         return new StreamOutcome(sequence, false);
+    }
+
+    private void submitProviderFailure(
+            AiCompletionRequest request,
+            JsonNode root,
+            SubmissionPublisher<AiCompletionEvent> publisher) {
+        var failure = ProviderErrorClassifier.classify(root);
+        publisher.submit(new AiCompletionFailed(
+                request.invocationId(),
+                failure.errorCode(),
+                failure.safeMessage(),
+                failure.retryable(),
+                clock.instant()));
     }
 
     private void reportUsage(

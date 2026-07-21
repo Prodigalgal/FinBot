@@ -100,6 +100,22 @@ final class CompressionApplicationServiceTest {
     }
 
     @Test
+    void promptsRequireAtomicFactsAndRejectDocumentMetaNarratives() {
+        var repository = new RecordingCompressionRepository(document());
+        var gateway = new RecordingGateway(Set.of());
+
+        execute(version(), repository, gateway);
+
+        assertEquals(5, gateway.requests().size());
+        assertTrue(gateway.requests().stream()
+                .allMatch(request -> request.userPrompt().contains("原子事实")));
+        assertTrue(gateway.requests().stream()
+                .allMatch(request -> request.userPrompt().contains("禁止输出‘本文讲述了’")));
+        assertTrue(gateway.requests().stream()
+                .allMatch(request -> request.userPrompt().contains("summary 是事实压缩正文而不是文章摘要")));
+    }
+
+    @Test
     void failsClosedWithoutInvokingValidatorWhenTwoCompressionCandidatesAreUnavailable() {
         var version = version();
         var repository = new RecordingCompressionRepository(document());
