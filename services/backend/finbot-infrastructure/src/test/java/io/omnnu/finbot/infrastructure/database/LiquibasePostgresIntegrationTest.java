@@ -1537,7 +1537,10 @@ class LiquibasePostgresIntegrationTest {
                         resultSet.getString("status"),
                         Boolean.toString(resultSet.getBoolean("released"))))
                 .single();
-        assertEquals(List.of("0", "0E-8", "RELEASED", "true"), reservationState);
+        assertEquals("0", reservationState.get(0));
+        assertEquals(0, new BigDecimal(reservationState.get(1)).compareTo(BigDecimal.ZERO));
+        assertEquals("RELEASED", reservationState.get(2));
+        assertEquals("true", reservationState.get(3));
         assertEquals(0, new JdbcAiInvocationRecoveryStore(jdbcClient)
                 .failOrphanedInvocations(Instant.parse("2026-07-21T11:02:10Z")));
     }
