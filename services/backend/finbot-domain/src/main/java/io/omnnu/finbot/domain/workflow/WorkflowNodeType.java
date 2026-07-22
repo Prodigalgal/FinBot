@@ -17,6 +17,7 @@ public enum WorkflowNodeType {
     HUMAN_REVIEW,
     AGGREGATOR,
     CHAIR,
+    SOCIAL_CHOICE,
     EXECUTION_REVIEW,
     OUTPUT;
 
@@ -25,7 +26,7 @@ public enum WorkflowNodeType {
             case AI_CLEANER, COMPRESSOR, COMPRESSION_VALIDATOR,
                     AGENT, AGGREGATOR, CHAIR, EXECUTION_REVIEW -> true;
             case INPUT, ROUTER, DETERMINISTIC, COLLECTOR, CLEANER, GATE, QUANT,
-                    RISK, SUBFLOW, HUMAN_REVIEW, OUTPUT -> false;
+                    RISK, SUBFLOW, HUMAN_REVIEW, SOCIAL_CHOICE, OUTPUT -> false;
         };
     }
 }

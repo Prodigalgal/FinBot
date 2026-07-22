@@ -4,6 +4,8 @@ import io.omnnu.finbot.application.workflow.dto.WorkflowDefinitionSummary;
 import io.omnnu.finbot.application.workflow.service.ExecutableWorkflowSchema;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.debate.CritiqueAssignmentPolicy;
+import io.omnnu.finbot.domain.debate.DebateProtocol;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplate;
 import io.omnnu.finbot.domain.workflow.BooleanConditionOperand;
 import io.omnnu.finbot.domain.workflow.DecimalConditionOperand;
@@ -57,6 +59,7 @@ public final class WorkflowResponses {
             int versionNumber,
             WorkflowVersionStatus status,
             int defaultDebateRounds,
+            DebateProtocolResponse debateProtocol,
             int maximumSteps,
             long maximumDurationSeconds,
             long maximumTokens,
@@ -71,11 +74,29 @@ public final class WorkflowResponses {
         public static VersionResponse from(WorkflowDefinitionVersion version) {
             return new VersionResponse(
                     version.versionId().value(), version.definitionId().value(), version.versionNumber(),
-                    version.status(), version.defaultDebateRounds(), version.maximumSteps(),
+                    version.status(), version.defaultDebateRounds(),
+                    DebateProtocolResponse.from(version), version.maximumSteps(),
                     version.maximumDuration().toSeconds(), version.maximumTokens(), version.maximumCostUsd(),
                     version.failurePolicy(), version.checksum(), version.publishedAt(), version.createdAt(),
                     version.createdBy(), version.nodes().stream().map(NodeResponse::from).toList(),
                     version.edges().stream().map(EdgeResponse::from).toList());
+        }
+    }
+
+    public record DebateProtocolResponse(
+            DebateProtocol protocol,
+            int minimumParticipantSeats,
+            int minimumQuorumRoles,
+            long stageTimeoutSeconds,
+            CritiqueAssignmentPolicy critiqueAssignmentPolicy) {
+        static DebateProtocolResponse from(WorkflowDefinitionVersion version) {
+            var configuration = version.debateProtocolConfiguration();
+            return new DebateProtocolResponse(
+                    configuration.protocol(),
+                    configuration.minimumParticipantSeats(),
+                    configuration.minimumQuorumRoles(),
+                    configuration.stageTimeout().toSeconds(),
+                    configuration.critiqueAssignmentPolicy());
         }
     }
 
@@ -85,6 +106,7 @@ public final class WorkflowResponses {
             String displayName,
             String roleName,
             String roleTemplateId,
+            String logicalRoleKey,
             AiBindingResponse primaryAiBinding,
             AiBindingResponse fallbackAiBinding,
             String systemPrompt,
@@ -105,6 +127,7 @@ public final class WorkflowResponses {
             return new NodeResponse(
                     node.nodeId().value(), node.nodeType(), node.displayName(), node.roleName(),
                     node.roleTemplateId() == null ? null : node.roleTemplateId().value(),
+                    node.logicalRoleKey() == null ? null : node.logicalRoleKey().value(),
                     AiBindingResponse.from(node.primaryAiBinding()),
                     AiBindingResponse.from(node.fallbackAiBinding()),
                     node.systemPrompt(), node.userPromptTemplate(),

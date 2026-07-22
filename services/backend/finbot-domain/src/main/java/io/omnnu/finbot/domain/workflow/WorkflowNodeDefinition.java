@@ -1,6 +1,7 @@
 package io.omnnu.finbot.domain.workflow;
 
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
+import io.omnnu.finbot.domain.consensus.LogicalRoleKey;
 import io.omnnu.finbot.domain.shared.DomainText;
 import java.util.Objects;
 
@@ -10,6 +11,7 @@ public record WorkflowNodeDefinition(
         String displayName,
         String roleName,
         AgentRoleTemplateId roleTemplateId,
+        LogicalRoleKey logicalRoleKey,
         AiModelBinding primaryAiBinding,
         AiModelBinding fallbackAiBinding,
         String systemPrompt,
@@ -24,6 +26,49 @@ public record WorkflowNodeDefinition(
         String operation,
         WorkflowCanvasPosition position,
         boolean enabled) {
+    public WorkflowNodeDefinition(
+            WorkflowNodeId nodeId,
+            WorkflowNodeType nodeType,
+            String displayName,
+            String roleName,
+            AgentRoleTemplateId roleTemplateId,
+            AiModelBinding primaryAiBinding,
+            AiModelBinding fallbackAiBinding,
+            String systemPrompt,
+            String userPromptTemplate,
+            WorkflowOutputContract outputContract,
+            WorkflowContextMode contextMode,
+            int contextHistoryRounds,
+            int contextMaximumMessages,
+            int maximumOutputTokens,
+            int timeoutSeconds,
+            WorkflowRetryPolicy retryPolicy,
+            String operation,
+            WorkflowCanvasPosition position,
+            boolean enabled) {
+        this(
+                nodeId,
+                nodeType,
+                displayName,
+                roleName,
+                roleTemplateId,
+                defaultLogicalRoleKey(nodeId, nodeType, roleTemplateId),
+                primaryAiBinding,
+                fallbackAiBinding,
+                systemPrompt,
+                userPromptTemplate,
+                outputContract,
+                contextMode,
+                contextHistoryRounds,
+                contextMaximumMessages,
+                maximumOutputTokens,
+                timeoutSeconds,
+                retryPolicy,
+                operation,
+                position,
+                enabled);
+    }
+
     public WorkflowNodeDefinition {
         Objects.requireNonNull(nodeId, "nodeId");
         Objects.requireNonNull(nodeType, "nodeType");
@@ -35,6 +80,11 @@ public record WorkflowNodeDefinition(
         Objects.requireNonNull(retryPolicy, "retryPolicy");
         operation = optional(operation, 80);
         Objects.requireNonNull(position, "position");
+        if (debateParticipant(nodeType)) {
+            Objects.requireNonNull(logicalRoleKey, "logicalRoleKey");
+        } else if (logicalRoleKey != null) {
+            throw new IllegalArgumentException("Only AGENT and AGGREGATOR nodes define logicalRoleKey");
+        }
         if (contextHistoryRounds < 0 || contextHistoryRounds > 8) {
             throw new IllegalArgumentException("contextHistoryRounds must be between 0 and 8");
         }
@@ -76,5 +126,19 @@ public record WorkflowNodeDefinition(
             throw new IllegalArgumentException("Optional workflow node text is too long");
         }
         return normalized;
+    }
+
+    private static boolean debateParticipant(WorkflowNodeType nodeType) {
+        return nodeType == WorkflowNodeType.AGENT || nodeType == WorkflowNodeType.AGGREGATOR;
+    }
+
+    private static LogicalRoleKey defaultLogicalRoleKey(
+            WorkflowNodeId nodeId,
+            WorkflowNodeType nodeType,
+            AgentRoleTemplateId roleTemplateId) {
+        if (!debateParticipant(nodeType)) {
+            return null;
+        }
+        return new LogicalRoleKey(roleTemplateId == null ? nodeId.value() : roleTemplateId.value());
     }
 }

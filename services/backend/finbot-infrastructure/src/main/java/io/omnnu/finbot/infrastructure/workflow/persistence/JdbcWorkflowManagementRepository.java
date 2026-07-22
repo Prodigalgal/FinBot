@@ -12,6 +12,10 @@ import io.omnnu.finbot.application.workflow.port.out.WorkflowManagementRepositor
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.consensus.LogicalRoleKey;
+import io.omnnu.finbot.domain.debate.CritiqueAssignmentPolicy;
+import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.DebateProtocolConfiguration;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplate;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplateId;
 import io.omnnu.finbot.domain.workflow.BooleanConditionOperand;
@@ -122,6 +126,9 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
     public Optional<WorkflowDefinitionVersion> findVersion(WorkflowVersionId versionId) {
         var root = jdbcClient.sql("""
                 select definition_id, version_number, status, default_debate_rounds,
+                       debate_protocol, debate_minimum_participant_seats,
+                       debate_minimum_quorum_roles, debate_stage_timeout_seconds,
+                       debate_critique_assignment,
                        maximum_steps, maximum_duration_seconds, maximum_tokens,
                        maximum_cost_usd, failure_policy, checksum, published_at,
                        created_at, created_by
@@ -135,6 +142,7 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
         }
         var nodes = jdbcClient.sql("""
                 select node_id, node_type, display_name, role_name, role_template_id,
+                       logical_role_key,
                        provider_profile_id, model_name, reasoning_effort,
                        fallback_provider_profile_id, fallback_model_name, fallback_reasoning_effort,
                        system_prompt,
@@ -167,6 +175,7 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                 value.versionNumber(),
                 value.status(),
                 value.defaultDebateRounds(),
+                value.debateProtocolConfiguration(),
                 value.maximumSteps(),
                 Duration.ofSeconds(value.maximumDurationSeconds()),
                 value.maximumTokens(),
@@ -276,6 +285,11 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
             var updated = jdbcClient.sql("""
                     update workflow_definition_version
                     set default_debate_rounds = :rounds,
+                        debate_protocol = :debateProtocol,
+                        debate_minimum_participant_seats = :minimumParticipantSeats,
+                        debate_minimum_quorum_roles = :minimumQuorumRoles,
+                        debate_stage_timeout_seconds = :stageTimeoutSeconds,
+                        debate_critique_assignment = :critiqueAssignment,
                         maximum_steps = :maximumSteps,
                         maximum_duration_seconds = :maximumDuration,
                         maximum_tokens = :maximumTokens,
@@ -288,6 +302,11 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                     """)
                     .param("versionId", version.versionId().value())
                     .param("rounds", version.defaultDebateRounds())
+                    .param("debateProtocol", version.debateProtocolConfiguration().protocol().name())
+                    .param("minimumParticipantSeats", version.debateProtocolConfiguration().minimumParticipantSeats())
+                    .param("minimumQuorumRoles", version.debateProtocolConfiguration().minimumQuorumRoles())
+                    .param("stageTimeoutSeconds", version.debateProtocolConfiguration().stageTimeout().toSeconds())
+                    .param("critiqueAssignment", version.debateProtocolConfiguration().critiqueAssignmentPolicy().name())
                     .param("maximumSteps", version.maximumSteps())
                     .param("maximumDuration", version.maximumDuration().toSeconds())
                     .param("maximumTokens", version.maximumTokens())
@@ -309,12 +328,17 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
             jdbcClient.sql("""
                     insert into workflow_definition_version (
                       version_id, definition_id, version_number, status,
-                      default_debate_rounds, maximum_steps, maximum_duration_seconds,
+                      default_debate_rounds, debate_protocol,
+                      debate_minimum_participant_seats, debate_minimum_quorum_roles,
+                      debate_stage_timeout_seconds, debate_critique_assignment,
+                      maximum_steps, maximum_duration_seconds,
                       maximum_tokens, maximum_cost_usd, failure_policy, checksum,
                       published_at, created_at, created_by
                     ) values (
                       :versionId, :definitionId, :versionNumber, 'DRAFT',
-                      :rounds, :maximumSteps, :maximumDuration,
+                      :rounds, :debateProtocol, :minimumParticipantSeats, :minimumQuorumRoles,
+                      :stageTimeoutSeconds, :critiqueAssignment,
+                      :maximumSteps, :maximumDuration,
                       :maximumTokens, :maximumCost, :failurePolicy, :checksum,
                       null, :createdAt, :createdBy
                     )
@@ -323,6 +347,11 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                     .param("definitionId", version.definitionId().value())
                     .param("versionNumber", version.versionNumber())
                     .param("rounds", version.defaultDebateRounds())
+                    .param("debateProtocol", version.debateProtocolConfiguration().protocol().name())
+                    .param("minimumParticipantSeats", version.debateProtocolConfiguration().minimumParticipantSeats())
+                    .param("minimumQuorumRoles", version.debateProtocolConfiguration().minimumQuorumRoles())
+                    .param("stageTimeoutSeconds", version.debateProtocolConfiguration().stageTimeout().toSeconds())
+                    .param("critiqueAssignment", version.debateProtocolConfiguration().critiqueAssignmentPolicy().name())
                     .param("maximumSteps", version.maximumSteps())
                     .param("maximumDuration", version.maximumDuration().toSeconds())
                     .param("maximumTokens", version.maximumTokens())
@@ -480,6 +509,7 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
         jdbcClient.sql("""
                 insert into workflow_node_definition (
                   version_id, node_id, node_type, display_name, role_name, role_template_id,
+                  logical_role_key,
                   provider_profile_id, model_name, reasoning_effort,
                   fallback_provider_profile_id, fallback_model_name, fallback_reasoning_effort,
                   system_prompt,
@@ -489,6 +519,7 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                   position_x, position_y, enabled
                 ) values (
                   :versionId, :nodeId, :nodeType, :displayName, :roleName, :roleTemplateId,
+                  :logicalRoleKey,
                   :providerProfileId, :modelName, :reasoningEffort,
                   :fallbackProviderProfileId, :fallbackModelName, :fallbackReasoningEffort,
                   :systemPrompt,
@@ -504,6 +535,7 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                 .param("displayName", node.displayName())
                 .param("roleName", node.roleName())
                 .param("roleTemplateId", node.roleTemplateId() == null ? null : node.roleTemplateId().value())
+                .param("logicalRoleKey", node.logicalRoleKey() == null ? null : node.logicalRoleKey().value())
                 .param("providerProfileId", providerProfileId(node.primaryAiBinding()))
                 .param("modelName", modelName(node.primaryAiBinding()))
                 .param("reasoningEffort", reasoningEffort(node.primaryAiBinding()))
@@ -566,6 +598,9 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                 resultSet.getString("display_name"),
                 resultSet.getString("role_name"),
                 roleTemplateId == null ? null : new AgentRoleTemplateId(roleTemplateId),
+                resultSet.getString("logical_role_key") == null
+                        ? null
+                        : new LogicalRoleKey(resultSet.getString("logical_role_key")),
                 binding(providerId, resultSet.getString("model_name"), reasoning),
                 binding(
                         fallbackProviderId,
@@ -656,6 +691,12 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                 resultSet.getInt("version_number"),
                 WorkflowVersionStatus.valueOf(resultSet.getString("status")),
                 resultSet.getInt("default_debate_rounds"),
+                new DebateProtocolConfiguration(
+                        DebateProtocol.valueOf(resultSet.getString("debate_protocol")),
+                        resultSet.getInt("debate_minimum_participant_seats"),
+                        resultSet.getInt("debate_minimum_quorum_roles"),
+                        Duration.ofSeconds(resultSet.getInt("debate_stage_timeout_seconds")),
+                        CritiqueAssignmentPolicy.valueOf(resultSet.getString("debate_critique_assignment"))),
                 resultSet.getInt("maximum_steps"),
                 resultSet.getInt("maximum_duration_seconds"),
                 resultSet.getLong("maximum_tokens"),
@@ -733,6 +774,7 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
             int versionNumber,
             WorkflowVersionStatus status,
             int defaultDebateRounds,
+            DebateProtocolConfiguration debateProtocolConfiguration,
             int maximumSteps,
             int maximumDurationSeconds,
             long maximumTokens,

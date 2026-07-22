@@ -57,7 +57,8 @@ public final class AutonomousResearchService implements AutonomousResearchUseCas
                 .orElse(null);
         var latestConclusion = latestRun == null ? null : history.find(new WorkflowRunId(latestRun.runId()))
                 .flatMap(detail -> detail.agentTurns().reversed().stream()
-                        .filter(turn -> "CHAIR_VERDICT".equals(turn.messageType()))
+                        .filter(turn -> "CONSENSUS_RESULT".equals(turn.messageType())
+                                || "CHAIR_VERDICT".equals(turn.messageType()))
                         .findFirst()
                         .map(turn -> turn.summary() == null || turn.summary().isBlank()
                                 ? turn.argument() : turn.summary()))

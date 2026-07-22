@@ -3,6 +3,8 @@ package io.omnnu.finbot.application.workflow.service;
 import io.omnnu.finbot.application.workflow.dto.DebateSession;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
 import io.omnnu.finbot.application.workflow.exception.WorkflowNotFoundException;
+import io.omnnu.finbot.application.workflow.exception.SdbScaExecutionException;
+import io.omnnu.finbot.application.workflow.port.in.SdbScaDebateRunner;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowExecutionUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowRunFailureUseCase;
 import io.omnnu.finbot.application.workflow.port.out.StructuredAiOutputParser;
@@ -20,6 +22,7 @@ import io.omnnu.finbot.application.ai.service.AiExecutionFailure;
 import io.omnnu.finbot.application.ai.service.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.operations.service.TaskCancellationContext;
 import io.omnnu.finbot.domain.workflow.AgentMessage;
+import io.omnnu.finbot.domain.debate.DebateProtocol;
 import io.omnnu.finbot.domain.workflow.AgentMessageContent;
 import io.omnnu.finbot.domain.workflow.AgentMessagePublished;
 import io.omnnu.finbot.domain.workflow.AgentMessageStatus;
@@ -57,6 +60,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
     private final WorkflowRunFailureUseCase workflowFailure;
     private final AiExecutionPolicyExecutor aiExecution;
     private final StructuredAiOutputParser outputParser;
+    private final SdbScaDebateRunner sdbScaDebateRunner;
     private final Clock clock;
     private final Executor executor;
     private final WorkflowPromptComposer promptComposer = new WorkflowPromptComposer();
@@ -69,6 +73,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             WorkflowRunFailureUseCase workflowFailure,
             AiExecutionPolicyExecutor aiExecution,
             StructuredAiOutputParser outputParser,
+            SdbScaDebateRunner sdbScaDebateRunner,
             Clock clock,
             Executor executor) {
         this.executionStore = Objects.requireNonNull(executionStore, "executionStore");
@@ -76,6 +81,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         this.workflowFailure = Objects.requireNonNull(workflowFailure, "workflowFailure");
         this.aiExecution = Objects.requireNonNull(aiExecution, "aiExecution");
         this.outputParser = Objects.requireNonNull(outputParser, "outputParser");
+        this.sdbScaDebateRunner = Objects.requireNonNull(sdbScaDebateRunner, "sdbScaDebateRunner");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.executor = Objects.requireNonNull(executor, "executor");
         this.checkpoints = new WorkflowCheckpointManager(this.executionStore, this.clock);
@@ -104,6 +110,11 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         }
         try {
             executeDebate(execution);
+        } catch (SdbScaExecutionException failure) {
+            var terminalFailure = new TerminalWorkflowFailure(
+                    failure.errorCode(), failure.getMessage(), failure.retryable());
+            terminalize(runId, terminalFailure);
+            throw terminalFailure;
         } catch (TerminalWorkflowFailure failure) {
             terminalize(runId, failure);
             throw failure;
@@ -118,6 +129,10 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     "WORKFLOW_VERSION_NOT_PUBLISHED",
                     "Workflow run is not bound to an immutable published version",
                     false);
+        }
+        if (version.debateProtocolConfiguration().protocol() == DebateProtocol.SDB_SCA_V1) {
+            executeSdbSca(execution);
+            return;
         }
         var layers = agentLayers(version);
         if (layers.isEmpty()) {
@@ -146,7 +161,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         }
 
         var session = ensureDebate(execution, chair);
-        if (!session.chairNodeId().equals(chair.nodeId())) {
+        if (!session.decisionNodeId().equals(chair.nodeId())) {
             throw new TerminalWorkflowFailure(
                     "DEBATE_CHAIR_MISMATCH",
                     "Persisted debate chair does not match the workflow version",
@@ -268,6 +283,36 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                         execution.runId(),
                         sequence,
                         "debate:" + session.debateId().value(),
+                        occurredAt));
+    }
+
+    private void executeSdbSca(WorkflowExecutionContext execution) {
+        var decisionNode = execution.definitionVersion().decisionNode();
+        var firstParticipant = execution.definitionVersion().topologicalNodes().stream()
+                .filter(WorkflowNodeDefinition::enabled)
+                .filter(node -> node.nodeType() == WorkflowNodeType.AGENT
+                        || node.nodeType() == WorkflowNodeType.AGGREGATOR)
+                .findFirst()
+                .map(WorkflowNodeDefinition::nodeId)
+                .orElse(decisionNode.nodeId());
+        publishStageStarted(execution.runId(), WorkflowStage.DEBATE, firstParticipant);
+        var result = sdbScaDebateRunner.run(execution);
+        publishMessage(result.consensusMessage(), 1);
+        publishProgress(execution.runId(), decisionNode.nodeId(), 95, "对称社会选择已完成");
+        var completedAt = clock.instant();
+        TaskCancellationContext.throwIfCancelled();
+        executionStore.updateDebate(
+                result.session().debateId(),
+                result.partial() ? DebateStatus.PARTIAL : DebateStatus.COMPLETED,
+                1,
+                completedAt);
+        executionStore.completeRun(execution.runId(), result.partial(), completedAt);
+        eventPublisher.publish(execution.runId(), (eventId, sequence, occurredAt) ->
+                new WorkflowCompleted(
+                        eventId,
+                        execution.runId(),
+                        sequence,
+                        "debate:" + result.session().debateId().value(),
                         occurredAt));
     }
 

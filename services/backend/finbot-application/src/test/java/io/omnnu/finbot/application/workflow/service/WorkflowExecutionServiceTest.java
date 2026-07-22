@@ -118,6 +118,9 @@ class WorkflowExecutionServiceTest {
                     new WorkflowRunFailureService(store, events),
                     new AiExecutionPolicyExecutor(invoker, CLOCK),
                     outputParser(),
+                    ignored -> {
+                        throw new AssertionError("Legacy workflow must not use the SDB-SCA runner");
+                    },
                     CLOCK,
                     executor);
 
@@ -181,6 +184,9 @@ class WorkflowExecutionServiceTest {
                     new WorkflowRunFailureService(store, events),
                     new AiExecutionPolicyExecutor(invoker, CLOCK),
                     outputParser(),
+                    ignored -> {
+                        throw new AssertionError("Legacy workflow must not use the SDB-SCA runner");
+                    },
                     CLOCK,
                     executor);
 
@@ -234,6 +240,9 @@ class WorkflowExecutionServiceTest {
                     new WorkflowRunFailureService(store, events),
                     new AiExecutionPolicyExecutor(invoker, CLOCK),
                     outputParser(),
+                    ignored -> {
+                        throw new AssertionError("Legacy workflow must not use the SDB-SCA runner");
+                    },
                     CLOCK,
                     executor);
             service.execute(RUN_ID).toCompletableFuture().join();
@@ -559,7 +568,7 @@ class WorkflowExecutionServiceTest {
                     debateStatus,
                     current.configuredRounds(),
                     completedRounds,
-                    current.chairNodeId(),
+                    current.decisionNodeId(),
                     current.startedAt(),
                     completedAt));
         }

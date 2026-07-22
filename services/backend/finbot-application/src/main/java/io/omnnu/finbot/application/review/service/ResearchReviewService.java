@@ -110,7 +110,8 @@ public final class ResearchReviewService implements ResearchReviewUseCase {
 
     private static String conclusion(ResearchHistoryDetail detail) {
         return detail.agentTurns().stream()
-                .filter(turn -> "CHAIR_VERDICT".equals(turn.messageType()))
+                .filter(turn -> "CONSENSUS_RESULT".equals(turn.messageType())
+                        || "CHAIR_VERDICT".equals(turn.messageType()))
                 .reduce((ignored, latest) -> latest)
                 .map(ResearchHistoryDetail.AgentTurn::summary)
                 .orElseGet(() -> detail.agentTurns().stream()

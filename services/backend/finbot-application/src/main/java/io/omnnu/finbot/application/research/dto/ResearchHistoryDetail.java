@@ -15,7 +15,8 @@ public record ResearchHistoryDetail(
         List<AgentTurn> agentTurns,
         List<AiInvocation> aiInvocations,
         List<Artifact> artifacts,
-        List<QuantRun> quantRuns) {
+        List<QuantRun> quantRuns,
+        DebateProtocolTrace debateProtocol) {
     public ResearchHistoryDetail {
         events = List.copyOf(events);
         checkpoints = List.copyOf(checkpoints);

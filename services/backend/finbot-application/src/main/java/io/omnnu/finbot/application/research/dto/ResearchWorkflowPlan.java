@@ -63,14 +63,15 @@ public record ResearchWorkflowPlan(
         var firstDebateNode = ordered.stream()
                 .filter(node -> node.nodeType() == WorkflowNodeType.AGENT
                         || node.nodeType() == WorkflowNodeType.AGGREGATOR
-                        || node.nodeType() == WorkflowNodeType.CHAIR)
+                        || node.nodeType() == WorkflowNodeType.CHAIR
+                        || node.nodeType() == WorkflowNodeType.SOCIAL_CHOICE)
                 .mapToInt(ordered::indexOf)
                 .min()
                 .orElse(Integer.MAX_VALUE);
         positions.forEach((nodeType, position) -> {
             if (isPreparationNode(nodeType) && position >= firstDebateNode) {
                 throw new IllegalStateException(
-                        "Preparation node " + nodeType + " must appear before debate and chair nodes");
+                        "Preparation node " + nodeType + " must appear before debate decision nodes");
             }
         });
         return new ResearchWorkflowPlan(

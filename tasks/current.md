@@ -2,6 +2,14 @@
 
 > 2026-07-22 以 `main@b5f02c4`、Liquibase `62/62`、FinBot GitOps 发布提交 `a5585ba` 和生产 K8S 为事实基线。共享 GitOps 仓库后续 revision 可能因其他应用前进，应以 FinBot 镜像与资源差异判断实际发布。完成任务只保留索引，不再在本页重复流水账。
 
+## P0：SDB-SCA 双盲同时辩论升级
+
+- 目标：消除顺序锚定、后发优势、模型身份偏见和单一 Chair 终局偏差，以 barrier 隔离和确定性社会选择输出可执行共识。
+- 需求：[`../docs/requirements/38-sdb-sca-debate-protocol.md`](../docs/requirements/38-sdb-sca-debate-protocol.md)。
+- 决策：[`../docs/decisions/035-sdb-sca-debate-protocol.md`](../docs/decisions/035-sdb-sca-debate-protocol.md)。
+- 任务：[`in-progress/TASK-20260722-sdb-sca-debate.md`](./in-progress/TASK-20260722-sdb-sca-debate.md)。
+- 状态：领域模型、持久化账本、barrier、Schulze、执行失败关闭、OpenAPI 和匿名运行态 UI 已实现；本地 Java/Web/契约验证通过，待真实 PostgreSQL、CI/GitOps、生产 smoke 与可用的外部 Agent 交叉审计。
+
 ## P1：前端 UI/UX 深度优化
 
 - 目标：把现有后台统一为高密度、易扫描、响应式的研究机构交易终端，不改变业务功能与契约。

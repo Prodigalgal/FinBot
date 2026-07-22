@@ -241,10 +241,10 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
         jdbcClient.sql("""
                 insert into debate_session (
                   debate_id, run_id, status, configured_rounds, completed_rounds,
-                  chair_node_id, started_at, completed_at
+                  decision_node_id, started_at, completed_at
                 ) values (
                   :debateId, :runId, :status, :configuredRounds, :completedRounds,
-                  :chairNodeId, :startedAt, :completedAt
+                  :decisionNodeId, :startedAt, :completedAt
                 ) on conflict (run_id) do nothing
                 """)
                 .param("debateId", session.debateId().value())
@@ -252,7 +252,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 .param("status", session.status().name())
                 .param("configuredRounds", session.configuredRounds())
                 .param("completedRounds", session.completedRounds())
-                .param("chairNodeId", session.chairNodeId().value())
+                .param("decisionNodeId", session.decisionNodeId().value())
                 .param("startedAt", timestamp(session.startedAt()))
                 .param("completedAt", timestamp(session.completedAt()))
                 .update();
@@ -263,7 +263,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
     public Optional<DebateSession> findDebate(WorkflowRunId runId) {
         return jdbcClient.sql("""
                 select debate_id, status, configured_rounds, completed_rounds,
-                       chair_node_id, started_at, completed_at
+                       decision_node_id, started_at, completed_at
                 from debate_session where run_id = :runId
                 """)
                 .param("runId", runId.value())
@@ -273,7 +273,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                         DebateStatus.valueOf(resultSet.getString("status")),
                         resultSet.getInt("configured_rounds"),
                         resultSet.getInt("completed_rounds"),
-                        new WorkflowNodeId(resultSet.getString("chair_node_id")),
+                        new WorkflowNodeId(resultSet.getString("decision_node_id")),
                         instant(resultSet.getObject("started_at", OffsetDateTime.class)),
                         nullableInstant(resultSet.getObject("completed_at", OffsetDateTime.class))))
                 .optional();

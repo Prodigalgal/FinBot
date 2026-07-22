@@ -73,6 +73,9 @@ public final class WorkflowManagementController {
                 request.name(),
                 request.description(),
                 request.defaultDebateRounds(),
+                request.debateProtocol() == null
+                        ? null
+                        : request.debateProtocol().toDomain(),
                 request.maximumSteps(),
                 Duration.ofSeconds(request.maximumDurationSeconds()),
                 request.maximumTokens(),

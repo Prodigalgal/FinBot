@@ -5,6 +5,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.omnnu.finbot.application.workflow.port.out.StructuredAiOutputParser;
+import io.omnnu.finbot.application.workflow.dto.ParsedConsensusBallot;
+import io.omnnu.finbot.application.workflow.dto.ParsedDebateArtifact;
+import io.omnnu.finbot.application.workflow.port.out.SdbScaOutputParser;
+import io.omnnu.finbot.application.workflow.port.out.SdbScaDocumentCodec;
+import io.omnnu.finbot.domain.consensus.AnonymousCandidateId;
+import io.omnnu.finbot.domain.consensus.AnonymousPreferenceBallot;
+import io.omnnu.finbot.domain.consensus.BallotOrientation;
+import io.omnnu.finbot.domain.consensus.LogicalRoleKey;
+import io.omnnu.finbot.domain.consensus.SchulzeDetailedResult;
+import io.omnnu.finbot.domain.consensus.SchulzeOrientationSnapshot;
 import io.omnnu.finbot.domain.workflow.AgentClaim;
 import io.omnnu.finbot.domain.workflow.AgentMessageContent;
 import io.omnnu.finbot.domain.research.ForecastDirection;
@@ -13,12 +23,14 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
-public final class JacksonStructuredAiOutputParser implements StructuredAiOutputParser {
+public final class JacksonStructuredAiOutputParser
+        implements StructuredAiOutputParser, SdbScaOutputParser, SdbScaDocumentCodec {
     private static final Set<String> AGENT_FIELDS = Set.of(
             "summary", "argument", "confidence", "claims", "evidence_refs",
             "challenges", "revision_notes");
@@ -29,6 +41,10 @@ public final class JacksonStructuredAiOutputParser implements StructuredAiOutput
     private static final Set<String> FORECAST_FIELDS = Set.of(
             "direction", "reference_price", "expected_low", "expected_high",
             "invalidation_price", "confidence", "thesis", "evidence_refs");
+    private static final Set<String> SDB_ARTIFACT_FIELDS = Set.of(
+            "summary", "argument", "confidence", "claims", "evidence_refs",
+            "challenges", "revision_notes", "forecast");
+    private static final Set<String> BALLOT_FIELDS = Set.of("preference_tiers");
 
     private final ObjectMapper objectMapper;
 
@@ -76,6 +92,135 @@ public final class JacksonStructuredAiOutputParser implements StructuredAiOutput
                 challenges,
                 revisions,
                 forecast(root.path("forecast")));
+    }
+
+    @Override
+    public ParsedDebateArtifact parseProposal(String output) {
+        return parseSdbArtifact(output, true);
+    }
+
+    @Override
+    public ParsedDebateArtifact parseCritique(String output) {
+        return parseSdbArtifact(output, false);
+    }
+
+    @Override
+    public ParsedDebateArtifact parseRevision(String output) {
+        return parseSdbArtifact(output, true);
+    }
+
+    @Override
+    public ParsedConsensusBallot parseBallot(
+            String output,
+            LogicalRoleKey logicalRoleKey,
+            BallotOrientation orientation,
+            List<AnonymousCandidateId> expectedCandidates) {
+        var root = parseObject(output);
+        requireAllowedFields(root, BALLOT_FIELDS);
+        var tiersNode = root.path("preference_tiers");
+        if (!tiersNode.isArray() || tiersNode.isEmpty()) {
+            throw new IllegalArgumentException("AI ballot preference_tiers must be a non-empty array");
+        }
+        var tiers = new ArrayList<List<AnonymousCandidateId>>();
+        tiersNode.forEach(tierNode -> {
+            if (!tierNode.isArray() || tierNode.isEmpty()) {
+                throw new IllegalArgumentException("AI ballot tier must be a non-empty array");
+            }
+            var tier = new ArrayList<AnonymousCandidateId>();
+            tierNode.forEach(candidateNode -> {
+                if (!candidateNode.isTextual()) {
+                    throw new IllegalArgumentException("AI ballot candidate must be a string");
+                }
+                tier.add(new AnonymousCandidateId(candidateNode.textValue()));
+            });
+            tiers.add(List.copyOf(tier));
+        });
+        var preference = AnonymousPreferenceBallot.of(logicalRoleKey, orientation, tiers);
+        if (!preference.candidates().equals(Set.copyOf(expectedCandidates))) {
+            throw new IllegalArgumentException("AI ballot must rank every expected anonymous candidate once");
+        }
+        return new ParsedConsensusBallot(canonicalJson(root), preference);
+    }
+
+    @Override
+    public String encodeCandidateRanking(List<AnonymousCandidateId> candidates) {
+        return writeValue(candidates.stream().map(AnonymousCandidateId::value).toList());
+    }
+
+    @Override
+    public String encodePairwiseMatrix(SchulzeDetailedResult result) {
+        return encodeMatrices(
+                result,
+                snapshot -> snapshot.pairwiseMatrix().toArray());
+    }
+
+    @Override
+    public String encodeStrongestPaths(SchulzeDetailedResult result) {
+        return encodeMatrices(
+                result,
+                snapshot -> snapshot.strongestPathMatrix().toArray());
+    }
+
+    @Override
+    public String encodeForecast(ForecastSignal forecast) {
+        if (forecast == null) {
+            return null;
+        }
+        var value = new LinkedHashMap<String, Object>();
+        value.put("direction", forecast.direction().name());
+        value.put("reference_price", forecast.referencePrice());
+        value.put("expected_low", forecast.expectedLow());
+        value.put("expected_high", forecast.expectedHigh());
+        value.put("invalidation_price", forecast.invalidationPrice());
+        value.put("confidence", forecast.confidence());
+        value.put("thesis", forecast.thesis());
+        value.put("evidence_refs", forecast.evidenceReferences());
+        return writeValue(value);
+    }
+
+    private ParsedDebateArtifact parseSdbArtifact(String output, boolean allowForecast) {
+        var root = parseObject(output);
+        requireAllowedFields(root, SDB_ARTIFACT_FIELDS);
+        if (!allowForecast && root.has("forecast") && !root.path("forecast").isNull()) {
+            throw new IllegalArgumentException("AI critique must not contain a forecast");
+        }
+        var content = new AgentMessageContent(
+                requiredText(root, "summary"),
+                requiredText(root, "argument"),
+                optionalDecimal(root, "confidence"),
+                claims(root.path("claims")),
+                strings(root.path("evidence_refs")),
+                strings(root.path("challenges")),
+                strings(root.path("revision_notes")),
+                allowForecast ? forecast(root.path("forecast")) : null);
+        return new ParsedDebateArtifact(canonicalJson(root), content);
+    }
+
+    private String canonicalJson(JsonNode node) {
+        return writeValue(node);
+    }
+
+    private String encodeMatrices(
+            SchulzeDetailedResult result,
+            java.util.function.Function<SchulzeOrientationSnapshot, int[][]> matrix) {
+        Objects.requireNonNull(result, "result");
+        var value = new LinkedHashMap<String, Object>();
+        value.put("candidate_order", result.forward().candidateOrder().stream()
+                .map(AnonymousCandidateId::value)
+                .toList());
+        value.put("forward_status", result.forward().status().name());
+        value.put("reversed_status", result.reversed().status().name());
+        value.put("forward", matrix.apply(result.forward()));
+        value.put("reversed", matrix.apply(result.reversed()));
+        return writeValue(value);
+    }
+
+    private String writeValue(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("AI output could not be normalized", exception);
+        }
     }
 
     private static ForecastSignal forecast(JsonNode node) {

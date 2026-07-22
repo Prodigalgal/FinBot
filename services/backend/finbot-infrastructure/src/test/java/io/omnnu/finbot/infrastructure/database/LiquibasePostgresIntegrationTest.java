@@ -38,7 +38,9 @@ import io.omnnu.finbot.infrastructure.setup.persistence.JdbcSetupProfileReposito
 import io.omnnu.finbot.infrastructure.operations.persistence.JdbcBackgroundTaskStore;
 import io.omnnu.finbot.infrastructure.operations.persistence.TaskPayloadCodec;
 import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcWorkflowStore;
+import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcDebateProtocolStore;
 import io.omnnu.finbot.infrastructure.workflow.persistence.WorkflowEventCodec;
+import io.omnnu.finbot.application.workflow.exception.DebateProtocolConflictException;
 import io.omnnu.finbot.application.workflow.dto.StartWorkflowCommand;
 import io.omnnu.finbot.application.catalog.dto.CatalogInstrumentSnapshot;
 import io.omnnu.finbot.application.catalog.dto.CatalogSyncScope;
@@ -63,7 +65,35 @@ import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import io.omnnu.finbot.domain.workflow.WorkflowTrigger;
 import io.omnnu.finbot.domain.workflow.WorkflowType;
 import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
+import io.omnnu.finbot.domain.workflow.DebateId;
+import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
+import io.omnnu.finbot.domain.consensus.LogicalRoleKey;
+import io.omnnu.finbot.domain.consensus.AnonymousCandidateId;
+import io.omnnu.finbot.domain.consensus.AnonymousPreferenceBallot;
+import io.omnnu.finbot.domain.consensus.BallotOrientation;
+import io.omnnu.finbot.domain.consensus.ConsensusBallot;
+import io.omnnu.finbot.domain.consensus.ConsensusBallotId;
+import io.omnnu.finbot.domain.consensus.ConsensusDecision;
+import io.omnnu.finbot.domain.consensus.ConsensusDecisionId;
+import io.omnnu.finbot.domain.consensus.SchulzeOutcome;
+import io.omnnu.finbot.domain.debate.DebateArtifact;
+import io.omnnu.finbot.domain.debate.DebateArtifactId;
+import io.omnnu.finbot.domain.debate.DebateArtifactStatus;
+import io.omnnu.finbot.domain.debate.DebateCandidate;
+import io.omnnu.finbot.domain.debate.DebateCandidateId;
+import io.omnnu.finbot.domain.debate.DebatePhase;
+import io.omnnu.finbot.domain.debate.DebatePhaseId;
+import io.omnnu.finbot.domain.debate.DebatePhaseStatus;
+import io.omnnu.finbot.domain.debate.DebatePhaseType;
+import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.DebateTask;
+import io.omnnu.finbot.domain.debate.DebateTaskId;
+import io.omnnu.finbot.domain.debate.DebateTaskStatus;
+import io.omnnu.finbot.domain.debate.DebateTaskVariant;
 import java.sql.DriverManager;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.Duration;
@@ -71,6 +101,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.Map;
+import java.util.HexFormat;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -514,8 +545,58 @@ class LiquibasePostgresIntegrationTest {
                           (select version_id from workflow_definition_version
                            where status = 'PUBLISHED') as published_version_id,
                           (select operation from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v8'
+                           where version_id = 'workflowversion_standard_v9'
                              and node_type = 'QUANT') as published_quant_operation,
+                          (select debate_protocol from workflow_definition_version
+                           where version_id = 'workflowversion_standard_v9')
+                            as published_debate_protocol,
+                          (select status from workflow_definition_version
+                           where version_id = 'workflowversion_standard_v8')
+                            as legacy_v8_status,
+                          (select count(*) from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v9'
+                             and node_type = 'SOCIAL_CHOICE'
+                             and output_contract = 'CONSENSUS_RESULT'
+                             and operation = 'schulze_social_choice'
+                             and enabled = true) as social_choice_node_count,
+                          (select count(*) from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v9'
+                             and node_type = 'CHAIR') as published_chair_node_count,
+                          (select count(*) from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v9'
+                             and node_type in ('AGENT', 'AGGREGATOR')
+                             and enabled = true) as debate_participant_count,
+                          (select count(*) from workflow_edge_definition edge
+                           join workflow_node_definition source
+                             on source.version_id = edge.version_id
+                            and source.node_id = edge.source_node_id
+                           join workflow_node_definition target
+                             on target.version_id = edge.version_id
+                            and target.node_id = edge.target_node_id
+                           where edge.version_id = 'workflowversion_standard_v9'
+                             and source.node_type in ('AGENT', 'AGGREGATOR')
+                             and target.node_type in ('AGENT', 'AGGREGATOR', 'SOCIAL_CHOICE')
+                             and edge.context_mode <> 'EXCLUDE') as debate_content_leak_edge_count,
+                          (select count(*) from workflow_edge_definition edge
+                           join workflow_node_definition source
+                             on source.version_id = edge.version_id
+                            and source.node_id = edge.source_node_id
+                           join workflow_node_definition target
+                             on target.version_id = edge.version_id
+                            and target.node_id = edge.target_node_id
+                           where edge.version_id = 'workflowversion_standard_v9'
+                             and source.node_type in ('AGENT', 'AGGREGATOR')
+                             and target.node_type = 'SOCIAL_CHOICE'
+                             and edge.context_mode = 'EXCLUDE') as debate_exclusion_edge_count,
+                          (select count(*) from workflow_node_definition
+                           where version_id = 'workflowversion_standard_v9'
+                             and node_type = 'SOCIAL_CHOICE'
+                             and (provider_profile_id is not null
+                                  or model_name is not null
+                                  or reasoning_effort is not null
+                                  or system_prompt is not null
+                                  or fallback_provider_profile_id is not null))
+                            as social_choice_ai_binding_count,
                           (select count(*) from information_source where deleted_at is null)
                             as source_count,
                           (select count(*) from information_source
@@ -796,11 +877,20 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(2, result.getInt("account_count"));
                 assertEquals(10, result.getInt("schedule_count"));
                 assertEquals(9, result.getInt("role_count"));
-                assertEquals(133, result.getInt("node_count"));
+                assertEquals(156, result.getInt("node_count"));
                 assertEquals(23, result.getInt("published_node_count"));
-                assertEquals(8, result.getInt("workflow_version_count"));
-                assertEquals("workflowversion_standard_v8", result.getString("published_version_id"));
+                assertEquals(9, result.getInt("workflow_version_count"));
+                assertEquals("workflowversion_standard_v9", result.getString("published_version_id"));
                 assertEquals("multi_strategy_ensemble", result.getString("published_quant_operation"));
+                assertEquals("SDB_SCA_V1", result.getString("published_debate_protocol"));
+                assertEquals("ARCHIVED", result.getString("legacy_v8_status"));
+                assertEquals(1, result.getInt("social_choice_node_count"));
+                assertEquals(0, result.getInt("published_chair_node_count"));
+                assertEquals(0, result.getInt("debate_content_leak_edge_count"));
+                assertEquals(
+                        result.getInt("debate_participant_count"),
+                        result.getInt("debate_exclusion_edge_count"));
+                assertEquals(0, result.getInt("social_choice_ai_binding_count"));
                 assertEquals(62, result.getInt("source_count"));
                 assertEquals(57, result.getInt("enabled_source_count"));
                 assertEquals(5, result.getInt("proxy_route_count"));
@@ -1543,6 +1633,286 @@ class LiquibasePostgresIntegrationTest {
         assertEquals("true", reservationState.get(3));
         assertEquals(0, new JdbcAiInvocationRecoveryStore(jdbcClient)
                 .failOrphanedInvocations(Instant.parse("2026-07-21T11:02:10Z")));
+    }
+
+    @Test
+    void sealsDebateArtifactsIdempotentlyAndRevealsOnlyAfterBarrier() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        var store = new JdbcDebateProtocolStore(jdbcClient, new ObjectMapper());
+        var now = Instant.parse("2026-07-22T13:00:00Z");
+        var runId = new WorkflowRunId("run_sdb_store_test");
+        var debateId = new DebateId("debate_sdb_store_test");
+        var phaseId = new DebatePhaseId("phase_sdb_store_test");
+
+        jdbcClient.sql("""
+                insert into workflow_run (
+                  run_id, workflow_type, status, trigger_type, request_summary,
+                  accepted_at, created_at, updated_at
+                ) values (
+                  :runId, 'INSTANT_RESEARCH', 'RUNNING', 'MANUAL', 'SDB store test',
+                  :now, :now, :now
+                )
+                on conflict (run_id) do nothing
+                """)
+                .param("runId", runId.value())
+                .param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
+                .update();
+        jdbcClient.sql("""
+                insert into debate_session (
+                  debate_id, run_id, status, configured_rounds, completed_rounds,
+                  decision_node_id, started_at
+                ) values (
+                  :debateId, :runId, 'RUNNING', 1, 0, 'node_legacy_compat', :now
+                )
+                on conflict (debate_id) do nothing
+                """)
+                .param("debateId", debateId.value())
+                .param("runId", runId.value())
+                .param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
+                .update();
+
+        var phase = new DebatePhase(
+                phaseId,
+                debateId,
+                DebateProtocol.SDB_SCA_V1,
+                1,
+                DebatePhaseType.PROPOSAL,
+                DebatePhaseStatus.OPEN,
+                2,
+                0,
+                now.plusSeconds(600),
+                now,
+                null,
+                null,
+                0);
+        var firstTask = new DebateTask(
+                new DebateTaskId("debate_task_sdb_store_a"),
+                phaseId,
+                new WorkflowNodeId("node_sdb_store_a"),
+                new LogicalRoleKey("role_sdb_analyst"),
+                null,
+                DebateTaskVariant.PRIMARY,
+                "a".repeat(64),
+                DebateTaskStatus.PENDING,
+                0,
+                null,
+                null,
+                now,
+                null);
+        var secondTask = new DebateTask(
+                new DebateTaskId("debate_task_sdb_store_b"),
+                phaseId,
+                new WorkflowNodeId("node_sdb_store_b"),
+                new LogicalRoleKey("role_sdb_risk"),
+                null,
+                DebateTaskVariant.PRIMARY,
+                "b".repeat(64),
+                DebateTaskStatus.PENDING,
+                0,
+                null,
+                null,
+                now,
+                null);
+        transactions.executeWithoutResult(ignored ->
+                store.createPhase(phase, List.of(firstTask, secondTask)));
+        transactions.executeWithoutResult(ignored ->
+                store.createPhase(phase, List.of(firstTask, secondTask)));
+
+        var claimed = transactions.execute(ignored -> store.claimTasks(
+                phaseId, "worker_sdb_test", 2, Duration.ofMinutes(2), now.plusSeconds(1)));
+        assertEquals(2, Objects.requireNonNull(claimed).size());
+        assertTrue(store.revealedArtifacts(phaseId).isEmpty());
+
+        var firstArtifact = new DebateArtifact(
+                new DebateArtifactId("debate_artifact_sdb_store_a"),
+                firstTask.taskId(),
+                phaseId,
+                DebateArtifactStatus.SEALED,
+                sha256Text("{\"candidate\":\"candidate_alpha\"}"),
+                "{\"candidate\":\"candidate_alpha\"}",
+                now.plusSeconds(2),
+                null);
+        transactions.executeWithoutResult(ignored ->
+                store.sealArtifact(firstArtifact, "worker_sdb_test", now.plusSeconds(3)));
+        transactions.executeWithoutResult(ignored ->
+                store.sealArtifact(firstArtifact, "worker_sdb_test", now.plusSeconds(3)));
+        assertTrue(store.revealedArtifacts(phaseId).isEmpty());
+
+        var conflictingArtifact = new DebateArtifact(
+                new DebateArtifactId("debate_artifact_sdb_store_conflict"),
+                firstTask.taskId(),
+                phaseId,
+                DebateArtifactStatus.SEALED,
+                sha256Text("{\"candidate\":\"candidate_changed\"}"),
+                "{\"candidate\":\"candidate_changed\"}",
+                now.plusSeconds(2),
+                null);
+        assertThrows(DebateProtocolConflictException.class, () ->
+                transactions.executeWithoutResult(ignored ->
+                        store.sealArtifact(conflictingArtifact, "worker_sdb_test", now.plusSeconds(3))));
+
+        var secondArtifact = new DebateArtifact(
+                new DebateArtifactId("debate_artifact_sdb_store_b"),
+                secondTask.taskId(),
+                phaseId,
+                DebateArtifactStatus.SEALED,
+                sha256Text("{\"candidate\":\"candidate_beta\"}"),
+                "{\"candidate\":\"candidate_beta\"}",
+                now.plusSeconds(2),
+                null);
+        transactions.executeWithoutResult(ignored ->
+                store.sealArtifact(secondArtifact, "worker_sdb_test", now.plusSeconds(4)));
+        var ready = store.currentPhase(debateId).orElseThrow();
+        assertEquals(2, ready.completedTasks());
+        Boolean staleReveal = transactions.execute(ignored -> store.revealPhase(
+                phaseId, ready.version() - 1, now.plusSeconds(5)));
+        Boolean successfulReveal = transactions.execute(ignored -> store.revealPhase(
+                phaseId, ready.version(), now.plusSeconds(5)));
+        assertFalse(Objects.requireNonNull(staleReveal));
+        assertTrue(Objects.requireNonNull(successfulReveal));
+        assertEquals(2, store.revealedArtifacts(phaseId).size());
+
+        var alpha = new AnonymousCandidateId("candidate_alpha");
+        var beta = new AnonymousCandidateId("candidate_beta");
+        var firstCandidate = new DebateCandidate(
+                new DebateCandidateId("candidate_sdb_store_a"),
+                debateId,
+                firstTask.actorNodeId(),
+                firstTask.logicalRoleKey(),
+                alpha,
+                firstArtifact.artifactId(),
+                null,
+                now.plusSeconds(5));
+        var secondCandidate = new DebateCandidate(
+                new DebateCandidateId("candidate_sdb_store_b"),
+                debateId,
+                secondTask.actorNodeId(),
+                secondTask.logicalRoleKey(),
+                beta,
+                secondArtifact.artifactId(),
+                null,
+                now.plusSeconds(5));
+        transactions.executeWithoutResult(ignored ->
+                store.saveCandidates(List.of(firstCandidate, secondCandidate)));
+        transactions.executeWithoutResult(ignored ->
+                store.saveCandidates(List.of(firstCandidate, secondCandidate)));
+
+        var ballots = List.of(
+                ballot(
+                        "ballot_sdb_store_a_forward",
+                        debateId,
+                        phaseId,
+                        firstTask.actorNodeId(),
+                        firstTask.logicalRoleKey(),
+                        BallotOrientation.FORWARD,
+                        alpha,
+                        beta,
+                        "1".repeat(64),
+                        now.plusSeconds(6)),
+                ballot(
+                        "ballot_sdb_store_a_reversed",
+                        debateId,
+                        phaseId,
+                        firstTask.actorNodeId(),
+                        firstTask.logicalRoleKey(),
+                        BallotOrientation.REVERSED,
+                        alpha,
+                        beta,
+                        "2".repeat(64),
+                        now.plusSeconds(6)),
+                ballot(
+                        "ballot_sdb_store_b_forward",
+                        debateId,
+                        phaseId,
+                        secondTask.actorNodeId(),
+                        secondTask.logicalRoleKey(),
+                        BallotOrientation.FORWARD,
+                        alpha,
+                        beta,
+                        "3".repeat(64),
+                        now.plusSeconds(6)),
+                ballot(
+                        "ballot_sdb_store_b_reversed",
+                        debateId,
+                        phaseId,
+                        secondTask.actorNodeId(),
+                        secondTask.logicalRoleKey(),
+                        BallotOrientation.REVERSED,
+                        alpha,
+                        beta,
+                        "4".repeat(64),
+                        now.plusSeconds(6)));
+        transactions.executeWithoutResult(ignored -> store.saveBallots(ballots));
+        transactions.executeWithoutResult(ignored -> store.saveBallots(ballots));
+        assertEquals(4, store.ballots(debateId).size());
+
+        var decision = new ConsensusDecision(
+                new ConsensusDecisionId("decision_sdb_store_test"),
+                debateId,
+                SchulzeOutcome.selected(alpha, List.of(alpha), 2),
+                firstCandidate.candidateId(),
+                "{}",
+                "{}",
+                "[\"candidate_alpha\",\"candidate_beta\"]",
+                null,
+                "stable consensus",
+                "5".repeat(64),
+                now.plusSeconds(7));
+        transactions.executeWithoutResult(ignored -> store.saveDecision(decision));
+        transactions.executeWithoutResult(ignored -> store.saveDecision(decision));
+        assertEquals(decision.decisionHash(), store.decision(debateId).orElseThrow().decisionHash());
+
+        var conflictingDecision = new ConsensusDecision(
+                decision.decisionId(),
+                debateId,
+                decision.outcome(),
+                decision.winnerCandidateId(),
+                decision.pairwiseMatrixJson(),
+                decision.strongestPathsJson(),
+                decision.rankingJson(),
+                decision.forecastJson(),
+                decision.explanation(),
+                "6".repeat(64),
+                decision.decidedAt());
+        assertThrows(DebateProtocolConflictException.class, () ->
+                transactions.executeWithoutResult(ignored -> store.saveDecision(conflictingDecision)));
+    }
+
+    private static ConsensusBallot ballot(
+            String ballotId,
+            DebateId debateId,
+            DebatePhaseId phaseId,
+            WorkflowNodeId actorNodeId,
+            LogicalRoleKey role,
+            BallotOrientation orientation,
+            AnonymousCandidateId preferred,
+            AnonymousCandidateId other,
+            String contentHash,
+            Instant createdAt) {
+        return new ConsensusBallot(
+                new ConsensusBallotId(ballotId),
+                debateId,
+                phaseId,
+                actorNodeId,
+                AnonymousPreferenceBallot.of(
+                        role,
+                        orientation,
+                        List.of(List.of(preferred), List.of(other))),
+                contentHash,
+                createdAt);
+    }
+
+    private static String sha256Text(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     private static void updateSchema() throws Exception {

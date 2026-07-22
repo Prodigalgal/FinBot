@@ -12,7 +12,7 @@ public record DebateSession(
         DebateStatus status,
         int configuredRounds,
         int completedRounds,
-        WorkflowNodeId chairNodeId,
+        WorkflowNodeId decisionNodeId,
         Instant startedAt,
         Instant completedAt) {
 }

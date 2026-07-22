@@ -115,12 +115,16 @@ import io.omnnu.finbot.application.trading.port.out.TradeAutomationStore;
 import io.omnnu.finbot.application.trading.port.out.TradeDecisionOutputParser;
 import io.omnnu.finbot.application.trading.service.TradeAutomationApplicationService;
 import io.omnnu.finbot.application.workflow.port.in.StartWorkflowUseCase;
+import io.omnnu.finbot.application.workflow.port.in.SdbScaDebateRunner;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowDiagnosticsUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowExecutionUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowManagementUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowRunFailureUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowRunResumeUseCase;
 import io.omnnu.finbot.application.workflow.port.out.StructuredAiOutputParser;
+import io.omnnu.finbot.application.workflow.port.out.DebateProtocolStore;
+import io.omnnu.finbot.application.workflow.port.out.SdbScaDocumentCodec;
+import io.omnnu.finbot.application.workflow.port.out.SdbScaOutputParser;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowCommandStore;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowEventPublisher;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
@@ -128,6 +132,7 @@ import io.omnnu.finbot.application.workflow.port.out.WorkflowManagementRepositor
 import io.omnnu.finbot.application.workflow.port.out.WorkflowRunQuery;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowRunResumeStore;
 import io.omnnu.finbot.application.workflow.service.WorkflowDiagnosticsService;
+import io.omnnu.finbot.application.workflow.service.SdbScaDebateExecutionService;
 import io.omnnu.finbot.application.workflow.service.WorkflowExecutionService;
 import io.omnnu.finbot.application.workflow.service.WorkflowManagementService;
 import io.omnnu.finbot.application.workflow.service.WorkflowRunApplicationService;
@@ -436,12 +441,32 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    SdbScaDebateRunner sdbScaDebateRunner(
+            WorkflowExecutionStore executionStore,
+            DebateProtocolStore protocolStore,
+            AiExecutionPolicyExecutor aiExecution,
+            SdbScaOutputParser outputParser,
+            SdbScaDocumentCodec documentCodec,
+            Clock clock,
+            @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
+        return new SdbScaDebateExecutionService(
+                executionStore,
+                protocolStore,
+                aiExecution,
+                outputParser,
+                documentCodec,
+                clock,
+                executor);
+    }
+
+    @Bean
     WorkflowExecutionUseCase workflowExecutionUseCase(
             WorkflowExecutionStore executionStore,
             WorkflowEventPublisher eventPublisher,
             WorkflowRunFailureUseCase workflowFailure,
             AiExecutionPolicyExecutor aiExecution,
             StructuredAiOutputParser outputParser,
+            SdbScaDebateRunner sdbScaDebateRunner,
             Clock clock,
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
         return new WorkflowExecutionService(
@@ -450,6 +475,7 @@ public class RuntimeConfiguration {
                 workflowFailure,
                 aiExecution,
                 outputParser,
+                sdbScaDebateRunner,
                 clock,
                 executor);
     }

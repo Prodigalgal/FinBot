@@ -10,6 +10,7 @@ import { ResearchTurnCard, orderedResearchTurns } from './ResearchTurnCard';
 import { TradingExecutionDetail } from './TradingExecutionDetail';
 import { ForecastPanel } from './ForecastPanel';
 import { ResearchCasePanel } from './ResearchCasePanel';
+import { DebateProtocolPanel } from './DebateProtocolPanel';
 import type { ResearchCase, ResearchComparison, ResearchFeedback, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, ResearchSummary, TradeAutomationDetail } from './types';
 import { EmptyBlock, ErrorBlock, LoadingBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
 
@@ -60,6 +61,7 @@ export function HistoryPage({ onOpenRun }: { onOpenRun?: (launch: ResearchLaunch
       <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} divider={<Divider orientation="vertical" flexItem />} spacing={2}><Summary label="工作流版本" value={detail.summary.workflowVersionId} /><Summary label="开始" value={formatTime(detail.summary.startedAt || detail.summary.acceptedAt)} /><Summary label="完成" value={formatTime(detail.summary.completedAt)} /><Summary label="成本" value={`$${Number(detail.summary.costUsd).toFixed(6)}`} /></Stack></Paper>
       {researchCase && <ResearchCasePanel researchCase={researchCase} />}
       {forecast && <ForecastPanel forecast={forecast} />}
+      {detail.debateProtocol && <><SectionTitle title="双盲辩论协议" /><DebateProtocolPanel trace={detail.debateProtocol} /></>}
       {detail.summary.status === 'FAILED' && <TextField select label="失败 checkpoint" value={resumeNodeId} onChange={(event) => setResumeNodeId(event.target.value)}>{detail.checkpoints.filter((item) => item.status === 'FAILED').map((item) => <MenuItem key={`${item.nodeId}-${item.round}`} value={item.nodeId}>{item.displayName} · 第 {item.round} 轮 · {item.errorCode}</MenuItem>)}</TextField>}
       <SectionTitle title="人工反馈与效果" />
       <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25}><TextField select label="结果质量" value={rating} onChange={(event) => setRating(event.target.value as ResearchFeedback['rating'])} sx={{ minWidth: 170 }}><MenuItem value="HELPFUL">有帮助</MenuItem><MenuItem value="NEUTRAL">一般</MenuItem><MenuItem value="NOT_HELPFUL">无帮助</MenuItem></TextField><TextField select label="实际效果" value={effectiveness} onChange={(event) => setEffectiveness(event.target.value as ResearchFeedback['effectiveness'])} sx={{ minWidth: 170 }}><MenuItem value="UNKNOWN">未知</MenuItem><MenuItem value="PENDING">待观察</MenuItem><MenuItem value="WIN">方向正确</MenuItem><MenuItem value="LOSS">方向错误</MenuItem><MenuItem value="NO_TRADE">未交易</MenuItem></TextField><TextField fullWidth label="复核备注" value={note} onChange={(event) => setNote(event.target.value)} inputProps={{ maxLength: 2000 }} /><Button startIcon={<SaveIcon />} variant="contained" disabled={busy} onClick={() => void saveFeedback()}>保存反馈</Button></Stack><Typography variant="caption" color="text.secondary">反馈用于效果评估，不阻塞 TestNet / Demo 自动执行。</Typography></Paper>

@@ -119,3 +119,7 @@ databaseChangeLog:
       file: db/changelog/releases/059-ai-budget-terminal-recovery.sql
   - include:
       file: db/changelog/releases/060-mimo2api-direct-endpoint.sql
+  - include:
+      file: db/changelog/releases/061-sdb-sca-protocol.sql
+  - include:
+      file: db/changelog/releases/062-standard-workflow-sdb-sca.sql

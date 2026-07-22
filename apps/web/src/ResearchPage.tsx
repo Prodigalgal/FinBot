@@ -7,6 +7,7 @@ import { ApiError, api } from './api';
 import { ResearchTurnCard, orderedResearchTurns } from './ResearchTurnCard';
 import { TradingExecutionDetail } from './TradingExecutionDetail';
 import { ForecastPanel } from './ForecastPanel';
+import { DebateProtocolPanel } from './DebateProtocolPanel';
 import { ResearchCasePanel } from './ResearchCasePanel';
 import type { ResearchCase, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, TaskRecord, TradeAutomationDetail, WorkflowDefinitionSummary, WorkflowEvent, WorkflowRun } from './types';
 import { ErrorBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
@@ -208,9 +209,10 @@ function ResearchResult({ detail, demoDetail, automation, forecast, demoForecast
   return <Stack spacing={2}><SectionTitle title="结构化研究结果" />
     <Typography variant="h3">实盘研究结论</Typography>
     {forecast && <ForecastPanel forecast={forecast} />}
+    {detail.debateProtocol && <DebateProtocolPanel trace={detail.debateProtocol} />}
     {orderedResearchTurns(detail.agentTurns).map((turn) => <ResearchTurnCard key={turn.messageId} turn={turn} />)}
     {detail.quantRuns.map((quant) => <Paper key={quant.researchRunId} variant="outlined" sx={{ p: 2 }}><Typography fontWeight={700}>量化验证 · {statusLabel(quant.status)}</Typography><Typography variant="body2" color="text.secondary">{quant.strategyId} {quant.strategyVersion} · {quant.observationCount} 条观测</Typography><Typography component="pre" variant="caption" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>{prettyJson(quant.metricsJson)}</Typography></Paper>)}
-    {demoDetail && <><Divider /><Typography variant="h3">模拟盘独立分析与辩论</Typography>{demoForecast && <ForecastPanel forecast={demoForecast} />}{orderedResearchTurns(demoDetail.agentTurns).map((turn) => <ResearchTurnCard key={turn.messageId} turn={turn} />)}</>}
+    {demoDetail && <><Divider /><Typography variant="h3">模拟盘独立分析与辩论</Typography>{demoForecast && <ForecastPanel forecast={demoForecast} />}{demoDetail.debateProtocol && <DebateProtocolPanel trace={demoDetail.debateProtocol} />}{orderedResearchTurns(demoDetail.agentTurns).map((turn) => <ResearchTurnCard key={turn.messageId} turn={turn} />)}</>}
     {automation && <><Typography variant="h3">模拟盘最终执行</Typography><TradingExecutionDetail detail={automation} /></>}
   </Stack>;
 }

@@ -5,6 +5,7 @@ import io.omnnu.finbot.domain.workflow.WorkflowEdgeDefinition;
 import io.omnnu.finbot.domain.workflow.WorkflowFailurePolicy;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition;
 import io.omnnu.finbot.domain.workflow.WorkflowVersionId;
+import io.omnnu.finbot.domain.debate.DebateProtocolConfiguration;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
@@ -15,6 +16,7 @@ public record SaveWorkflowDraftCommand(
         String name,
         String description,
         int defaultDebateRounds,
+        DebateProtocolConfiguration debateProtocolConfiguration,
         int maximumSteps,
         Duration maximumDuration,
         long maximumTokens,
@@ -24,6 +26,9 @@ public record SaveWorkflowDraftCommand(
         List<WorkflowNodeDefinition> nodes,
         List<WorkflowEdgeDefinition> edges) {
     public SaveWorkflowDraftCommand {
+        if (debateProtocolConfiguration == null) {
+            debateProtocolConfiguration = DebateProtocolConfiguration.legacy();
+        }
         nodes = List.copyOf(nodes);
         edges = List.copyOf(edges);
     }

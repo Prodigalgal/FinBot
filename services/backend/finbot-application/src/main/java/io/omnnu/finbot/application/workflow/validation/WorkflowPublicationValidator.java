@@ -26,6 +26,7 @@ public final class WorkflowPublicationValidator {
             WorkflowNodeType.AGENT,
             WorkflowNodeType.AGGREGATOR,
             WorkflowNodeType.CHAIR,
+            WorkflowNodeType.SOCIAL_CHOICE,
             WorkflowNodeType.EXECUTION_REVIEW,
             WorkflowNodeType.OUTPUT);
     private static final Set<String> QUANT_OPERATIONS = Stream.concat(
@@ -73,6 +74,10 @@ public final class WorkflowPublicationValidator {
             case AI_CLEANER, COMPRESSOR, COMPRESSION_VALIDATOR ->
                     requireContract(node, WorkflowOutputContract.RESEARCH_FINDINGS);
             case CHAIR -> requireContract(node, WorkflowOutputContract.CHAIR_VERDICT);
+            case SOCIAL_CHOICE -> {
+                requireContract(node, WorkflowOutputContract.CONSENSUS_RESULT);
+                requireOperation(node, "schulze_social_choice");
+            }
             case EXECUTION_REVIEW -> executionStage(node);
             case AGENT, AGGREGATOR -> {
                 if (node.outputContract() != WorkflowOutputContract.DEBATE_ARGUMENT

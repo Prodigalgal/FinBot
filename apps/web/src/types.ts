@@ -4,8 +4,68 @@ export type WorkflowRunStatus = 'ACCEPTED' | 'RUNNING' | 'WAITING_HUMAN' | 'PART
 export type BackgroundTaskStatus = 'PENDING' | 'CLAIMED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type ReasoningEffort = 'PROVIDER_DEFAULT' | 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH' | 'MAX';
 export type WorkflowFailurePolicy = 'STOP' | 'CONTINUE' | 'REPLAN';
-export type WorkflowOutputContract = 'TEXT' | 'RESEARCH_FINDINGS' | 'DEBATE_ARGUMENT' | 'RISK_ASSESSMENT' | 'CHAIR_VERDICT' | 'TRADE_DECISIONS' | 'EXECUTION_VERDICT';
-export type WorkflowNodeType = 'INPUT' | 'ROUTER' | 'DETERMINISTIC' | 'COLLECTOR' | 'CLEANER' | 'AI_CLEANER' | 'COMPRESSOR' | 'COMPRESSION_VALIDATOR' | 'AGENT' | 'GATE' | 'QUANT' | 'RISK' | 'SUBFLOW' | 'HUMAN_REVIEW' | 'AGGREGATOR' | 'CHAIR' | 'EXECUTION_REVIEW' | 'OUTPUT';
+export type WorkflowOutputContract = 'TEXT' | 'RESEARCH_FINDINGS' | 'DEBATE_ARGUMENT' | 'RISK_ASSESSMENT' | 'CHAIR_VERDICT' | 'CONSENSUS_RESULT' | 'TRADE_DECISIONS' | 'EXECUTION_VERDICT';
+export type WorkflowNodeType = 'INPUT' | 'ROUTER' | 'DETERMINISTIC' | 'COLLECTOR' | 'CLEANER' | 'AI_CLEANER' | 'COMPRESSOR' | 'COMPRESSION_VALIDATOR' | 'AGENT' | 'GATE' | 'QUANT' | 'RISK' | 'SUBFLOW' | 'HUMAN_REVIEW' | 'AGGREGATOR' | 'CHAIR' | 'SOCIAL_CHOICE' | 'EXECUTION_REVIEW' | 'OUTPUT';
+export type DebateProtocol = 'LEGACY_CHAIR_V1' | 'SDB_SCA_V1';
+export interface DebateProtocolConfiguration {
+  protocol: DebateProtocol;
+  minimumParticipantSeats: number;
+  minimumQuorumRoles: number;
+  stageTimeoutSeconds: number;
+  critiqueAssignmentPolicy: 'FULL_MATRIX' | 'BALANCED_INCOMPLETE';
+}
+
+export interface DebateProtocolTrace {
+  debateId: string;
+  protocol: DebateProtocol;
+  phases: Array<{
+    phaseType: 'PROPOSAL' | 'CRITIQUE' | 'REVISION' | 'BALLOT' | 'AGGREGATION';
+    status: 'PENDING' | 'OPEN' | 'REVEALING' | 'REVEALED' | 'COMPLETED' | 'FAILED';
+    requiredTasks: number;
+    terminalTasks: number;
+    pendingTasks: number;
+    claimedTasks: number;
+    completedTasks: number;
+    failedTasks: number;
+    timedOutTasks: number;
+    cancelledTasks: number;
+    deadline: string;
+    openedAt: string | null;
+    revealedAt: string | null;
+    completedAt: string | null;
+    recoveryPoint: boolean;
+  }>;
+  artifacts: Array<{
+    artifactId: string;
+    phaseType: 'PROPOSAL' | 'CRITIQUE' | 'REVISION' | 'BALLOT' | 'AGGREGATION';
+    candidateAlias: string | null;
+    targetCandidateAlias: string | null;
+    status: 'SEALED' | 'REVEALED' | 'REJECTED';
+    contentHash: string;
+    contentJson: string;
+    sealedAt: string;
+    revealedAt: string | null;
+  }>;
+  ballots: Array<{
+    orientation: 'FORWARD' | 'REVERSED';
+    preferenceTiersJson: string;
+    contentHash: string;
+    createdAt: string;
+  }>;
+  decision: {
+    status: 'SELECTED' | 'TIED' | 'LOW_QUORUM' | 'ORDER_SENSITIVE' | 'NO_VALID_BALLOTS' | 'NO_STRICT_WINNER';
+    winnerCandidateAlias: string | null;
+    contributingRoleCount: number;
+    undefeatedCandidatesJson: string;
+    pairwiseMatrixJson: string;
+    strongestPathsJson: string;
+    rankingJson: string;
+    forecastJson: string | null;
+    explanation: string | null;
+    decisionHash: string;
+    decidedAt: string;
+  } | null;
+}
 
 export interface ExchangeAccountControl {
   accountId: string;
@@ -183,6 +243,7 @@ export interface WorkflowDraftRequest {
   name: string;
   description: string;
   defaultDebateRounds: number;
+  debateProtocol: DebateProtocolConfiguration;
   maximumSteps: number;
   maximumDurationSeconds: number;
   maximumTokens: number;
@@ -199,6 +260,7 @@ export interface WorkflowDraftNodeRequest {
   displayName: string;
   roleName: string | null;
   roleTemplateId: string | null;
+  logicalRoleKey: string | null;
   primaryAiBinding: { providerProfileId: string; modelName: string; reasoningEffort: ReasoningEffort } | null;
   fallbackAiBinding: { providerProfileId: string; modelName: string; reasoningEffort: ReasoningEffort } | null;
   systemPrompt: string | null;
@@ -392,6 +454,7 @@ export interface ResearchHistoryDetail {
     status: string; observationCount: number; resultFingerprint: string | null; metricsJson: string;
     errorCode: string | null; errorMessage: string | null; requestedAt: string; completedAt: string | null;
   }>;
+  debateProtocol: DebateProtocolTrace | null;
 }
 
 export interface WorkflowEvent {
@@ -601,7 +664,7 @@ export interface WorkflowDefinitionSummary {
 }
 export interface WorkflowNode {
   nodeId: string; nodeType: WorkflowNodeType; displayName: string; roleName: string | null;
-  roleTemplateId: string | null; primaryAiBinding: AiModelBinding | null;
+  roleTemplateId: string | null; logicalRoleKey: string | null; primaryAiBinding: AiModelBinding | null;
   fallbackAiBinding: AiModelBinding | null; systemPrompt: string | null; userPromptTemplate: string | null;
   outputContract: WorkflowOutputContract | null; contextMode: string; contextHistoryRounds: number;
   contextMaximumMessages: number; maximumOutputTokens: number; timeoutSeconds: number;
@@ -627,7 +690,7 @@ export interface WorkflowCondition {
 }
 export interface WorkflowVersion {
   versionId: string; definitionId: string; versionNumber: number; status: string;
-  defaultDebateRounds: number; maximumSteps: number; maximumDurationSeconds: number;
+  defaultDebateRounds: number; debateProtocol: DebateProtocolConfiguration; maximumSteps: number; maximumDurationSeconds: number;
   maximumTokens: number; maximumCostUsd: number; failurePolicy: WorkflowFailurePolicy; checksum: string;
   publishedAt: string | null; createdAt: string; createdBy: string; nodes: WorkflowNode[]; edges: WorkflowEdge[];
 }

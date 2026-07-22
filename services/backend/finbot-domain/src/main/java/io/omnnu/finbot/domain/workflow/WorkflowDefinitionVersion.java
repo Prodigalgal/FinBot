@@ -1,6 +1,8 @@
 package io.omnnu.finbot.domain.workflow;
 
 import io.omnnu.finbot.domain.shared.DecimalValue;
+import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.DebateProtocolConfiguration;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
@@ -23,6 +25,7 @@ public record WorkflowDefinitionVersion(
         int versionNumber,
         WorkflowVersionStatus status,
         int defaultDebateRounds,
+        DebateProtocolConfiguration debateProtocolConfiguration,
         int maximumSteps,
         Duration maximumDuration,
         long maximumTokens,
@@ -36,10 +39,48 @@ public record WorkflowDefinitionVersion(
         List<WorkflowEdgeDefinition> edges) {
     private static final Pattern CHECKSUM = Pattern.compile("[0-9a-f]{64}");
 
+    public WorkflowDefinitionVersion(
+            WorkflowVersionId versionId,
+            WorkflowDefinitionId definitionId,
+            int versionNumber,
+            WorkflowVersionStatus status,
+            int defaultDebateRounds,
+            int maximumSteps,
+            Duration maximumDuration,
+            long maximumTokens,
+            BigDecimal maximumCostUsd,
+            WorkflowFailurePolicy failurePolicy,
+            String checksum,
+            Instant publishedAt,
+            Instant createdAt,
+            String createdBy,
+            List<WorkflowNodeDefinition> nodes,
+            List<WorkflowEdgeDefinition> edges) {
+        this(
+                versionId,
+                definitionId,
+                versionNumber,
+                status,
+                defaultDebateRounds,
+                DebateProtocolConfiguration.legacy(),
+                maximumSteps,
+                maximumDuration,
+                maximumTokens,
+                maximumCostUsd,
+                failurePolicy,
+                checksum,
+                publishedAt,
+                createdAt,
+                createdBy,
+                nodes,
+                edges);
+    }
+
     public WorkflowDefinitionVersion {
         Objects.requireNonNull(versionId, "versionId");
         Objects.requireNonNull(definitionId, "definitionId");
         Objects.requireNonNull(status, "status");
+        Objects.requireNonNull(debateProtocolConfiguration, "debateProtocolConfiguration");
         Objects.requireNonNull(maximumDuration, "maximumDuration");
         maximumCostUsd = DecimalValue.nonNegative(maximumCostUsd, "maximumCostUsd");
         Objects.requireNonNull(failurePolicy, "failurePolicy");
@@ -53,6 +94,11 @@ public record WorkflowDefinitionVersion(
         }
         if (defaultDebateRounds < 1 || defaultDebateRounds > 8) {
             throw new IllegalArgumentException("defaultDebateRounds must be between 1 and 8");
+        }
+        if (debateProtocolConfiguration.protocol() == DebateProtocol.SDB_SCA_V1
+                && defaultDebateRounds != 1) {
+            throw new IllegalArgumentException(
+                    "SDB_SCA_V1 executes one complete symmetric protocol cycle");
         }
         if (maximumSteps < 1 || maximumSteps > 1_000) {
             throw new IllegalArgumentException("maximumSteps must be between 1 and 1000");
@@ -73,7 +119,7 @@ public record WorkflowDefinitionVersion(
         if (status == WorkflowVersionStatus.DRAFT && publishedAt != null) {
             throw new IllegalArgumentException("Draft workflow must not have publishedAt");
         }
-        validateGraph(defaultDebateRounds, nodes, edges);
+        validateGraph(defaultDebateRounds, debateProtocolConfiguration, nodes, edges);
     }
 
     public List<WorkflowNodeDefinition> topologicalNodes() {
@@ -87,8 +133,19 @@ public record WorkflowDefinitionVersion(
                 .orElseThrow(() -> new IllegalStateException("Workflow has no chair"));
     }
 
+    public WorkflowNodeDefinition decisionNode() {
+        return switch (debateProtocolConfiguration.protocol()) {
+            case LEGACY_CHAIR_V1 -> chair();
+            case SDB_SCA_V1 -> nodes.stream()
+                    .filter(node -> node.nodeType() == WorkflowNodeType.SOCIAL_CHOICE)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("Workflow has no social-choice node"));
+        };
+    }
+
     private static void validateGraph(
             int defaultDebateRounds,
+            DebateProtocolConfiguration protocolConfiguration,
             List<WorkflowNodeDefinition> nodes,
             List<WorkflowEdgeDefinition> edges) {
         if (nodes.isEmpty()) {
@@ -108,6 +165,12 @@ public record WorkflowDefinitionVersion(
                             "Loop edges are supported only between AGENT and AGGREGATOR nodes");
                 }
             }
+            if (protocolConfiguration.protocol() == DebateProtocol.SDB_SCA_V1
+                    && debateParticipant(nodesById.get(edge.sourceNodeId()).nodeType())
+                    && debateParticipant(nodesById.get(edge.targetNodeId()).nodeType())) {
+                throw new IllegalArgumentException(
+                        "SDB-SCA debate seats cannot consume another seat's graph output");
+            }
         });
         var maximumConfiguredRounds = defaultDebateRounds + edges.stream()
                 .filter(WorkflowEdgeDefinition::loopEdge)
@@ -125,25 +188,62 @@ public record WorkflowDefinitionVersion(
             throw new IllegalArgumentException("Workflow requires exactly one INPUT and one OUTPUT node");
         }
         var chairs = nodes.stream().filter(node -> node.nodeType() == WorkflowNodeType.CHAIR).toList();
+        var socialChoiceNodes = nodes.stream()
+                .filter(node -> node.nodeType() == WorkflowNodeType.SOCIAL_CHOICE)
+                .toList();
         var debateNodes = nodes.stream()
                 .filter(node -> node.nodeType() == WorkflowNodeType.AGENT
                         || node.nodeType() == WorkflowNodeType.AGGREGATOR)
                 .toList();
-        if (!debateNodes.isEmpty() && chairs.size() != 1) {
-            throw new IllegalArgumentException(
-                    "A workflow with AGENT or AGGREGATOR nodes requires exactly one CHAIR");
-        }
+        validateDecisionTopology(protocolConfiguration, chairs, socialChoiceNodes, debateNodes);
         topological(nodes, edges);
         requireReachability(inputs.getFirst().nodeId(), outputs.getFirst().nodeId(), nodes, edges);
         if (!debateNodes.isEmpty()) {
-            var chairId = chairs.getFirst().nodeId();
+            var decisionNodeId = protocolConfiguration.protocol() == DebateProtocol.SDB_SCA_V1
+                    ? socialChoiceNodes.getFirst().nodeId()
+                    : chairs.getFirst().nodeId();
             var adjacency = adjacency(edges, false);
             for (var debateNode : debateNodes) {
-                if (!reachable(debateNode.nodeId(), chairId, adjacency)) {
+                if (!reachable(debateNode.nodeId(), decisionNodeId, adjacency)) {
                     throw new IllegalArgumentException(
-                            "Every AGENT and AGGREGATOR node must flow to the CHAIR");
+                            "Every debate seat must flow to the configured decision node");
                 }
             }
+        }
+    }
+
+    private static void validateDecisionTopology(
+            DebateProtocolConfiguration protocolConfiguration,
+            List<WorkflowNodeDefinition> chairs,
+            List<WorkflowNodeDefinition> socialChoiceNodes,
+            List<WorkflowNodeDefinition> debateNodes) {
+        if (debateNodes.isEmpty()) {
+            if (!chairs.isEmpty() || !socialChoiceNodes.isEmpty()) {
+                throw new IllegalArgumentException("A decision node requires debate seats");
+            }
+            return;
+        }
+        if (protocolConfiguration.protocol() == DebateProtocol.LEGACY_CHAIR_V1) {
+            if (chairs.size() != 1 || !socialChoiceNodes.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Legacy debate requires exactly one CHAIR and no SOCIAL_CHOICE node");
+            }
+            return;
+        }
+        if (!chairs.isEmpty() || socialChoiceNodes.size() != 1) {
+            throw new IllegalArgumentException(
+                    "SDB-SCA requires exactly one SOCIAL_CHOICE node and no CHAIR");
+        }
+        var enabledSeats = debateNodes.stream().filter(WorkflowNodeDefinition::enabled).toList();
+        if (enabledSeats.size() < protocolConfiguration.minimumParticipantSeats()) {
+            throw new IllegalArgumentException("SDB-SCA has fewer enabled seats than configured");
+        }
+        var logicalRoleCount = enabledSeats.stream()
+                .map(WorkflowNodeDefinition::logicalRoleKey)
+                .collect(Collectors.toSet())
+                .size();
+        if (logicalRoleCount < protocolConfiguration.minimumQuorumRoles()) {
+            throw new IllegalArgumentException("SDB-SCA has fewer logical roles than configured quorum");
         }
     }
 

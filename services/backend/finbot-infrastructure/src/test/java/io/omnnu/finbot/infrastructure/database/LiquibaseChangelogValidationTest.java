@@ -23,7 +23,7 @@ class LiquibaseChangelogValidationTest {
         try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, database)) {
             liquibase.validate();
             var changeSets = liquibase.getDatabaseChangeLog().getChangeSets();
-            assertEquals(62, changeSets.size());
+            assertEquals(66, changeSets.size());
             assertEquals("001-foundation", changeSets.getFirst().getId());
             assertEquals("002-platform-foundation", changeSets.get(1).getId());
             assertEquals("003-background-operations", changeSets.get(2).getId());
@@ -71,7 +71,11 @@ class LiquibaseChangelogValidationTest {
             assertEquals("050-crawler-header-profiles", changeSets.get(51).getId());
             assertEquals("051-proxy-gateway-engine", changeSets.get(52).getId());
             assertEquals("052-crawler-header-camouflage", changeSets.get(53).getId());
-            assertEquals("060-mimo2api-direct-endpoint", changeSets.getLast().getId());
+            assertEquals("060-mimo2api-direct-endpoint", changeSets.get(61).getId());
+            assertEquals("061-sdb-sca-workflow-configuration", changeSets.get(62).getId());
+            assertEquals("061-sdb-sca-ledger", changeSets.get(63).getId());
+            assertEquals("061-sdb-sca-consensus-ledger", changeSets.get(64).getId());
+            assertEquals("062-standard-workflow-sdb-sca", changeSets.getLast().getId());
             assertTrue(changeSets.getFirst().getChanges().size() >= 1);
         }
     }

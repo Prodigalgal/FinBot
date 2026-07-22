@@ -96,6 +96,7 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
                 versionNumber,
                 WorkflowVersionStatus.DRAFT,
                 command.defaultDebateRounds(),
+                command.debateProtocolConfiguration(),
                 command.maximumSteps(),
                 command.maximumDuration(),
                 command.maximumTokens(),
@@ -145,6 +146,7 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
                 repository.nextVersionNumber(definitionId),
                 WorkflowVersionStatus.DRAFT,
                 target.defaultDebateRounds(),
+                target.debateProtocolConfiguration(),
                 target.maximumSteps(),
                 target.maximumDuration(),
                 target.maximumTokens(),
@@ -252,6 +254,7 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
     private static String checksum(SaveWorkflowDraftCommand command) {
         var canonical = new StringBuilder()
                 .append(command.defaultDebateRounds()).append('|')
+                .append(command.debateProtocolConfiguration()).append('|')
                 .append(command.maximumSteps()).append('|')
                 .append(command.maximumDuration()).append('|')
                 .append(command.maximumTokens()).append('|')
@@ -276,6 +279,7 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
         canonical.append("node|").append(node.nodeId().value()).append('|')
                 .append(node.nodeType()).append('|').append(node.displayName()).append('|')
                 .append(node.roleName()).append('|').append(node.roleTemplateId()).append('|')
+                .append(node.logicalRoleKey()).append('|')
                 .append(node.primaryAiBinding()).append('|').append(node.fallbackAiBinding()).append('|')
                 .append(node.systemPrompt()).append('|')
                 .append(node.userPromptTemplate()).append('|').append(node.outputContract()).append('|')

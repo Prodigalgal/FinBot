@@ -3545,6 +3545,213 @@ components:
         - STOP
         - CONTINUE
         - REPLAN
+    DebateProtocolConfiguration:
+      type: object
+      additionalProperties: false
+      properties:
+        protocol:
+          type: string
+          enum:
+            - LEGACY_CHAIR_V1
+            - SDB_SCA_V1
+        minimumParticipantSeats:
+          type: integer
+          minimum: 2
+          maximum: 32
+        minimumQuorumRoles:
+          type: integer
+          minimum: 2
+          maximum: 32
+        stageTimeoutSeconds:
+          type: integer
+          minimum: 30
+          maximum: 7200
+        critiqueAssignmentPolicy:
+          type: string
+          enum:
+            - FULL_MATRIX
+            - BALANCED_INCOMPLETE
+      required:
+        - protocol
+        - minimumParticipantSeats
+        - minimumQuorumRoles
+        - stageTimeoutSeconds
+        - critiqueAssignmentPolicy
+    DebateProtocolTrace:
+      additionalProperties: false
+      properties:
+        artifacts:
+          items:
+            additionalProperties: false
+            properties:
+              artifactId:
+                type: string
+              candidateAlias:
+                type:
+                  - string
+                  - "null"
+              contentHash:
+                type: string
+              contentJson:
+                type: string
+              phaseType:
+                enum: [PROPOSAL, CRITIQUE, REVISION, BALLOT, AGGREGATION]
+                type: string
+              revealedAt:
+                type:
+                  - string
+                  - "null"
+              sealedAt:
+                type: string
+              status:
+                enum: [SEALED, REVEALED, REJECTED]
+                type: string
+              targetCandidateAlias:
+                type:
+                  - string
+                  - "null"
+            required:
+              - artifactId
+              - phaseType
+              - candidateAlias
+              - targetCandidateAlias
+              - status
+              - contentHash
+              - contentJson
+              - sealedAt
+              - revealedAt
+            type: object
+          type: array
+        ballots:
+          items:
+            additionalProperties: false
+            properties:
+              contentHash:
+                type: string
+              createdAt:
+                type: string
+              orientation:
+                enum: [FORWARD, REVERSED]
+                type: string
+              preferenceTiersJson:
+                type: string
+            required: [orientation, preferenceTiersJson, contentHash, createdAt]
+            type: object
+          type: array
+        debateId:
+          type: string
+        decision:
+          additionalProperties: false
+          properties:
+            contributingRoleCount:
+              type: integer
+            decidedAt:
+              type: string
+            decisionHash:
+              type: string
+            explanation:
+              type:
+                - string
+                - "null"
+            forecastJson:
+              type:
+                - string
+                - "null"
+            pairwiseMatrixJson:
+              type: string
+            rankingJson:
+              type: string
+            status:
+              enum: [SELECTED, TIED, LOW_QUORUM, ORDER_SENSITIVE, NO_VALID_BALLOTS, NO_STRICT_WINNER]
+              type: string
+            strongestPathsJson:
+              type: string
+            undefeatedCandidatesJson:
+              type: string
+            winnerCandidateAlias:
+              type:
+                - string
+                - "null"
+          required:
+            - status
+            - winnerCandidateAlias
+            - contributingRoleCount
+            - undefeatedCandidatesJson
+            - pairwiseMatrixJson
+            - strongestPathsJson
+            - rankingJson
+            - forecastJson
+            - explanation
+            - decisionHash
+            - decidedAt
+          type:
+            - object
+            - "null"
+        phases:
+          items:
+            additionalProperties: false
+            properties:
+              claimedTasks:
+                type: integer
+              cancelledTasks:
+                type: integer
+              completedAt:
+                type:
+                  - string
+                  - "null"
+              completedTasks:
+                type: integer
+              deadline:
+                type: string
+              failedTasks:
+                type: integer
+              openedAt:
+                type:
+                  - string
+                  - "null"
+              pendingTasks:
+                type: integer
+              phaseType:
+                enum: [PROPOSAL, CRITIQUE, REVISION, BALLOT, AGGREGATION]
+                type: string
+              recoveryPoint:
+                type: boolean
+              requiredTasks:
+                type: integer
+              revealedAt:
+                type:
+                  - string
+                  - "null"
+              status:
+                enum: [PENDING, OPEN, REVEALING, REVEALED, COMPLETED, FAILED]
+                type: string
+              terminalTasks:
+                type: integer
+              timedOutTasks:
+                type: integer
+            required:
+              - phaseType
+              - status
+              - requiredTasks
+              - terminalTasks
+              - pendingTasks
+              - claimedTasks
+              - completedTasks
+              - failedTasks
+              - timedOutTasks
+              - cancelledTasks
+              - deadline
+              - openedAt
+              - revealedAt
+              - completedAt
+              - recoveryPoint
+            type: object
+          type: array
+        protocol:
+          enum: [LEGACY_CHAIR_V1, SDB_SCA_V1]
+          type: string
+      required: [debateId, protocol, phases, artifacts, ballots, decision]
+      type: object
     WorkflowOutputContract:
       type: string
       enum:
@@ -3553,6 +3760,7 @@ components:
         - DEBATE_ARGUMENT
         - RISK_ASSESSMENT
         - CHAIR_VERDICT
+        - CONSENSUS_RESULT
         - TRADE_DECISIONS
         - EXECUTION_VERDICT
     WorkflowNodeType:
@@ -3574,6 +3782,7 @@ components:
         - HUMAN_REVIEW
         - AGGREGATOR
         - CHAIR
+        - SOCIAL_CHOICE
         - EXECUTION_REVIEW
         - OUTPUT
     RuntimeSecretPutRequest:
@@ -6158,6 +6367,10 @@ components:
               - updatedAt
             type: object
           type: array
+        debateProtocol:
+          oneOf:
+            - $ref: "#/components/schemas/DebateProtocolTrace"
+            - type: "null"
         events:
           items:
             additionalProperties: false
@@ -6238,6 +6451,7 @@ components:
         - aiInvocations
         - artifacts
         - quantRuns
+        - debateProtocol
       type: object
     ResearchLaunch:
       additionalProperties: false
@@ -7983,6 +8197,10 @@ components:
           type:
             - string
             - "null"
+        logicalRoleKey:
+          type:
+            - string
+            - "null"
         systemPrompt:
           type:
             - string
@@ -7999,6 +8217,7 @@ components:
         - displayName
         - roleName
         - roleTemplateId
+        - logicalRoleKey
         - primaryAiBinding
         - fallbackAiBinding
         - systemPrompt
@@ -8146,6 +8365,8 @@ components:
           type: string
         defaultDebateRounds:
           type: number
+        debateProtocol:
+          $ref: "#/components/schemas/DebateProtocolConfiguration"
         definitionId:
           type: string
         edges:
@@ -8182,6 +8403,7 @@ components:
         - versionNumber
         - status
         - defaultDebateRounds
+        - debateProtocol
         - maximumSteps
         - maximumDurationSeconds
         - maximumTokens
@@ -8653,6 +8875,7 @@ components:
             - HUMAN_REVIEW
             - AGGREGATOR
             - CHAIR
+            - SOCIAL_CHOICE
             - EXECUTION_REVIEW
             - OUTPUT
           type: string
@@ -8667,6 +8890,7 @@ components:
             - DEBATE_ARGUMENT
             - RISK_ASSESSMENT
             - CHAIR_VERDICT
+            - CONSENSUS_RESULT
             - TRADE_DECISIONS
             - EXECUTION_VERDICT
             - null
@@ -8705,6 +8929,10 @@ components:
           type:
             - string
             - "null"
+        logicalRoleKey:
+          type:
+            - string
+            - "null"
         systemPrompt:
           type:
             - string
@@ -8721,6 +8949,7 @@ components:
         - displayName
         - roleName
         - roleTemplateId
+        - logicalRoleKey
         - primaryAiBinding
         - fallbackAiBinding
         - systemPrompt
@@ -8743,6 +8972,8 @@ components:
       properties:
         defaultDebateRounds:
           type: number
+        debateProtocol:
+          $ref: "#/components/schemas/DebateProtocolConfiguration"
         definitionId:
           type:
             - string
@@ -8787,6 +9018,7 @@ components:
         - name
         - description
         - defaultDebateRounds
+        - debateProtocol
         - maximumSteps
         - maximumDurationSeconds
         - maximumTokens

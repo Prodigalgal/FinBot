@@ -8,7 +8,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.domain.research.ForecastDirection;
+import io.omnnu.finbot.domain.consensus.AnonymousCandidateId;
+import io.omnnu.finbot.domain.consensus.BallotOrientation;
+import io.omnnu.finbot.domain.consensus.LogicalRoleKey;
 import java.math.BigDecimal;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class JacksonStructuredAiOutputParserTest {
@@ -102,5 +106,46 @@ class JacksonStructuredAiOutputParserTest {
                   }
                 }
                 """));
+    }
+
+    @Test
+    void parsesCompleteAnonymousBallotAndPreservesTies() {
+        var ballot = parser.parseBallot(
+                """
+                {"preference_tiers":[["candidate_aa"],["candidate_bb","candidate_cc"]]}
+                """,
+                new LogicalRoleKey("risk"),
+                BallotOrientation.FORWARD,
+                List.of(
+                        new AnonymousCandidateId("candidate_aa"),
+                        new AnonymousCandidateId("candidate_bb"),
+                        new AnonymousCandidateId("candidate_cc")));
+
+        assertEquals(2, ballot.preference().preferenceTiers().size());
+        assertEquals(3, ballot.preference().candidates().size());
+        assertEquals(BallotOrientation.FORWARD, ballot.preference().orientation());
+    }
+
+    @Test
+    void rejectsIncompleteDuplicateAndIdentityBearingBallots() {
+        var candidates = List.of(
+                new AnonymousCandidateId("candidate_aa"),
+                new AnonymousCandidateId("candidate_bb"));
+        assertThrows(IllegalArgumentException.class, () -> parser.parseBallot(
+                "{\"preference_tiers\":[[\"candidate_aa\"]]}",
+                new LogicalRoleKey("risk"),
+                BallotOrientation.FORWARD,
+                candidates));
+        assertThrows(IllegalArgumentException.class, () -> parser.parseBallot(
+                "{\"preference_tiers\":[[\"candidate_aa\"],[\"candidate_aa\"]]}",
+                new LogicalRoleKey("risk"),
+                BallotOrientation.FORWARD,
+                candidates));
+        assertThrows(IllegalArgumentException.class, () -> parser.parseBallot(
+                "{\"preference_tiers\":[[\"candidate_aa\"],[\"candidate_bb\"]],"
+                        + "\"model\":\"gpt\"}",
+                new LogicalRoleKey("risk"),
+                BallotOrientation.FORWARD,
+                candidates));
     }
 }

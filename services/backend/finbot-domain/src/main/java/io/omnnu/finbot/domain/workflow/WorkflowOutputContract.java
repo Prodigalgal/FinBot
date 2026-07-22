@@ -6,6 +6,7 @@ public enum WorkflowOutputContract {
     DEBATE_ARGUMENT,
     RISK_ASSESSMENT,
     CHAIR_VERDICT,
+    CONSENSUS_RESULT,
     TRADE_DECISIONS,
     EXECUTION_VERDICT
 }

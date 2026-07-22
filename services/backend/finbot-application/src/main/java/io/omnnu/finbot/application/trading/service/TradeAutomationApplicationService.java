@@ -22,7 +22,10 @@ import io.omnnu.finbot.application.exchange.dto.ExchangeSubmissionStatus;
 import io.omnnu.finbot.application.exchange.port.in.PaperOrderExecutionUseCase;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
+import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.market.InstrumentSymbol;
 import io.omnnu.finbot.domain.market.Quantity;
+import io.omnnu.finbot.domain.research.ForecastDirection;
 import io.omnnu.finbot.domain.oms.OrderId;
 import io.omnnu.finbot.domain.risk.MarginRiskEngine;
 import io.omnnu.finbot.domain.risk.EstimatedTradeEngine;
@@ -33,6 +36,7 @@ import io.omnnu.finbot.domain.risk.RiskAssessmentStatus;
 import io.omnnu.finbot.domain.trading.ApprovalStatus;
 import io.omnnu.finbot.domain.trading.ApprovedTradeIntent;
 import io.omnnu.finbot.domain.trading.ApprovedTradeIntentId;
+import io.omnnu.finbot.domain.trading.Confidence;
 import io.omnnu.finbot.domain.trading.DirectionalAction;
 import io.omnnu.finbot.domain.trading.DirectionalTradeDecision;
 import io.omnnu.finbot.domain.trading.ExecutionReview;
@@ -129,7 +133,14 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         }
         try {
             var workflow = completedWorkflow(workflowRunId);
-            var chair = chairMessage(workflowRunId);
+            var chair = decisionMessage(workflowRunId);
+            if (!isExecutableDecision(workflow, chair)) {
+                return completeNonExecutableConsensus(
+                        automationRunId,
+                        workflowRunId,
+                        workflow,
+                        chair);
+            }
             var stages = executionAiStages(workflow, store.executionAiStages());
             var draftStage = requiredStage(stages, TradeExecutionAiStage.DRAFT);
             var reflectionStage = requiredStage(stages, TradeExecutionAiStage.REFLECTION);
@@ -455,14 +466,70 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         return workflow;
     }
 
-    private AgentMessage chairMessage(WorkflowRunId workflowRunId) {
+    private AgentMessage decisionMessage(WorkflowRunId workflowRunId) {
         var debate = workflowStore.findDebate(workflowRunId)
                 .orElseThrow(() -> new IllegalStateException("Workflow has no debate result"));
         return workflowStore.messages(debate.debateId()).stream()
-                .filter(message -> message.messageType() == AgentMessageType.CHAIR_VERDICT)
+                .filter(message -> message.messageType() == AgentMessageType.CONSENSUS_RESULT
+                        || message.messageType() == AgentMessageType.CHAIR_VERDICT)
                 .filter(message -> message.status() == AgentMessageStatus.COMPLETED)
+                .sorted(Comparator.comparingInt(message ->
+                        message.messageType() == AgentMessageType.CONSENSUS_RESULT ? 0 : 1))
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Workflow has no completed chair verdict"));
+                .orElseThrow(() -> new IllegalStateException("Workflow has no completed decision result"));
+    }
+
+    private static boolean isExecutableDecision(
+            WorkflowExecutionContext workflow,
+            AgentMessage decision) {
+        if (workflow.definitionVersion().debateProtocolConfiguration().protocol()
+                != DebateProtocol.SDB_SCA_V1) {
+            return true;
+        }
+        var forecast = decision.content().forecast();
+        return decision.messageType() == AgentMessageType.CONSENSUS_RESULT
+                && forecast != null
+                && forecast.direction() != ForecastDirection.UNCERTAIN;
+    }
+
+    private TradeAutomationResult completeNonExecutableConsensus(
+            String automationRunId,
+            WorkflowRunId workflowRunId,
+            WorkflowExecutionContext workflow,
+            AgentMessage decisionMessage) {
+        var marketScope = Objects.requireNonNull(
+                workflow.marketScope(),
+                "SDB-SCA trade automation requires a persisted market scope");
+        var reason = "SDB-SCA 未形成可执行严格共识，模拟交易已失败关闭";
+        var confidence = Objects.requireNonNullElse(
+                decisionMessage.content().confidence(),
+                BigDecimal.ZERO);
+        var decision = new NonDirectionalTradeDecision(
+                new TradeDecisionId(deterministicId(
+                        "decision_",
+                        workflowRunId.value() + ":sdb-no-consensus")),
+                new InstrumentSymbol(marketScope.symbol()),
+                NonDirectionalAction.WATCH,
+                new Confidence(confidence),
+                List.of(reason),
+                clock.instant());
+        TaskCancellationContext.throwIfCancelled();
+        store.saveDecision(workflowRunId, decision);
+        store.complete(
+                automationRunId,
+                TradeAutomationStatus.NO_ACTION,
+                decision,
+                null,
+                List.of(),
+                List.of(),
+                decision.rationale(),
+                clock.instant());
+        return result(
+                automationRunId,
+                TradeAutomationStatus.NO_ACTION,
+                decision,
+                List.of(),
+                decision.rationale());
     }
 
     private static TradeExecutionAiStageConfig requiredStage(

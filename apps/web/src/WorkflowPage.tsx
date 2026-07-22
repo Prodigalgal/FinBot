@@ -95,11 +95,12 @@ export function WorkflowPage() {
       displayName: executionReflection ? '执行机器人独立反思' : defaultNodeName(newNodeType),
       roleName: executionReflection ? 'Execution Reflection' : isLlmBacked(newNodeType) ? 'Custom Role' : null,
       roleTemplateId: null,
+      logicalRoleKey: isDebateSeat(newNodeType) ? `role_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}` : null,
       primaryAiBinding: isLlmBacked(newNodeType) ? binding : null,
       fallbackAiBinding: null,
       systemPrompt: isLlmBacked(newNodeType) ? executionReflection ? '你是最终执行反思机器人。独立检查初审决策、证据和风险边界，只输出严格 JSON；字段矛盾或证据不足必须 REJECT。不得输出隐藏思维链。' : defaultSystemPrompt(newNodeType) : null,
       userPromptTemplate: isLlmBacked(newNodeType) ? executionReflection ? '输出 verdict、reasons 和修订后的 decision；REJECT 时 decision 必须为 null。' : defaultUserPrompt(newNodeType) : null,
-      outputContract: isLlmBacked(newNodeType) ? executionReflection ? 'EXECUTION_VERDICT' : defaultOutputContract(newNodeType) : null,
+      outputContract: newNodeType === 'SOCIAL_CHOICE' ? 'CONSENSUS_RESULT' : isLlmBacked(newNodeType) ? executionReflection ? 'EXECUTION_VERDICT' : defaultOutputContract(newNodeType) : null,
       contextMode: newNodeType === 'INPUT' ? 'NONE' : 'UPSTREAM',
       contextHistoryRounds: isLlmBacked(newNodeType) ? version?.defaultDebateRounds || 3 : 0,
       contextMaximumMessages: isLlmBacked(newNodeType) ? 24 : 0,
@@ -167,7 +168,7 @@ export function WorkflowPage() {
     try {
       const currentNodes = nodes.map((node) => ({ ...node.data.workflowNode, positionX: node.position.x, positionY: node.position.y }));
       const currentEdges = edges.map((edge) => ({ ...(edge.data?.workflowEdge as WorkflowEdge), sourceNodeId: edge.source, targetNodeId: edge.target }));
-      const saved = await api.saveWorkflowDraft({ definitionId: null, versionId: null, name: `${definition.name} 副本`, description: definition.description, defaultDebateRounds: version.defaultDebateRounds, maximumSteps: version.maximumSteps, maximumDurationSeconds: version.maximumDurationSeconds, maximumTokens: version.maximumTokens, maximumCostUsd: version.maximumCostUsd, failurePolicy: version.failurePolicy, expectedChecksum: null, nodes: currentNodes, edges: currentEdges });
+      const saved = await api.saveWorkflowDraft({ definitionId: null, versionId: null, name: `${definition.name} 副本`, description: definition.description, defaultDebateRounds: version.defaultDebateRounds, debateProtocol: version.debateProtocol, maximumSteps: version.maximumSteps, maximumDurationSeconds: version.maximumDurationSeconds, maximumTokens: version.maximumTokens, maximumCostUsd: version.maximumCostUsd, failurePolicy: version.failurePolicy, expectedChecksum: null, nodes: currentNodes, edges: currentEdges });
       const updated = await api.workflowDefinitions();
       const created = updated.find((item) => item.definitionId === saved.definitionId) || null;
       setDefinitions(updated); setDefinition(created); setVersions([saved]); applyVersion(saved); setMessage('已复制为新的独立工作流草稿');
@@ -183,7 +184,7 @@ export function WorkflowPage() {
         const stored = edge.data?.workflowEdge as WorkflowEdge | undefined;
         return stored ? { ...stored, sourceNodeId: edge.source, targetNodeId: edge.target } : { edgeId: edge.id, sourceNodeId: edge.source, targetNodeId: edge.target, activationMode: 'ALL', contextMode: 'INCLUDE', condition: null, loopEdge: false, maximumTraversals: null };
       });
-      const saved = await api.saveWorkflowDraft({ definitionId: definition.definitionId, versionId: version.status === 'DRAFT' ? version.versionId : null, name: definition.name, description: definition.description, defaultDebateRounds: version.defaultDebateRounds, maximumSteps: version.maximumSteps, maximumDurationSeconds: version.maximumDurationSeconds, maximumTokens: version.maximumTokens, maximumCostUsd: version.maximumCostUsd, failurePolicy: version.failurePolicy, expectedChecksum: version.status === 'DRAFT' ? version.checksum : null, nodes: currentNodes, edges: currentEdges });
+      const saved = await api.saveWorkflowDraft({ definitionId: definition.definitionId, versionId: version.status === 'DRAFT' ? version.versionId : null, name: definition.name, description: definition.description, defaultDebateRounds: version.defaultDebateRounds, debateProtocol: version.debateProtocol, maximumSteps: version.maximumSteps, maximumDurationSeconds: version.maximumDurationSeconds, maximumTokens: version.maximumTokens, maximumCostUsd: version.maximumCostUsd, failurePolicy: version.failurePolicy, expectedChecksum: version.status === 'DRAFT' ? version.checksum : null, nodes: currentNodes, edges: currentEdges });
       applyVersion(saved); setMessage('草稿已保存');
       const updatedDefinitions = await api.workflowDefinitions(); setDefinitions(updatedDefinitions); setDefinition(updatedDefinitions.find((item) => item.definitionId === definition.definitionId) || definition);
     } catch (cause) { setError(cause); } finally { setSaving(false); }
@@ -235,12 +236,19 @@ export function WorkflowPage() {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25 }}>
         <TextField label="工作流名称" value={definition.name} onChange={(event) => setDefinition({ ...definition, name: event.target.value })} />
         <TextField label="用途说明" value={definition.description} onChange={(event) => setDefinition({ ...definition, description: event.target.value })} />
-        <TextField label="辩论轮次" type="number" value={version.defaultDebateRounds} onChange={(event) => setVersion({ ...version, defaultDebateRounds: Number(event.target.value) })} inputProps={{ min: 1, max: 8 }} />
+        <TextField label={version.debateProtocol.protocol === 'SDB_SCA_V1' ? '协议周期' : '辩论轮次'} type="number" value={version.defaultDebateRounds} disabled={version.debateProtocol.protocol === 'SDB_SCA_V1'} onChange={(event) => setVersion({ ...version, defaultDebateRounds: Number(event.target.value) })} inputProps={{ min: 1, max: 8 }} helperText={version.debateProtocol.protocol === 'SDB_SCA_V1' ? 'V1 固定执行一次完整四阶段周期' : undefined} />
         <TextField select label="失败策略" value={version.failurePolicy} onChange={(event) => setVersion({ ...version, failurePolicy: event.target.value as WorkflowFailurePolicy })}>{schema.failurePolicies.map((policy) => <MenuItem key={policy} value={policy}>{failurePolicyLabel(policy)}</MenuItem>)}</TextField>
         <TextField label="最大步骤" type="number" value={version.maximumSteps} onChange={(event) => setVersion({ ...version, maximumSteps: Number(event.target.value) })} inputProps={{ min: 1, max: 1000 }} />
         <TextField label="最大时长（秒）" type="number" value={version.maximumDurationSeconds} onChange={(event) => setVersion({ ...version, maximumDurationSeconds: Number(event.target.value) })} inputProps={{ min: 10, max: 86400 }} />
         <TextField label="最大 Token" type="number" value={version.maximumTokens} onChange={(event) => setVersion({ ...version, maximumTokens: Number(event.target.value) })} inputProps={{ min: 1000, max: 10000000 }} />
         <TextField label="最大成本（USD）" type="number" value={version.maximumCostUsd} onChange={(event) => setVersion({ ...version, maximumCostUsd: Number(event.target.value) })} inputProps={{ min: 0, step: 0.1 }} />
+      </Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(5, minmax(0, 1fr))' }, gap: 1.25, mt: 1.25 }}>
+        <TextField select label="辩论协议" value={version.debateProtocol.protocol} onChange={(event) => { const protocol = event.target.value as typeof version.debateProtocol.protocol; setVersion({ ...version, defaultDebateRounds: protocol === 'SDB_SCA_V1' ? 1 : version.defaultDebateRounds, debateProtocol: { ...version.debateProtocol, protocol, critiqueAssignmentPolicy: protocol === 'LEGACY_CHAIR_V1' ? 'FULL_MATRIX' : version.debateProtocol.critiqueAssignmentPolicy } }); }}><MenuItem value="SDB_SCA_V1">SDB-SCA 双盲同时博弈</MenuItem><MenuItem value="LEGACY_CHAIR_V1">Legacy 主席辩论</MenuItem></TextField>
+        <TextField label="最低参与席位" type="number" value={version.debateProtocol.minimumParticipantSeats} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, minimumParticipantSeats: Number(event.target.value) } })} inputProps={{ min: 2, max: 32 }} />
+        <TextField label="最低逻辑角色" type="number" value={version.debateProtocol.minimumQuorumRoles} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, minimumQuorumRoles: Number(event.target.value) } })} inputProps={{ min: 2, max: 32 }} />
+        <TextField label="阶段超时（秒）" type="number" value={version.debateProtocol.stageTimeoutSeconds} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, stageTimeoutSeconds: Number(event.target.value) } })} inputProps={{ min: 30, max: 7200 }} />
+        <TextField select label="交叉评审分配" value={version.debateProtocol.critiqueAssignmentPolicy} disabled={version.debateProtocol.protocol === 'LEGACY_CHAIR_V1'} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, critiqueAssignmentPolicy: event.target.value as typeof version.debateProtocol.critiqueAssignmentPolicy } })}><MenuItem value="FULL_MATRIX">全矩阵</MenuItem><MenuItem value="BALANCED_INCOMPLETE">均衡不完全矩阵</MenuItem></TextField>
       </Box>
     </Paper>
     <Paper variant="outlined" sx={{ p: 1.5 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ md: 'center' }}><TextField select size="small" label="回滚目标" value={rollbackVersionId} onChange={(event) => setRollbackVersionId(event.target.value)} sx={{ minWidth: 220 }}><MenuItem value="">选择历史版本</MenuItem>{versions.filter((item) => item.versionId !== version.versionId).map((item) => <MenuItem key={item.versionId} value={item.versionId}>v{item.versionNumber} · {item.status}</MenuItem>)}</TextField><Button startIcon={<RestoreIcon />} disabled={!rollbackVersionId || saving} onClick={() => void rollback()}>复制并发布回滚版本</Button><Box sx={{ flex: 1 }} />{selected && isLlmBacked(selected.data.workflowNode.nodeType) && <><TextField size="small" label="节点测试输入" value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} fullWidth inputProps={{ maxLength: 20000 }} /><Button variant="outlined" startIcon={<ScienceOutlinedIcon />} disabled={saving || !testPrompt.trim()} onClick={() => void testSelectedNode()}>实测节点</Button></>}</Stack></Paper>
@@ -262,13 +270,14 @@ function NodeEditor({ node, schema, providers, models, roles, update, duplicateS
   const llmBacked = isLlmBacked(node.nodeType);
   const changeNodeType = (nodeType: WorkflowNodeType) => {
     if (!isLlmBacked(nodeType)) {
-      update({ nodeType, roleName: null, primaryAiBinding: null, fallbackAiBinding: null, systemPrompt: null, userPromptTemplate: null, outputContract: null, operation: defaultOperation(nodeType) });
+      update({ nodeType, roleName: null, roleTemplateId: null, logicalRoleKey: null, primaryAiBinding: null, fallbackAiBinding: null, systemPrompt: null, userPromptTemplate: null, outputContract: nodeType === 'SOCIAL_CHOICE' ? 'CONSENSUS_RESULT' : null, operation: defaultOperation(nodeType) });
       return;
     }
     const primaryAiBinding = node.primaryAiBinding || defaultAiBinding(providers, models);
     update({
       nodeType,
       roleName: node.roleName || 'Custom Analyst',
+      logicalRoleKey: isDebateSeat(nodeType) ? node.logicalRoleKey || `role_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}` : null,
       primaryAiBinding,
       systemPrompt: node.systemPrompt || defaultSystemPrompt(nodeType),
       userPromptTemplate: node.userPromptTemplate || defaultUserPrompt(nodeType),
@@ -280,7 +289,7 @@ function NodeEditor({ node, schema, providers, models, roles, update, duplicateS
     {node.nodeType === 'QUANT'
       ? <TextField select label="量化方案" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="每种策略都会附带 MACD、均线交叉、RSI、布林带、ATR、支撑与压力指标供后续 AI 参考">{QUANT_OPERATIONS.map((operation) => <MenuItem key={operation.id} value={operation.id}>{operation.label}</MenuItem>)}</TextField>
       : <TextField label="受控操作" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="填写后端登记的 operation ID，不执行任意脚本或 URL" />}
-    {llmBacked && node.primaryAiBinding && <><TextField select label="角色模板" value={node.roleTemplateId || ''} onChange={(event) => { const role = roles.find((item) => item.roleTemplateId === event.target.value); if (!role) { update({ roleTemplateId: null }); return; } update({ roleTemplateId: role.roleTemplateId, roleName: role.displayName, systemPrompt: role.systemPrompt, userPromptTemplate: role.userPromptTemplate, outputContract: role.outputContract, primaryAiBinding: { providerProfileId: role.defaultProviderProfileId, modelName: role.defaultModelName, reasoningEffort: role.defaultReasoningEffort } }); }}><MenuItem value="">不绑定模板</MenuItem>{roles.map((role) => <MenuItem key={role.roleTemplateId} value={role.roleTemplateId}>{role.displayName}</MenuItem>)}</TextField><TextField label="角色名称" value={node.roleName || ''} onChange={(event) => update({ roleName: event.target.value })} /><TextField select label="输出契约" value={node.outputContract || ''} onChange={(event) => update({ outputContract: event.target.value as WorkflowOutputContract })}>{schema.outputContracts.map((contract) => <MenuItem key={contract} value={contract}>{contract}</MenuItem>)}</TextField><AiBindingEditor title="主模型" binding={node.primaryAiBinding} providers={providers} models={models} efforts={schema.reasoningEfforts} update={(primaryAiBinding) => update({ primaryAiBinding })} /><FormControlLabel control={<Switch checked={node.fallbackAiBinding !== null} onChange={(event) => {
+    {llmBacked && node.primaryAiBinding && <><TextField select label="角色模板" value={node.roleTemplateId || ''} onChange={(event) => { const role = roles.find((item) => item.roleTemplateId === event.target.value); if (!role) { update({ roleTemplateId: null }); return; } update({ roleTemplateId: role.roleTemplateId, logicalRoleKey: isDebateSeat(node.nodeType) ? role.roleTemplateId : null, roleName: role.displayName, systemPrompt: role.systemPrompt, userPromptTemplate: role.userPromptTemplate, outputContract: role.outputContract, primaryAiBinding: { providerProfileId: role.defaultProviderProfileId, modelName: role.defaultModelName, reasoningEffort: role.defaultReasoningEffort } }); }}><MenuItem value="">不绑定模板</MenuItem>{roles.map((role) => <MenuItem key={role.roleTemplateId} value={role.roleTemplateId}>{role.displayName}</MenuItem>)}</TextField><TextField label="角色名称" value={node.roleName || ''} onChange={(event) => update({ roleName: event.target.value })} />{isDebateSeat(node.nodeType) && <TextField label="逻辑角色 Key" value={node.logicalRoleKey || ''} onChange={(event) => update({ logicalRoleKey: event.target.value.toLowerCase() })} helperText="同一角色的异构模型席位必须使用相同 Key；社会选择时该角色总权重固定为 1" inputProps={{ pattern: '^[a-z][a-z0-9_-]{1,79}$' }} />}<TextField select label="输出契约" value={node.outputContract || ''} onChange={(event) => update({ outputContract: event.target.value as WorkflowOutputContract })}>{schema.outputContracts.map((contract) => <MenuItem key={contract} value={contract}>{contract}</MenuItem>)}</TextField><AiBindingEditor title="主模型" binding={node.primaryAiBinding} providers={providers} models={models} efforts={schema.reasoningEfforts} update={(primaryAiBinding) => update({ primaryAiBinding })} /><FormControlLabel control={<Switch checked={node.fallbackAiBinding !== null} onChange={(event) => {
       if (!event.target.checked) { update({ fallbackAiBinding: null }); return; }
       const fallbackModel = models.find((model) => model.enabled && model.providerProfileId !== providerId(node.primaryAiBinding!)) || models.find((model) => model.enabled) || models[0];
       if (fallbackModel) update({ fallbackAiBinding: { providerProfileId: fallbackModel.providerProfileId, modelName: fallbackModel.modelName, reasoningEffort: fallbackModel.defaultReasoningEffort } });
@@ -355,8 +364,12 @@ function isLlmBacked(nodeType: string): boolean {
   return ['AI_CLEANER', 'COMPRESSOR', 'COMPRESSION_VALIDATOR', 'AGENT', 'AGGREGATOR', 'CHAIR', 'EXECUTION_REVIEW'].includes(nodeType);
 }
 
+function isDebateSeat(nodeType: string): boolean {
+  return nodeType === 'AGENT' || nodeType === 'AGGREGATOR';
+}
+
 const NODE_LABELS: Record<string, string> = {
-  INPUT: '研究输入', ROUTER: '条件路由', DETERMINISTIC: '确定性处理', COLLECTOR: '信息采集', CLEANER: '确定性证据清洗', AI_CLEANER: 'AI 清洗审查', COMPRESSOR: 'AI 信息压缩', COMPRESSION_VALIDATOR: '压缩独立验证', AGENT: 'AI 分析角色', GATE: '条件门禁', QUANT: '量化研究', RISK: '确定性风控', SUBFLOW: '子工作流', HUMAN_REVIEW: '人工复核', AGGREGATOR: 'AI 聚合', CHAIR: '主席仲裁', EXECUTION_REVIEW: '执行机器人', OUTPUT: '研究输出',
+  INPUT: '研究输入', ROUTER: '条件路由', DETERMINISTIC: '确定性处理', COLLECTOR: '信息采集', CLEANER: '确定性证据清洗', AI_CLEANER: 'AI 清洗审查', COMPRESSOR: 'AI 信息压缩', COMPRESSION_VALIDATOR: '压缩独立验证', AGENT: 'AI 分析角色', GATE: '条件门禁', QUANT: '量化研究', RISK: '确定性风控', SUBFLOW: '子工作流', HUMAN_REVIEW: '人工复核', AGGREGATOR: 'AI 聚合', CHAIR: '主席仲裁', SOCIAL_CHOICE: '对称社会选择', EXECUTION_REVIEW: '执行机器人', OUTPUT: '研究输出',
 };
 
 const QUANT_OPERATIONS = [
@@ -378,11 +391,11 @@ function defaultNodeName(nodeType: string): string {
 }
 
 function defaultOperation(nodeType: string): string | null {
-  return ({ INPUT: 'research_input', ROUTER: 'route_candidate', DETERMINISTIC: 'transform_research_state', COLLECTOR: 'collect_enabled_sources', CLEANER: 'normalize_and_deduplicate', QUANT: 'multi_strategy_ensemble', GATE: 'evaluate_research_gate', RISK: 'evaluate_risk_gate', SUBFLOW: 'invoke_published_subflow', HUMAN_REVIEW: 'operator_review', EXECUTION_REVIEW: 'draft', OUTPUT: 'research_output' } as Record<string, string>)[nodeType] || null;
+  return ({ INPUT: 'research_input', ROUTER: 'route_candidate', DETERMINISTIC: 'transform_research_state', COLLECTOR: 'collect_enabled_sources', CLEANER: 'normalize_and_deduplicate', QUANT: 'multi_strategy_ensemble', GATE: 'evaluate_research_gate', RISK: 'evaluate_risk_gate', SUBFLOW: 'invoke_published_subflow', HUMAN_REVIEW: 'operator_review', SOCIAL_CHOICE: 'schulze_social_choice', EXECUTION_REVIEW: 'draft', OUTPUT: 'research_output' } as Record<string, string>)[nodeType] || null;
 }
 
 function defaultOutputContract(nodeType: string): WorkflowOutputContract {
-  return ({ AI_CLEANER: 'RESEARCH_FINDINGS', COMPRESSOR: 'RESEARCH_FINDINGS', COMPRESSION_VALIDATOR: 'RESEARCH_FINDINGS', AGGREGATOR: 'RESEARCH_FINDINGS', CHAIR: 'CHAIR_VERDICT', EXECUTION_REVIEW: 'TRADE_DECISIONS' } as Partial<Record<WorkflowNodeType, WorkflowOutputContract>>)[nodeType as WorkflowNodeType] || 'DEBATE_ARGUMENT';
+  return ({ AI_CLEANER: 'RESEARCH_FINDINGS', COMPRESSOR: 'RESEARCH_FINDINGS', COMPRESSION_VALIDATOR: 'RESEARCH_FINDINGS', AGGREGATOR: 'RESEARCH_FINDINGS', CHAIR: 'CHAIR_VERDICT', SOCIAL_CHOICE: 'CONSENSUS_RESULT', EXECUTION_REVIEW: 'TRADE_DECISIONS' } as Partial<Record<WorkflowNodeType, WorkflowOutputContract>>)[nodeType as WorkflowNodeType] || 'DEBATE_ARGUMENT';
 }
 
 function defaultSystemPrompt(nodeType: string): string {

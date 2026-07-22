@@ -4,5 +4,6 @@ public enum AgentMessageType {
     ARGUMENT,
     CHALLENGE,
     REVISION,
-    CHAIR_VERDICT
+    CHAIR_VERDICT,
+    CONSENSUS_RESULT
 }

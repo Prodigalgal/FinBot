@@ -3,6 +3,10 @@ package io.omnnu.finbot.api.workflow.dto;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.consensus.LogicalRoleKey;
+import io.omnnu.finbot.domain.debate.CritiqueAssignmentPolicy;
+import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.DebateProtocolConfiguration;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplateId;
 import io.omnnu.finbot.domain.workflow.BooleanConditionOperand;
 import io.omnnu.finbot.domain.workflow.ConditionOperand;
@@ -49,6 +53,7 @@ public final class WorkflowRequests {
             @NotBlank @Size(max = 160) String name,
             @Size(max = 1000) String description,
             @Min(1) @Max(8) int defaultDebateRounds,
+            @Valid DebateProtocolRequest debateProtocol,
             @Min(1) @Max(1000) int maximumSteps,
             @Min(10) @Max(86400) int maximumDurationSeconds,
             @Min(1000) @Max(10000000) long maximumTokens,
@@ -65,6 +70,7 @@ public final class WorkflowRequests {
             @NotBlank @Size(max = 160) String displayName,
             @Size(max = 120) String roleName,
             @Size(max = 80) String roleTemplateId,
+            @Size(max = 80) String logicalRoleKey,
             @Valid AiBindingRequest primaryAiBinding,
             @Valid AiBindingRequest fallbackAiBinding,
             @Size(max = 32000) String systemPrompt,
@@ -90,6 +96,7 @@ public final class WorkflowRequests {
                     roleTemplateId == null || roleTemplateId.isBlank()
                             ? null
                             : new AgentRoleTemplateId(roleTemplateId),
+                    toLogicalRoleKey(),
                     primaryAiBinding == null ? null : primaryAiBinding.toDomain(),
                     fallbackAiBinding == null ? null : fallbackAiBinding.toDomain(),
                     systemPrompt,
@@ -104,6 +111,33 @@ public final class WorkflowRequests {
                     operation,
                     new WorkflowCanvasPosition(positionX, positionY),
                     enabled);
+        }
+
+        private LogicalRoleKey toLogicalRoleKey() {
+            if (nodeType != WorkflowNodeType.AGENT && nodeType != WorkflowNodeType.AGGREGATOR) {
+                return null;
+            }
+            if (logicalRoleKey != null && !logicalRoleKey.isBlank()) {
+                return new LogicalRoleKey(logicalRoleKey);
+            }
+            return new LogicalRoleKey(
+                    roleTemplateId == null || roleTemplateId.isBlank() ? nodeId : roleTemplateId);
+        }
+    }
+
+    public record DebateProtocolRequest(
+            @NotNull DebateProtocol protocol,
+            @Min(2) @Max(32) int minimumParticipantSeats,
+            @Min(2) @Max(32) int minimumQuorumRoles,
+            @Min(30) @Max(7200) int stageTimeoutSeconds,
+            @NotNull CritiqueAssignmentPolicy critiqueAssignmentPolicy) {
+        public DebateProtocolConfiguration toDomain() {
+            return new DebateProtocolConfiguration(
+                    protocol,
+                    minimumParticipantSeats,
+                    minimumQuorumRoles,
+                    Duration.ofSeconds(stageTimeoutSeconds),
+                    critiqueAssignmentPolicy);
         }
     }
 

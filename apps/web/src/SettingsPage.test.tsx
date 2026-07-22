@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 
@@ -31,16 +31,13 @@ it('probes an unsaved provider and only imports discovered model names', async (
   render(<ProviderCreatePanel create={create} />);
 
   expect(screen.queryByLabelText('首个模型')).not.toBeInTheDocument();
-  await user.type(screen.getByLabelText('厂商名称'), '测试厂商');
-  await user.type(screen.getByLabelText('Base URL'), 'https://provider.example/v1');
-  await user.type(screen.getByLabelText('API Key'), 'test-api-key');
+  fireEvent.change(screen.getByLabelText('厂商名称'), { target: { value: '测试厂商' } });
+  fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://provider.example/v1' } });
+  fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'test-api-key' } });
   expect(screen.getByLabelText('最大并发请求')).toHaveValue(5);
-  await user.clear(screen.getByLabelText('最大并发请求'));
-  await user.type(screen.getByLabelText('最大并发请求'), '7');
-  await user.clear(screen.getByLabelText('排队等待（秒）'));
-  await user.type(screen.getByLabelText('排队等待（秒）'), '3600');
-  await user.clear(screen.getByLabelText('单次请求超时（秒）'));
-  await user.type(screen.getByLabelText('单次请求超时（秒）'), '3600');
+  fireEvent.change(screen.getByLabelText('最大并发请求'), { target: { value: '7' } });
+  fireEvent.change(screen.getByLabelText('排队等待（秒）'), { target: { value: '3600' } });
+  fireEvent.change(screen.getByLabelText('单次请求超时（秒）'), { target: { value: '3600' } });
   await user.click(screen.getByRole('button', { name: '测活并探测模型' }));
 
   await waitFor(() => expect(apiMock.probeProviderDraft).toHaveBeenCalledWith({
