@@ -933,7 +933,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(61, result.getInt("changeset_count"));
+                    assertEquals(62, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
