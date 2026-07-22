@@ -41,11 +41,13 @@
 - [x] barrier 编排与恢复
 - [x] 社会选择与预测聚合
 - [x] API 与前端可视化
-- [ ] 全量测试、交叉审计和生产验收
+- [x] 全量测试和生产验收
+- [ ] MiMo/Grok 外部 Agent 可采信交叉审计
 
 ## 当前验证
 
 - Java 全量测试通过；新增 phase barrier/重放、身份泄漏守卫和 SDB 交易失败关闭直接测试。
 - Web 全量组件测试、生产构建和控制面契约检查通过；走势预测面板展示角色归一后的三方向概率。
-- GitHub Actions 已证明 Java 26 与 PostgreSQL 18 集成测试通过；系统 smoke 进一步发现并锁定默认 v9 的席位拓扑可达性问题，现以 `EXCLUDE` 控制边修复，等待新一轮 CI 验证。
-- MiMo 降低启动 skill 后不再出现上下文过长，但 MiMo2API 返回空工具调用；Grok 单轮 CLI 被上游 429 限流，尚无可采信交叉审计输出。
+- GitHub Actions `29940758821` 全部通过：Java 26、PostgreSQL 18、量化/Browser Worker、OpenAPI、22 项 Web 组件测试、生产构建、Playwright 系统 smoke、Trivy 和 Cosign 均成功。
+- 生产已运行 `main@e714266` 对应镜像；ArgoCD `Synced / Healthy`，Liquibase `67/67`，默认 v9 为 `PUBLISHED / SDB_SCA_V1`，席位间非 `EXCLUDE` 内容边为 0，公网登录后 13 页面 smoke 通过。
+- MiMo 降低启动 skill 后不再出现上下文过长，但 MiMo2API 返回空工具调用；Grok 先遇到上游 429，随后重试会话持续挂起，尚无可采信外部交叉审计输出。
