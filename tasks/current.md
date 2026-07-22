@@ -1,13 +1,13 @@
 # 当前任务
 
-> 2026-07-20 以 `main@d70397a`、Liquibase `55/55`、FinBot GitOps 发布提交 `a4ab96e` 和生产 K8S 为事实基线。共享 GitOps 仓库后续 revision 可能因其他应用前进，应以 FinBot 镜像与资源差异判断实际发布。完成任务只保留索引，不再在本页重复流水账。
+> 2026-07-22 以 `main@b5f02c4`、Liquibase `62/62`、FinBot GitOps 发布提交 `a5585ba` 和生产 K8S 为事实基线。共享 GitOps 仓库后续 revision 可能因其他应用前进，应以 FinBot 镜像与资源差异判断实际发布。完成任务只保留索引，不再在本页重复流水账。
 
 ## P1：前端 UI/UX 深度优化
 
 - 目标：把现有后台统一为高密度、易扫描、响应式的研究机构交易终端，不改变业务功能与契约。
 - 视觉规格：`output/imagegen/finbot-ui-concept-dashboard.png`、`finbot-ui-concept-trading.png`、`finbot-ui-concept-mobile.png`。
 - 任务：[`in-progress/TASK-20260722-deep-ui-polish.md`](./in-progress/TASK-20260722-deep-ui-polish.md)。
-- 状态：三方设计评审完成，进入 Theme/App Shell、Auth/Research 和 Dashboard/Trading 分片实现。
+- 状态：实现、前端测试/构建/契约检查、概念图对照、桌面/移动 Playwright 视觉 smoke、CI/GitOps 和生产登录页验证已完成；生产登录后的 13 页面新 UI smoke 仍等待数学验证码操作授权。
 
 ## P1：Java package 模块化整理
 
@@ -67,14 +67,6 @@
 - 验收标准：三个内置 Provider 的 `base_url` 均为 `https://sub2api-direct.mnnu.eu.org/v1`，模型探测和最小真实调用可达。
 - 测试方式：Liquibase/PostgreSQL、Kustomize 渲染、CI、生产数据库查询及 Provider 测活。
 
-## P1：MiMo2API 直连端点
-
-- 目标：保留 Cloudflare 入口，并增加 `mimo2api-direct.mnnu.eu.org` DNS-only 长连接入口；FinBot Provider 统一通过该公网直连域名调用。
-- 范围：Cloudflare A/AAAA、MiMo2API HTTPRoute、GitOps 文档、Liquibase 060、生产 Provider 热更新与真实模型调用。
-- 非目标：不修改 MiMo API Key、模型绑定、并发配额、PVC、Deployment 或共享证书。
-- 验收标准：新域名 DNS/TLS/HTTP 通过且无 Cloudflare 响应头，Route/超时策略 Accepted，生产 `provider_mimo_default.base_url` 指向直连域名，`mimo-v2.5-pro` 真实调用成功。
-- 回滚：移除新增 DNS 与 Route hostname，并把 Provider URL 回退至 `https://mimo2api.mnnu.eu.org/v1`；不触碰持久化状态。
-
 ## 外部可用性观察
 
 - Firecrawl 保持独立渠道、默认关闭、无健康出口时 fail-closed。
@@ -83,6 +75,7 @@
 
 ## 最近完成并归档
 
+- MiMo2API 公网直连、Provider 公网 HTTPS 约束与 validation 包规范：[`done/TASK-20260722-mimo2api-direct-provider.md`](./done/TASK-20260722-mimo2api-direct-provider.md)。
 - Java feature-first package 模块化：[`done/TASK-20260722-java-package-modularization.md`](./done/TASK-20260722-java-package-modularization.md)。
 - P0-P1 产品闭环：[`done/P0-P1-quality-closure.md`](./done/P0-P1-quality-closure.md)。
 - 产品库、Watchlist 与研究工作台：[`done/P3-product-research-workspace.md`](./done/P3-product-research-workspace.md)。

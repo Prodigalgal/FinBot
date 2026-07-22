@@ -46,3 +46,20 @@
 - Cloudflare API 与公共 DNS 查询。
 - K8S/Argo CD/HTTPRoute/BackendTrafficPolicy 状态检查。
 - PostgreSQL 集成测试、生产数据库核验、外部及 Pod 内网络 smoke、真实模型请求。
+
+## 完成证据
+
+- Cloudflare DNS-only A/AAAA、MiMo2API HTTPRoute 与 streaming policy 已上线；公网入口不包含 Cloudflare 响应头。
+- FinBot Liquibase `060` 已执行，生产 `finbot_v2.provider_mimo_default` 指向 `https://mimo2api-direct.mnnu.eu.org/v1`。
+- `PublicAiProviderEndpointPolicy` 统一覆盖创建、更新、已保存测活、草稿测活和运行时解析，拒绝 HTTP、K8S Service、回环、私网、链路本地和 IPv6 ULA 地址。
+- ADR-034 新增 `application.<feature>.validation` 职责规范；守卫按类型职责校验，不维护 Application 子目录白名单。
+- 本机 MiMo Code 使用公网直连域名，模型能力解析为 `reasoning=true`、`tool_call=true`，`.mimocode/` 本地保留并由 Git 忽略。
+- 公网直连 `mimo-v2.5-pro` 最小 completion 在 4.81 秒完成，返回 `stop`；MiMo Code 完整代理会话曾因上游排队超过 6 分钟，未发现 DNS/TLS/认证失败。
+- Java 26 `clean test bootJar` 通过；GitHub Actions run `29909732061` 全绿。
+- GitOps revision `a5585ba64a92a172cc8ddf3ab3d74685af8aa962`，Argo `Synced/Healthy/Succeeded`；9 个 Pod 全部 `1/1 Ready`、重启为 0，公网 health 为 `200/UP`。
+- 生产 4 个 enabled Provider 的非法 HTTPS 计数为 0；MiMo 使用 `mimo2api-direct`，GPT/Grok/Gemini 使用 `sub2api-direct`。
+
+## 兼容与回滚
+
+- 历史 Liquibase `012` 保留不可变 checksum，其中的旧集群地址会在应用启动前由 `060` 覆盖，运行时策略也会拒绝该地址。
+- 如需回滚代码，可回退 FinBot 镜像；如需回滚入口，可移除 direct DNS/Route 并新增显式迁移恢复原公网 Cloudflare 域名，不修改已执行迁移文件。
