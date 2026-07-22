@@ -475,12 +475,14 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                   forecast_id, workflow_run_id, message_id, instrument_id, exchange, environment,
                   symbol, interval_seconds, horizon_seconds, market_reference_price, direction,
                   reference_price, expected_low, expected_high, invalidation_price,
-                  confidence, thesis, evidence_refs, status, issued_at, target_at
+                  confidence, probability_up, probability_sideways, probability_down,
+                  thesis, evidence_refs, status, issued_at, target_at
                 )
                 select :forecastId, :runId, :messageId, scope.instrument_id, scope.exchange, scope.environment,
                        scope.symbol, scope.interval_seconds, scope.forecast_horizon_seconds,
                        scope.market_reference_price, :direction, :referencePrice, :expectedLow, :expectedHigh,
-                       :invalidationPrice, :confidence, :thesis, cast(:evidenceRefs as jsonb),
+                       :invalidationPrice, :confidence, :probabilityUp, :probabilitySideways,
+                       :probabilityDown, :thesis, cast(:evidenceRefs as jsonb),
                        'PENDING', :issuedAt, :issuedAt + make_interval(secs => scope.forecast_horizon_seconds)
                 from research_market_scope scope
                 where scope.workflow_run_id = :runId
@@ -495,6 +497,12 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 .param("expectedHigh", forecast.expectedHigh())
                 .param("invalidationPrice", forecast.invalidationPrice())
                 .param("confidence", forecast.confidence())
+                .param("probabilityUp", forecast.directionProbabilities() == null
+                        ? null : forecast.directionProbabilities().up())
+                .param("probabilitySideways", forecast.directionProbabilities() == null
+                        ? null : forecast.directionProbabilities().sideways())
+                .param("probabilityDown", forecast.directionProbabilities() == null
+                        ? null : forecast.directionProbabilities().down())
                 .param("thesis", forecast.thesis())
                 .param("evidenceRefs", json(forecast.evidenceReferences()))
                 .param("issuedAt", timestamp(message.createdAt()))

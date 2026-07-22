@@ -633,7 +633,8 @@ export interface ProductPage { products: ProductSummary[]; nextCursor: string | 
 export interface ResearchForecast {
   forecastId: string; workflowRunId: string; instrumentId: string; exchange: string; environment: 'LIVE' | 'TESTNET' | 'DEMO'; symbol: string;
   intervalSeconds: number; horizonSeconds: number; marketReferencePrice: number;
-  direction: string; expectedLow: number | null; expectedHigh: number | null; invalidationPrice: number | null;
+  direction: string; directionProbabilities: { up: number; sideways: number; down: number } | null;
+  expectedLow: number | null; expectedHigh: number | null; invalidationPrice: number | null;
   confidence: number; thesis: string; evidenceReferences: string[]; status: string;
   issuedAt: string; targetAt: string; actualPrice: number | null; actualReturn: number | null;
   shadowNotionalUsdt: number; shadowPnlUsdt: number | null;

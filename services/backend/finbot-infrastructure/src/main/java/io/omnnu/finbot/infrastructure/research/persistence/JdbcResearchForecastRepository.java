@@ -10,6 +10,7 @@ import io.omnnu.finbot.application.research.dto.ResearchForecastView;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
+import io.omnnu.finbot.domain.research.DirectionProbabilityDistribution;
 import io.omnnu.finbot.domain.research.ForecastDirection;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import java.sql.ResultSet;
@@ -29,6 +30,7 @@ public final class JdbcResearchForecastRepository implements ResearchForecastRep
             forecast_id, workflow_run_id, instrument_id, exchange, environment, symbol,
             interval_seconds, horizon_seconds, market_reference_price, direction,
             expected_low, expected_high, invalidation_price, confidence,
+            probability_up, probability_sideways, probability_down,
             thesis, evidence_refs::text as evidence_refs, status, issued_at, target_at,
             actual_price, actual_return, shadow_notional_usdt, shadow_pnl_usdt,
             direction_correct, range_hit, evaluated_at
@@ -151,6 +153,7 @@ public final class JdbcResearchForecastRepository implements ResearchForecastRep
                 resultSet.getBigDecimal("expected_high"),
                 resultSet.getBigDecimal("invalidation_price"),
                 resultSet.getBigDecimal("confidence"),
+                directionProbabilities(resultSet),
                 resultSet.getString("thesis"),
                 strings(resultSet.getString("evidence_refs")),
                 resultSet.getString("status"),
@@ -163,6 +166,18 @@ public final class JdbcResearchForecastRepository implements ResearchForecastRep
                 nullableBoolean(resultSet, "direction_correct"),
                 nullableBoolean(resultSet, "range_hit"),
                 nullableInstant(resultSet.getObject("evaluated_at", OffsetDateTime.class)));
+    }
+
+    private static DirectionProbabilityDistribution directionProbabilities(ResultSet resultSet)
+            throws SQLException {
+        var up = resultSet.getBigDecimal("probability_up");
+        if (up == null) {
+            return null;
+        }
+        return new DirectionProbabilityDistribution(
+                up,
+                resultSet.getBigDecimal("probability_sideways"),
+                resultSet.getBigDecimal("probability_down"));
     }
 
     private List<String> strings(String json) {

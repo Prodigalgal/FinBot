@@ -109,6 +109,56 @@ class JacksonStructuredAiOutputParserTest {
     }
 
     @Test
+    void requiresCompleteProbabilityDistributionForSdbForecasts() {
+        var parsed = parser.parseProposal("""
+                {
+                  "summary": "Independent market proposal",
+                  "argument": "Evidence supports a bounded upside scenario.",
+                  "confidence": 0.70,
+                  "claims": [],
+                  "evidence_refs": ["evidence_market_snapshot"],
+                  "challenges": [],
+                  "revision_notes": [],
+                  "forecast": {
+                    "direction": "UP",
+                    "reference_price": 100,
+                    "expected_low": 97,
+                    "expected_high": 112,
+                    "invalidation_price": 94,
+                    "confidence": 0.60,
+                    "direction_probabilities": {"up": 0.60, "sideways": 0.25, "down": 0.15},
+                    "thesis": "Demand and liquidity indicate a bounded upside move.",
+                    "evidence_refs": ["evidence_market_snapshot"]
+                  }
+                }
+                """);
+
+        assertEquals(0, new BigDecimal("0.25").compareTo(
+                parsed.messageContent().forecast().directionProbabilities().sideways()));
+        assertThrows(IllegalArgumentException.class, () -> parser.parseProposal("""
+                {
+                  "summary": "Independent market proposal",
+                  "argument": "A probability vector is required for SDB forecasts.",
+                  "confidence": 0.70,
+                  "claims": [],
+                  "evidence_refs": ["evidence_market_snapshot"],
+                  "challenges": [],
+                  "revision_notes": [],
+                  "forecast": {
+                    "direction": "UP",
+                    "reference_price": 100,
+                    "expected_low": 97,
+                    "expected_high": 112,
+                    "invalidation_price": 94,
+                    "confidence": 0.60,
+                    "thesis": "This output intentionally omits required probabilities.",
+                    "evidence_refs": ["evidence_market_snapshot"]
+                  }
+                }
+                """));
+    }
+
+    @Test
     void parsesCompleteAnonymousBallotAndPreservesTies() {
         var ballot = parser.parseBallot(
                 """

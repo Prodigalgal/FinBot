@@ -74,7 +74,13 @@ INSERT INTO workflow_edge_definition (
 )
 SELECT
     'workflowversion_standard_v9', edge.edge_id, edge.source_node_id, edge.target_node_id,
-    edge.activation_mode, edge.context_mode, edge.condition_field, edge.condition_operator,
+    edge.activation_mode,
+    CASE
+        WHEN source.node_type IN ('AGENT', 'AGGREGATOR')
+          AND target.node_type IN ('AGENT', 'AGGREGATOR') THEN 'EXCLUDE'
+        ELSE edge.context_mode
+    END,
+    edge.condition_field, edge.condition_operator,
     edge.condition_value, edge.loop_edge, edge.maximum_traversals
 FROM workflow_edge_definition edge
 JOIN workflow_node_definition source
@@ -82,10 +88,6 @@ JOIN workflow_node_definition source
 JOIN workflow_node_definition target
   ON target.version_id = edge.version_id AND target.node_id = edge.target_node_id
 WHERE edge.version_id = 'workflowversion_standard_v8'
-  AND NOT (
-      source.node_type IN ('AGENT', 'AGGREGATOR')
-      AND target.node_type IN ('AGENT', 'AGGREGATOR')
-  )
   AND NOT (
       source.node_type IN ('AGENT', 'AGGREGATOR')
       AND target.node_type = 'CHAIR'

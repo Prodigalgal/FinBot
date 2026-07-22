@@ -3,6 +3,7 @@ package io.omnnu.finbot.application.research.dto;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
+import io.omnnu.finbot.domain.research.DirectionProbabilityDistribution;
 import io.omnnu.finbot.domain.research.ForecastDirection;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import java.math.BigDecimal;
@@ -24,6 +25,7 @@ public record ResearchForecastView(
         BigDecimal expectedHigh,
         BigDecimal invalidationPrice,
         BigDecimal confidence,
+        DirectionProbabilityDistribution directionProbabilities,
         String thesis,
         List<String> evidenceReferences,
         String status,

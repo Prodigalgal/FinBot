@@ -123,3 +123,5 @@ databaseChangeLog:
       file: db/changelog/releases/061-sdb-sca-protocol.sql
   - include:
       file: db/changelog/releases/062-standard-workflow-sdb-sca.sql
+  - include:
+      file: db/changelog/releases/063-research-forecast-direction-probabilities.sql

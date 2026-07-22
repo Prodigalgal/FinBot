@@ -46,6 +46,6 @@
 ## 当前验证
 
 - Java 全量测试通过；新增 phase barrier/重放、身份泄漏守卫和 SDB 交易失败关闭直接测试。
-- Web 全量 21 项组件测试、生产构建和控制面契约检查通过；既有 Settings 慢用例已改为等价的表单 change 事件，消除逐字符输入导致的套件级超时。
-- 本机未安装 Docker，Testcontainers PostgreSQL 场景未在本轮真实启动；必须由 CI 或远端 PostgreSQL 补齐。
-- MiMo 已通过隔离 HOME 将启动 skill 从 178 降至 14，不再出现上下文过长，但 MiMo2API 工具调用仍超时；Grok 单轮 CLI 同样超时，尚无可采信交叉审计输出。
+- Web 全量组件测试、生产构建和控制面契约检查通过；走势预测面板展示角色归一后的三方向概率。
+- GitHub Actions 已证明 Java 26 与 PostgreSQL 18 集成测试通过；系统 smoke 进一步发现并锁定默认 v9 的席位拓扑可达性问题，现以 `EXCLUDE` 控制边修复，等待新一轮 CI 验证。
+- MiMo 降低启动 skill 后不再出现上下文过长，但 MiMo2API 返回空工具调用；Grok 单轮 CLI 被上游 429 限流，尚无可采信交叉审计输出。

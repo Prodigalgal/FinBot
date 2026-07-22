@@ -73,4 +73,32 @@ class ForecastSignalTest {
                 "An abstention cannot invent actionable price levels.",
                 List.of()));
     }
+
+    @Test
+    void validatesCompleteDirectionProbabilityDistribution() {
+        assertDoesNotThrow(() -> new ForecastSignal(
+                ForecastDirection.UP,
+                new BigDecimal("100"),
+                new BigDecimal("96"),
+                new BigDecimal("112"),
+                new BigDecimal("94"),
+                new BigDecimal("0.60"),
+                "Probability distribution supports the selected upside direction.",
+                List.of("evidence_market_snapshot"),
+                new DirectionProbabilityDistribution(
+                        new BigDecimal("0.60"), new BigDecimal("0.25"), new BigDecimal("0.15"))));
+        assertThrows(IllegalArgumentException.class, () -> new DirectionProbabilityDistribution(
+                new BigDecimal("0.60"), new BigDecimal("0.30"), new BigDecimal("0.20")));
+        assertThrows(IllegalArgumentException.class, () -> new ForecastSignal(
+                ForecastDirection.DOWN,
+                new BigDecimal("100"),
+                new BigDecimal("90"),
+                new BigDecimal("105"),
+                null,
+                new BigDecimal("0.20"),
+                "Direction cannot contradict the highest probability bucket.",
+                List.of("evidence_market_snapshot"),
+                new DirectionProbabilityDistribution(
+                        new BigDecimal("0.60"), new BigDecimal("0.20"), new BigDecimal("0.20"))));
+    }
 }

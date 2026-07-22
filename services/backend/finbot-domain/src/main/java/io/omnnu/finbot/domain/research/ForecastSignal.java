@@ -14,7 +14,31 @@ public record ForecastSignal(
         BigDecimal invalidationPrice,
         BigDecimal confidence,
         String thesis,
-        List<String> evidenceReferences) {
+        List<String> evidenceReferences,
+        DirectionProbabilityDistribution directionProbabilities) {
+    private static final BigDecimal PROBABILITY_TOLERANCE = new BigDecimal("0.0001");
+
+    public ForecastSignal(
+            ForecastDirection direction,
+            BigDecimal referencePrice,
+            BigDecimal expectedLow,
+            BigDecimal expectedHigh,
+            BigDecimal invalidationPrice,
+            BigDecimal confidence,
+            String thesis,
+            List<String> evidenceReferences) {
+        this(
+                direction,
+                referencePrice,
+                expectedLow,
+                expectedHigh,
+                invalidationPrice,
+                confidence,
+                thesis,
+                evidenceReferences,
+                null);
+    }
+
     public ForecastSignal {
         direction = Objects.requireNonNull(direction, "direction");
         confidence = DecimalValue.nonNegative(confidence, "confidence");
@@ -54,6 +78,19 @@ public record ForecastSignal(
                     && (referencePrice.compareTo(expectedLow) < 0
                             || referencePrice.compareTo(expectedHigh) > 0)) {
                 throw new IllegalArgumentException("sideways forecast range must contain the reference price");
+            }
+            if (directionProbabilities != null) {
+                var leadingDirection = directionProbabilities.uniqueLeader()
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "directional forecast probabilities must have a unique leader"));
+                if (leadingDirection != direction) {
+                    throw new IllegalArgumentException("forecast direction must match the highest probability");
+                }
+                if (directionProbabilities.probability(direction).subtract(confidence).abs()
+                        .compareTo(PROBABILITY_TOLERANCE) > 0) {
+                    throw new IllegalArgumentException(
+                            "forecast confidence must match the selected direction probability");
+                }
             }
         }
     }

@@ -167,7 +167,8 @@ public record WorkflowDefinitionVersion(
             }
             if (protocolConfiguration.protocol() == DebateProtocol.SDB_SCA_V1
                     && debateParticipant(nodesById.get(edge.sourceNodeId()).nodeType())
-                    && debateParticipant(nodesById.get(edge.targetNodeId()).nodeType())) {
+                    && debateParticipant(nodesById.get(edge.targetNodeId()).nodeType())
+                    && edge.contextMode() != WorkflowEdgeContextMode.EXCLUDE) {
                 throw new IllegalArgumentException(
                         "SDB-SCA debate seats cannot consume another seat's graph output");
             }

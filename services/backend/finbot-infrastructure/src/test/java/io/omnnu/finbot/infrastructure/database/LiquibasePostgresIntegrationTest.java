@@ -1024,7 +1024,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(66, result.getInt("changeset_count"));
+                    assertEquals(67, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
@@ -2031,6 +2031,32 @@ class LiquibasePostgresIntegrationTest {
                   and node_type in ('AGENT', 'AGGREGATOR')
                   and logical_role_key is null
                 """).query(Integer.class).single() > 0);
+    }
+
+    @Test
+    void loadsPublishedSdbWorkflowWithoutExposingSeatContentEdges() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var repository = new JdbcWorkflowManagementRepository(
+                JdbcClient.create(dataSource),
+                new ObjectMapper().findAndRegisterModules());
+
+        var published = repository.findVersion(
+                new WorkflowVersionId("workflowversion_standard_v9")).orElseThrow();
+        var participantIds = published.nodes().stream()
+                .filter(node -> node.nodeType() == io.omnnu.finbot.domain.workflow.WorkflowNodeType.AGENT
+                        || node.nodeType() == io.omnnu.finbot.domain.workflow.WorkflowNodeType.AGGREGATOR)
+                .map(io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition::nodeId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(io.omnnu.finbot.domain.debate.DebateProtocol.SDB_SCA_V1,
+                published.debateProtocolConfiguration().protocol());
+        assertTrue(published.edges().stream()
+                .filter(edge -> participantIds.contains(edge.sourceNodeId())
+                        && participantIds.contains(edge.targetNodeId()))
+                .allMatch(edge -> edge.contextMode()
+                        == io.omnnu.finbot.domain.workflow.WorkflowEdgeContextMode.EXCLUDE));
     }
 
     private static final class EmptyRuntimeSecretStore implements RuntimeSecretStore {

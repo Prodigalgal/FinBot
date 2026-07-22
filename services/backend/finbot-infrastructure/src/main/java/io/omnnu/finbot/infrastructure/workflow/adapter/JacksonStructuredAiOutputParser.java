@@ -17,6 +17,7 @@ import io.omnnu.finbot.domain.consensus.SchulzeDetailedResult;
 import io.omnnu.finbot.domain.consensus.SchulzeOrientationSnapshot;
 import io.omnnu.finbot.domain.workflow.AgentClaim;
 import io.omnnu.finbot.domain.workflow.AgentMessageContent;
+import io.omnnu.finbot.domain.research.DirectionProbabilityDistribution;
 import io.omnnu.finbot.domain.research.ForecastDirection;
 import io.omnnu.finbot.domain.research.ForecastSignal;
 import java.math.BigDecimal;
@@ -40,7 +41,10 @@ public final class JacksonStructuredAiOutputParser
             "challenges", "revision_notes", "forecast");
     private static final Set<String> FORECAST_FIELDS = Set.of(
             "direction", "reference_price", "expected_low", "expected_high",
-            "invalidation_price", "confidence", "thesis", "evidence_refs");
+            "invalidation_price", "confidence", "thesis", "evidence_refs",
+            "direction_probabilities");
+    private static final Set<String> DIRECTION_PROBABILITY_FIELDS = Set.of(
+            "up", "sideways", "down");
     private static final Set<String> SDB_ARTIFACT_FIELDS = Set.of(
             "summary", "argument", "confidence", "claims", "evidence_refs",
             "challenges", "revision_notes", "forecast");
@@ -91,7 +95,7 @@ public final class JacksonStructuredAiOutputParser
                 strings(root.path("evidence_refs")),
                 challenges,
                 revisions,
-                forecast(root.path("forecast")));
+                forecast(root.path("forecast"), false));
     }
 
     @Override
@@ -175,6 +179,14 @@ public final class JacksonStructuredAiOutputParser
         value.put("confidence", forecast.confidence());
         value.put("thesis", forecast.thesis());
         value.put("evidence_refs", forecast.evidenceReferences());
+        if (forecast.directionProbabilities() != null) {
+            value.put("direction_probabilities", java.util.Map.of(
+                    "up", forecast.directionProbabilities().up(),
+                    "sideways", forecast.directionProbabilities().sideways(),
+                    "down", forecast.directionProbabilities().down()));
+        } else {
+            value.put("direction_probabilities", null);
+        }
         return writeValue(value);
     }
 
@@ -192,7 +204,7 @@ public final class JacksonStructuredAiOutputParser
                 strings(root.path("evidence_refs")),
                 strings(root.path("challenges")),
                 strings(root.path("revision_notes")),
-                allowForecast ? forecast(root.path("forecast")) : null);
+                allowForecast ? forecast(root.path("forecast"), true) : null);
         return new ParsedDebateArtifact(canonicalJson(root), content);
     }
 
@@ -223,7 +235,7 @@ public final class JacksonStructuredAiOutputParser
         }
     }
 
-    private static ForecastSignal forecast(JsonNode node) {
+    private static ForecastSignal forecast(JsonNode node, boolean requireDirectionProbabilities) {
         if (node.isMissingNode() || node.isNull()) {
             return null;
         }
@@ -241,7 +253,27 @@ public final class JacksonStructuredAiOutputParser
                 optionalDecimal((ObjectNode) node, "invalidation_price"),
                 requiredDecimal(node, "confidence"),
                 requiredText((ObjectNode) node, "thesis"),
-                strings(node.path("evidence_refs")));
+                strings(node.path("evidence_refs")),
+                directionProbabilities(node.path("direction_probabilities"), requireDirectionProbabilities));
+    }
+
+    private static DirectionProbabilityDistribution directionProbabilities(
+            JsonNode node,
+            boolean required) {
+        if (node.isMissingNode() || node.isNull()) {
+            if (required) {
+                throw new IllegalArgumentException("SDB-SCA forecast direction_probabilities are required");
+            }
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IllegalArgumentException("AI forecast direction_probabilities must be an object");
+        }
+        requireAllowedFields((ObjectNode) node, DIRECTION_PROBABILITY_FIELDS);
+        return new DirectionProbabilityDistribution(
+                requiredDecimal(node, "up"),
+                requiredDecimal(node, "sideways"),
+                requiredDecimal(node, "down"));
     }
 
     private static BigDecimal requiredDecimal(JsonNode node, String fieldName) {

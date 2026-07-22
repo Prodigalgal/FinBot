@@ -2,6 +2,7 @@ package io.omnnu.finbot.domain.consensus;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import io.omnnu.finbot.domain.research.DirectionProbabilityDistribution;
 import io.omnnu.finbot.domain.research.ForecastDirection;
 import io.omnnu.finbot.domain.research.ForecastSignal;
 import java.math.BigDecimal;
@@ -26,7 +27,8 @@ class RoleNormalizedForecastAggregatorTest {
         assertEquals(ForecastDirection.DOWN, result.direction());
         assertEquals(new BigDecimal("81"), result.expectedLow());
         assertEquals(new BigDecimal("105.5"), result.expectedHigh());
-        assertEquals(new BigDecimal("0.6666666666666667"), result.confidence());
+        assertEquals(new BigDecimal("0.5666666666666667"), result.confidence());
+        assertEquals(new BigDecimal("0.5666666666666667"), result.directionProbabilities().down());
     }
 
     @Test
@@ -56,6 +58,20 @@ class RoleNormalizedForecastAggregatorTest {
                         null,
                         new BigDecimal(confidence),
                         "test thesis",
-                        List.of("evidence:test")));
+                        List.of("evidence:test"),
+                        probabilities(direction, new BigDecimal(confidence))));
+    }
+
+    private static DirectionProbabilityDistribution probabilities(
+            ForecastDirection direction,
+            BigDecimal confidence) {
+        var remainder = BigDecimal.ONE.subtract(confidence).divide(BigDecimal.TWO);
+        return switch (direction) {
+            case UP -> new DirectionProbabilityDistribution(confidence, remainder, remainder);
+            case SIDEWAYS -> new DirectionProbabilityDistribution(remainder, confidence, remainder);
+            case DOWN -> new DirectionProbabilityDistribution(remainder, remainder, confidence);
+            case UNCERTAIN -> new DirectionProbabilityDistribution(
+                    new BigDecimal("0.34"), new BigDecimal("0.33"), new BigDecimal("0.33"));
+        };
     }
 }

@@ -6069,6 +6069,26 @@ components:
         - createdAt
         - updatedAt
       type: object
+    DirectionProbabilityDistribution:
+      additionalProperties: false
+      properties:
+        down:
+          maximum: 1
+          minimum: 0
+          type: number
+        sideways:
+          maximum: 1
+          minimum: 0
+          type: number
+        up:
+          maximum: 1
+          minimum: 0
+          type: number
+      required:
+        - up
+        - sideways
+        - down
+      type: object
     ResearchForecast:
       additionalProperties: false
       properties:
@@ -6084,6 +6104,10 @@ components:
           type: number
         direction:
           type: string
+        directionProbabilities:
+          oneOf:
+            - $ref: '#/components/schemas/DirectionProbabilityDistribution'
+            - type: "null"
         directionCorrect:
           type:
             - boolean
@@ -6159,6 +6183,7 @@ components:
         - horizonSeconds
         - marketReferencePrice
         - direction
+        - directionProbabilities
         - expectedLow
         - expectedHigh
         - invalidationPrice

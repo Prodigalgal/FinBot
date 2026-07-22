@@ -155,10 +155,13 @@ final class SdbScaPromptComposer {
                         + "\"reference_price\":" + scope.marketReferencePrice() + ","
                         + "\"expected_low\":0.0,\"expected_high\":0.0,"
                         + "\"invalidation_price\":0.0,\"confidence\":0.0,"
+                        + "\"direction_probabilities\":{\"up\":0.0,\"sideways\":0.0,\"down\":0.0},"
                         + "\"thesis\":\"...\",\"evidence_refs\":[\"...\"]}")
                 + "\n预测期限为 " + scope.forecastHorizonSeconds()
                 + " 秒，K 线周期为 " + scope.intervalSeconds()
-                + " 秒。非 UNCERTAIN 时 reference_price 必须等于冻结参考价；"
+                + " 秒。direction_probabilities 三项必须覆盖全部方向且总和为 1；"
+                + "非 UNCERTAIN 时 direction 必须是唯一最高概率方向，confidence 必须等于该方向概率，"
+                + "reference_price 必须等于冻结参考价；"
                 + "UNCERTAIN 时所有价格字段必须为 null。";
     }
 

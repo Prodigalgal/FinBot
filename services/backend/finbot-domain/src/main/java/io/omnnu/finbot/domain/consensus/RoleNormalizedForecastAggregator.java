@@ -1,16 +1,15 @@
 package io.omnnu.finbot.domain.consensus;
 
+import io.omnnu.finbot.domain.research.DirectionProbabilityDistribution;
 import io.omnnu.finbot.domain.research.ForecastDirection;
 import io.omnnu.finbot.domain.research.ForecastSignal;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 public final class RoleNormalizedForecastAggregator {
@@ -25,53 +24,43 @@ public final class RoleNormalizedForecastAggregator {
         if (!socialChoiceSelected) {
             return uncertain("社会选择未形成唯一严格胜者，预测保持不确定。", List.of());
         }
-        var directional = inputs.stream()
-                .filter(input -> input.forecast().direction() != ForecastDirection.UNCERTAIN)
+        var probabilistic = inputs.stream()
+                .filter(input -> input.forecast().directionProbabilities() != null)
                 .toList();
-        if (directional.isEmpty()) {
-            return uncertain("有效席位均未形成方向性预测。", List.of());
+        if (probabilistic.isEmpty()) {
+            return uncertain("有效席位均未提交完整方向概率分布。", evidence(inputs));
         }
-        var byRole = new LinkedHashMap<LogicalRoleKey, List<ForecastSignal>>();
-        directional.forEach(input -> byRole
+        var byRole = new LinkedHashMap<LogicalRoleKey, List<RoleForecastSignal>>();
+        probabilistic.forEach(input -> byRole
                 .computeIfAbsent(input.logicalRoleKey(), ignored -> new ArrayList<>())
-                .add(input.forecast()));
-        var roleDirections = new LinkedHashMap<LogicalRoleKey, ForecastDirection>();
-        byRole.forEach((role, forecasts) -> uniqueRoleDirection(forecasts)
-                .ifPresent(direction -> roleDirections.put(role, direction)));
-        if (roleDirections.isEmpty()) {
-            return uncertain("逻辑角色内部方向存在并列，无法形成角色级预测。", evidence(directional));
-        }
-        var directionCounts = new EnumMap<ForecastDirection, Integer>(ForecastDirection.class);
-        roleDirections.values().forEach(direction -> directionCounts.merge(direction, 1, Integer::sum));
-        var maximumVotes = directionCounts.values().stream().mapToInt(Integer::intValue).max().orElse(0);
-        var winners = directionCounts.entrySet().stream()
-                .filter(entry -> entry.getValue() == maximumVotes)
-                .map(Map.Entry::getKey)
+                .add(input));
+        var roleProbabilities = byRole.values().stream()
+                .map(roleInputs -> DirectionProbabilityDistribution.mean(roleInputs.stream()
+                        .map(RoleForecastSignal::forecast)
+                        .map(ForecastSignal::directionProbabilities)
+                        .toList()))
                 .toList();
-        if (winners.size() != 1) {
-            return uncertain("逻辑角色方向投票并列，预测保持不确定。", evidence(directional));
+        var probabilities = DirectionProbabilityDistribution.mean(roleProbabilities);
+        var leadingDirection = probabilities.uniqueLeader();
+        if (leadingDirection.isEmpty()) {
+            return uncertain("逻辑角色等权概率聚合后并列，预测保持不确定。", evidence(probabilistic), probabilities);
         }
-        var direction = winners.getFirst();
-        var agreeingRoles = roleDirections.entrySet().stream()
-                .filter(entry -> entry.getValue() == direction)
-                .map(Map.Entry::getKey)
-                .toList();
-        var roleForecasts = agreeingRoles.stream()
-                .map(role -> byRole.get(role).stream()
+        var direction = leadingDirection.orElseThrow();
+        var roleForecasts = byRole.values().stream()
+                .map(roleInputs -> roleInputs.stream()
+                        .map(RoleForecastSignal::forecast)
                         .filter(forecast -> forecast.direction() == direction)
                         .toList())
                 .filter(forecasts -> !forecasts.isEmpty())
                 .toList();
         if (roleForecasts.isEmpty()) {
-            return uncertain("获胜方向没有可聚合的价格预测。", evidence(directional));
+            return uncertain("最高概率方向没有可聚合的价格预测。", evidence(probabilistic), probabilities);
         }
         var expectedLow = crossRoleMedian(roleForecasts, ForecastSignal::expectedLow);
         var expectedHigh = crossRoleMedian(roleForecasts, ForecastSignal::expectedHigh);
         var invalidationPrice = crossRoleOptionalMedian(roleForecasts, ForecastSignal::invalidationPrice);
-        var confidence = BigDecimal.valueOf(agreeingRoles.size())
-                .divide(BigDecimal.valueOf(roleDirections.size()), MATH_CONTEXT);
-        var selectedInputs = directional.stream()
-                .filter(input -> agreeingRoles.contains(input.logicalRoleKey()))
+        var confidence = probabilities.probability(direction);
+        var selectedInputs = probabilistic.stream()
                 .filter(input -> input.forecast().direction() == direction)
                 .toList();
         return new ForecastSignal(
@@ -81,35 +70,10 @@ public final class RoleNormalizedForecastAggregator {
                 expectedHigh,
                 invalidationPrice,
                 confidence,
-                "按逻辑角色等权聚合后，" + agreeingRoles.size() + " / "
-                        + roleDirections.size() + " 个有效角色支持 " + direction + "。",
-                evidence(selectedInputs));
-    }
-
-    private static java.util.Optional<ForecastDirection> uniqueRoleDirection(
-            List<ForecastSignal> forecasts) {
-        var scores = new EnumMap<ForecastDirection, BigDecimal>(ForecastDirection.class);
-        for (var direction : List.of(
-                ForecastDirection.UP,
-                ForecastDirection.SIDEWAYS,
-                ForecastDirection.DOWN)) {
-            var score = forecasts.stream()
-                    .filter(forecast -> forecast.direction() == direction)
-                    .map(ForecastSignal::confidence)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            scores.put(direction, score);
-        }
-        var maximum = scores.values().stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-        if (maximum.signum() == 0) {
-            return java.util.Optional.empty();
-        }
-        var winners = scores.entrySet().stream()
-                .filter(entry -> entry.getValue().compareTo(maximum) == 0)
-                .map(Map.Entry::getKey)
-                .toList();
-        return winners.size() == 1
-                ? java.util.Optional.of(winners.getFirst())
-                : java.util.Optional.empty();
+                "按逻辑角色等权聚合后，" + direction + " 概率最高（"
+                        + confidence.stripTrailingZeros().toPlainString() + "）。",
+                evidence(selectedInputs),
+                probabilities);
     }
 
     private static BigDecimal crossRoleMedian(
@@ -150,6 +114,13 @@ public final class RoleNormalizedForecastAggregator {
     }
 
     private static ForecastSignal uncertain(String thesis, List<String> evidenceReferences) {
+        return uncertain(thesis, evidenceReferences, null);
+    }
+
+    private static ForecastSignal uncertain(
+            String thesis,
+            List<String> evidenceReferences,
+            DirectionProbabilityDistribution probabilities) {
         return new ForecastSignal(
                 ForecastDirection.UNCERTAIN,
                 null,
@@ -158,6 +129,7 @@ public final class RoleNormalizedForecastAggregator {
                 null,
                 BigDecimal.ZERO,
                 thesis,
-                evidenceReferences);
+                evidenceReferences,
+                probabilities);
     }
 }

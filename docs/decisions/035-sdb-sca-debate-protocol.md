@@ -44,6 +44,8 @@
 
 - `061-sdb-sca-protocol.sql` 将数据库变更集总数从 62 增至 65，创建协议配置、运行账本和社会选择表。
 - `062-standard-workflow-sdb-sca.sql` 将变更集总数增至 66，并发布默认 SDB-SCA 工作流版本。
+- `063-research-forecast-direction-probabilities.sql` 将变更集总数增至 67，持久化可空的
+  `UP / SIDEWAYS / DOWN` 概率分布；历史预测保持为空，新 SDB 预测必须完整填写。
 - 新运行写入 `CONSENSUS_RESULT`；历史运行保持原样。
 - 旧版运行完成后，可删除新建草稿对 `LEGACY_CHAIR_V1` 的选择入口，但不删除历史解析器。
 
