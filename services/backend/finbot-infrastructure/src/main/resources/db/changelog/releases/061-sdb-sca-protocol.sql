@@ -44,10 +44,6 @@ ALTER TABLE workflow_node_definition ADD CONSTRAINT ck_workflow_node_output CHEC
     )
 );
 
-UPDATE workflow_node_definition
-SET logical_role_key = COALESCE(role_template_id, node_id)
-WHERE node_type IN ('AGENT', 'AGGREGATOR');
-
 ALTER TABLE workflow_node_definition
     ADD CONSTRAINT ck_workflow_node_logical_role_key CHECK (
         logical_role_key IS NULL OR logical_role_key ~ '^[a-z][a-z0-9_-]{1,79}$'

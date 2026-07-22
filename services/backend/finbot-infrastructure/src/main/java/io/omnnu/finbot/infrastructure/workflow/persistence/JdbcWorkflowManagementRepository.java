@@ -586,21 +586,24 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
     }
 
     private WorkflowNodeDefinition node(ResultSet resultSet) throws SQLException {
+        var nodeId = new WorkflowNodeId(resultSet.getString("node_id"));
+        var nodeType = WorkflowNodeType.valueOf(resultSet.getString("node_type"));
         var providerId = resultSet.getString("provider_profile_id");
         var reasoning = resultSet.getString("reasoning_effort");
         var fallbackProviderId = resultSet.getString("fallback_provider_profile_id");
         var fallbackReasoning = resultSet.getString("fallback_reasoning_effort");
         var outputContract = resultSet.getString("output_contract");
         var roleTemplateId = resultSet.getString("role_template_id");
+        var persistedLogicalRoleKey = resultSet.getString("logical_role_key");
+        var logicalRoleKey = logicalRoleKey(
+                nodeId, nodeType, roleTemplateId, persistedLogicalRoleKey);
         return new WorkflowNodeDefinition(
-                new WorkflowNodeId(resultSet.getString("node_id")),
-                WorkflowNodeType.valueOf(resultSet.getString("node_type")),
+                nodeId,
+                nodeType,
                 resultSet.getString("display_name"),
                 resultSet.getString("role_name"),
                 roleTemplateId == null ? null : new AgentRoleTemplateId(roleTemplateId),
-                resultSet.getString("logical_role_key") == null
-                        ? null
-                        : new LogicalRoleKey(resultSet.getString("logical_role_key")),
+                logicalRoleKey,
                 binding(providerId, resultSet.getString("model_name"), reasoning),
                 binding(
                         fallbackProviderId,
@@ -622,6 +625,20 @@ public class JdbcWorkflowManagementRepository implements WorkflowManagementRepos
                         resultSet.getBigDecimal("position_x"),
                         resultSet.getBigDecimal("position_y")),
                 resultSet.getBoolean("enabled"));
+    }
+
+    private static LogicalRoleKey logicalRoleKey(
+            WorkflowNodeId nodeId,
+            WorkflowNodeType nodeType,
+            String roleTemplateId,
+            String persistedLogicalRoleKey) {
+        if (persistedLogicalRoleKey != null) {
+            return new LogicalRoleKey(persistedLogicalRoleKey);
+        }
+        if (nodeType != WorkflowNodeType.AGENT && nodeType != WorkflowNodeType.AGGREGATOR) {
+            return null;
+        }
+        return new LogicalRoleKey(roleTemplateId == null ? nodeId.value() : roleTemplateId);
     }
 
     private static AiModelBinding binding(String providerId, String modelName, String reasoning) {

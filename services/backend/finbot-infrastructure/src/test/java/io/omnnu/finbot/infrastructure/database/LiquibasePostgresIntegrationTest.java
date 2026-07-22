@@ -39,6 +39,7 @@ import io.omnnu.finbot.infrastructure.operations.persistence.JdbcBackgroundTaskS
 import io.omnnu.finbot.infrastructure.operations.persistence.TaskPayloadCodec;
 import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcWorkflowStore;
 import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcDebateProtocolStore;
+import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcWorkflowManagementRepository;
 import io.omnnu.finbot.infrastructure.workflow.persistence.WorkflowEventCodec;
 import io.omnnu.finbot.application.workflow.exception.DebateProtocolConflictException;
 import io.omnnu.finbot.application.workflow.dto.StartWorkflowCommand;
@@ -2004,6 +2005,31 @@ class LiquibasePostgresIntegrationTest {
             }
         }
         throw new IllegalStateException("Unable to find deterministic candidate bucket");
+    }
+
+    @Test
+    void derivesLogicalRolesWhenLoadingImmutableHistoricalWorkflowVersions() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var repository = new JdbcWorkflowManagementRepository(
+                jdbcClient,
+                new ObjectMapper().findAndRegisterModules());
+
+        var historical = repository.findVersion(
+                new WorkflowVersionId("workflowversion_standard_v8")).orElseThrow();
+
+        assertTrue(historical.nodes().stream()
+                .filter(node -> node.nodeType() == io.omnnu.finbot.domain.workflow.WorkflowNodeType.AGENT
+                        || node.nodeType() == io.omnnu.finbot.domain.workflow.WorkflowNodeType.AGGREGATOR)
+                .allMatch(node -> node.logicalRoleKey() != null));
+        assertTrue(jdbcClient.sql("""
+                select count(*) from workflow_node_definition
+                where version_id = 'workflowversion_standard_v8'
+                  and node_type in ('AGENT', 'AGGREGATOR')
+                  and logical_role_key is null
+                """).query(Integer.class).single() > 0);
     }
 
     private static final class EmptyRuntimeSecretStore implements RuntimeSecretStore {
