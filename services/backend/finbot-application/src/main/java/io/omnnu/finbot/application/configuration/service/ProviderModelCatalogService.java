@@ -8,8 +8,8 @@ import io.omnnu.finbot.application.configuration.port.out.ConfigurationRepositor
 import io.omnnu.finbot.application.configuration.port.out.EnvironmentValueResolver;
 import io.omnnu.finbot.application.configuration.port.out.ProviderModelCatalogGateway;
 import io.omnnu.finbot.application.configuration.port.out.RuntimeSecretStore;
+import io.omnnu.finbot.application.configuration.validation.PublicAiProviderEndpointPolicy;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -54,7 +54,7 @@ public final class ProviderModelCatalogService implements ProviderModelCatalogUs
         }
         return gateway.probe(
                 provider.profileId(),
-                URI.create(baseUrl),
+                PublicAiProviderEndpointPolicy.parse(baseUrl),
                 apiKey,
                 Duration.ofSeconds(provider.requestTimeoutSeconds()));
     }
@@ -70,12 +70,7 @@ public final class ProviderModelCatalogService implements ProviderModelCatalogUs
         if (command.requestTimeoutSeconds() < 5 || command.requestTimeoutSeconds() > 3600) {
             throw new IllegalArgumentException("AI provider request timeout is out of range");
         }
-        var baseUri = URI.create(baseUrl);
-        if (baseUri.getHost() == null || baseUri.getUserInfo() != null || baseUri.getFragment() != null
-                || !("http".equalsIgnoreCase(baseUri.getScheme())
-                        || "https".equalsIgnoreCase(baseUri.getScheme()))) {
-            throw new IllegalArgumentException("AI provider base URL is invalid");
-        }
+        var baseUri = PublicAiProviderEndpointPolicy.parse(baseUrl);
         return gateway.probe(
                 "draft",
                 baseUri,

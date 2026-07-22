@@ -18,10 +18,10 @@ import io.omnnu.finbot.application.configuration.port.in.ConfigurationUseCase;
 import io.omnnu.finbot.application.configuration.port.out.ConfigurationRepository;
 import io.omnnu.finbot.application.configuration.port.out.EnvironmentValueResolver;
 import io.omnnu.finbot.application.configuration.port.out.RuntimeSecretStore;
+import io.omnnu.finbot.application.configuration.validation.PublicAiProviderEndpointPolicy;
 
 import io.omnnu.finbot.application.shared.port.out.SortableIdGenerator;
 import java.math.BigDecimal;
-import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Locale;
@@ -242,14 +242,7 @@ public final class ConfigurationApplicationService implements ConfigurationUseCa
     }
 
     private static String validateBaseUrl(String value) {
-        var normalized = Objects.requireNonNull(value, "baseUrl").strip();
-        var uri = URI.create(normalized);
-        if (uri.getHost() == null || uri.getUserInfo() != null || uri.getFragment() != null
-                || !("http".equalsIgnoreCase(uri.getScheme())
-                        || "https".equalsIgnoreCase(uri.getScheme()))) {
-            throw new IllegalArgumentException("AI provider base URL is invalid");
-        }
-        return normalized;
+        return PublicAiProviderEndpointPolicy.normalize(value);
     }
 
     private static String validateSettingValue(SystemSetting setting, String value) {

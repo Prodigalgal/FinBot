@@ -15,18 +15,19 @@ FinBot Backend 已按 `domain -> application -> infrastructure -> bootstrap` 拆
 1. 保留现有 Gradle 模块和依赖方向，不新增网络服务或空洞模块。
 2. package 先按业务域聚合，再按职责分层；禁止建立全局巨型 `dto`、`service`、`repository` package。
 3. `domain.<feature>` 保存实体、值对象、领域状态和纯领域规则，不依赖 Spring、JDBC、HTTP 或应用 DTO。
-4. `application.<feature>.service` 保存用例编排和应用级策略。
-5. `application.<feature>.dto` 保存 Command、Result、View、Criteria、Snapshot 等应用边界数据。
-6. `application.<feature>.port.in` 保存由 API、Scheduler、Worker 调用的 UseCase 接口。
-7. `application.<feature>.port.out` 保存 Repository、Store、Gateway、Publisher、Resolver 等外部能力端口。
-8. `infrastructure.<feature>.persistence` 保存 JDBC Repository/Store、数据库映射与持久化 codec。
-9. `infrastructure.<feature>.client` 保存交易所、AI、Quant、代理等外部 HTTP 客户端及协议实现。
-10. `infrastructure.<feature>.adapter` 仅用于需要组合多个技术实现的适配器；不作为无法分类代码的兜底目录。
-11. `api.<feature>.controller` 与 `api.<feature>.dto` 分离 HTTP 入口和传输模型；Controller 不承载业务规则。
-12. 不依赖 API 客户端或 DTO 代码生成；OpenAPI、Java 与手写 TypeScript 通过 CI 契约检查保持一致。
-13. Bootstrap 配置按 `configuration.properties` 与 `configuration.wiring` 分离配置值和 Bean 装配。
-14. Bootstrap 后台执行按 `operations.handler` 与 `operations.runtime` 分离任务处理器和常驻运行时。
-15. Bootstrap 安全入口按 `security.principal`、`security.filter`、`security.configuration` 分离身份、过滤链和安全装配。
+4. `application.<feature>.service` 保存用例编排，以及需要协调端口或状态的应用级策略。
+5. `application.<feature>.validation` 保存无外部副作用的输入校验、契约校验、发布校验和安全边界策略；不得承担用例编排或持久化/远程调用。
+6. `application.<feature>.dto` 保存 Command、Result、View、Criteria、Snapshot 等应用边界数据。
+7. `application.<feature>.port.in` 保存由 API、Scheduler、Worker 调用的 UseCase 接口。
+8. `application.<feature>.port.out` 保存 Repository、Store、Gateway、Publisher、Resolver 等外部能力端口。
+9. `infrastructure.<feature>.persistence` 保存 JDBC Repository/Store、数据库映射与持久化 codec。
+10. `infrastructure.<feature>.client` 保存交易所、AI、Quant、代理等外部 HTTP 客户端及协议实现。
+11. `infrastructure.<feature>.adapter` 仅用于需要组合多个技术实现的适配器；不作为无法分类代码的兜底目录。
+12. `api.<feature>.controller` 与 `api.<feature>.dto` 分离 HTTP 入口和传输模型；Controller 不承载业务规则。
+13. 不依赖 API 客户端或 DTO 代码生成；OpenAPI、Java 与手写 TypeScript 通过 CI 契约检查保持一致。
+14. Bootstrap 配置按 `configuration.properties` 与 `configuration.wiring` 分离配置值和 Bean 装配。
+15. Bootstrap 后台执行按 `operations.handler` 与 `operations.runtime` 分离任务处理器和常驻运行时。
+16. Bootstrap 安全入口按 `security.principal`、`security.filter`、`security.configuration` 分离身份、过滤链和安全装配。
 
 ## 约束
 
@@ -35,12 +36,14 @@ FinBot Backend 已按 `domain -> application -> infrastructure -> bootstrap` 拆
 - Infrastructure 只实现 Application 出站端口，不向 Application 泄漏 JDBC/HTTP 类型。
 - API DTO 不进入 Domain；Application DTO 不直接承担 HTTP 注解或序列化兼容职责。
 - 新增 `Service`、`UseCase`、`Repository`、`Store`、`Gateway`、`Controller`、`Request`、`Response` 时必须进入对应职责 package。
+- `Validator` 必须进入 feature 自身的 `validation`；`Policy` 根据是否编排端口或状态进入 `service`，纯校验策略进入 `validation`。
 - `PackageArchitectureTest` 必须持续检查源码路径与 package 一致性、层依赖方向、职责落位及 `generated` package 禁令。
+- 架构守卫不维护 Application 子目录白名单；新增职责目录必须名称准确、依赖方向合法，并在形成可复用约定时补充 ADR，而不是为了通过守卫把类型塞入错误目录。
 
 ## 迁移策略
 
 1. 先迁移 Bootstrap API 与 Infrastructure，实现物理目录和 package 一致。
-2. 再迁移 Application 的 `service`、`dto`、`port.in`、`port.out`，编译驱动补齐原同包隐式引用。
+2. 再迁移 Application 的 `service`、`validation`、`dto`、`port.in`、`port.out`，编译驱动补齐原同包隐式引用。
 3. Domain 保持 feature-first，仅修正跨层误放类型。
 4. 测试跟随被测 package 迁移；增加架构守卫，禁止新代码回到平铺 package。
 5. 每一阶段必须通过 Java 全量测试；最终经 GitHub CI、GitOps 和生产 smoke 验证。

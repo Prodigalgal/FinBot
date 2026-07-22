@@ -1,4 +1,4 @@
-package io.omnnu.finbot.application.workflow.service;
+package io.omnnu.finbot.application.workflow.validation;
 
 import io.omnnu.finbot.application.quant.service.QuantAnalysisCapabilities;
 import io.omnnu.finbot.application.research.dto.ResearchWorkflowPlan;
@@ -14,7 +14,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-final class WorkflowPublicationValidator {
+public final class WorkflowPublicationValidator {
     private static final Set<WorkflowNodeType> EXECUTABLE_NODE_TYPES = EnumSet.of(
             WorkflowNodeType.INPUT,
             WorkflowNodeType.COLLECTOR,
@@ -37,7 +37,7 @@ final class WorkflowPublicationValidator {
     private WorkflowPublicationValidator() {
     }
 
-    static void validate(WorkflowDefinitionVersion version) {
+    public static void validate(WorkflowDefinitionVersion version) {
         Objects.requireNonNull(version, "version");
         ResearchWorkflowPlan.from(version);
         var unsupported = version.nodes().stream()
@@ -59,7 +59,7 @@ final class WorkflowPublicationValidator {
                 .toList());
     }
 
-    static List<WorkflowNodeType> executableNodeTypes() {
+    public static List<WorkflowNodeType> executableNodeTypes() {
         return List.copyOf(EXECUTABLE_NODE_TYPES);
     }
 

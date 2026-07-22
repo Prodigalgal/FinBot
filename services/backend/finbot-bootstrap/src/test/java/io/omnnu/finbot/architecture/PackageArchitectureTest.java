@@ -50,6 +50,8 @@ class PackageArchitectureTest {
             Pattern.compile("^io\\.omnnu\\.finbot\\.infrastructure\\.[^.]+$");
     private static final Pattern APPLICATION_SERVICE_PACKAGE =
             Pattern.compile("^io\\.omnnu\\.finbot\\.application\\.[^.]+\\.service(?:\\..+)?$");
+    private static final Pattern APPLICATION_VALIDATION_PACKAGE =
+            Pattern.compile("^io\\.omnnu\\.finbot\\.application\\.[^.]+\\.validation(?:\\..+)?$");
     private static final Pattern APPLICATION_USE_CASE_PACKAGE =
             Pattern.compile("^io\\.omnnu\\.finbot\\.application\\.[^.]+\\.port\\.in(?:\\..+)?$");
     private static final Pattern APPLICATION_PORT_OUT_PACKAGE =
@@ -192,7 +194,7 @@ class PackageArchitectureTest {
             violations.add(
                     formatViolation(
                             source,
-                            "application feature root must not contain types; place under service/dto/port/exception"));
+                            "application feature root must not contain types; classify by responsibility"));
         }
 
         String simpleName = source.simpleName();
@@ -202,6 +204,21 @@ class PackageArchitectureTest {
                     formatViolation(
                             source,
                             "application service type must live in application.<feature>.service"));
+        }
+        if (simpleName.endsWith("Validator")
+                && !APPLICATION_VALIDATION_PACKAGE.matcher(pkg).matches()) {
+            violations.add(
+                    formatViolation(
+                            source,
+                            "application *Validator must live in application.<feature>.validation"));
+        }
+        if (simpleName.endsWith("Policy")
+                && !APPLICATION_SERVICE_PACKAGE.matcher(pkg).matches()
+                && !APPLICATION_VALIDATION_PACKAGE.matcher(pkg).matches()) {
+            violations.add(
+                    formatViolation(
+                            source,
+                            "application *Policy must live in service or validation according to responsibility"));
         }
         if (simpleName.endsWith("UseCase") && !APPLICATION_USE_CASE_PACKAGE.matcher(pkg).matches()) {
             violations.add(
@@ -369,8 +386,7 @@ class PackageArchitectureTest {
                 "Manager",
                 "Executor",
                 "Collector",
-                "Invoker",
-                "Policy");
+                "Invoker");
     }
 
     private static boolean isApplicationOutputPortType(String simpleName) {

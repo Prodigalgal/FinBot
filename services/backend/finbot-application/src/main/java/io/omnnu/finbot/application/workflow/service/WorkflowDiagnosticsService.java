@@ -13,6 +13,7 @@ import io.omnnu.finbot.application.workflow.port.in.WorkflowManagementUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowRunFailureUseCase;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowEventPublisher;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
+import io.omnnu.finbot.application.workflow.validation.WorkflowPublicationValidator;
 
 import io.omnnu.finbot.application.ai.service.WorkflowAiInvoker;
 import io.omnnu.finbot.application.configuration.port.in.ConfigurationUseCase;

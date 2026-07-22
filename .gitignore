@@ -13,6 +13,7 @@ apps/web/vite.config.js
 apps/web/vite.config.d.ts
 .agents/
 .codex/
+.mimocode/
 .playwright-cli/
 .playwright-mcp/
 build/

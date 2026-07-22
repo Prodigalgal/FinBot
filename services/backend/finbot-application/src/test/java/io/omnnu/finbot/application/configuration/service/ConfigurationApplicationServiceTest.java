@@ -93,6 +93,23 @@ class ConfigurationApplicationServiceTest {
     }
 
     @Test
+    void refusesToCreateProviderWithClusterInternalEndpoint() {
+        var service = service(new FakeConfigurationRepository(List.of()));
+
+        assertThrows(IllegalArgumentException.class, () -> service.createProvider(
+                new CreateProviderCommand(
+                        "集群内厂商",
+                        AiProtocol.CHAT,
+                        ReasoningParameterStyle.FLAT,
+                        "https://mimo2api.mimo2api.svc.cluster.local/v1",
+                        true,
+                        10,
+                        120,
+                        5,
+                        1800)));
+    }
+
+    @Test
     void refusesToDeleteReferencedProvider() {
         var repository = new FakeConfigurationRepository(List.of());
         var service = service(repository);
@@ -161,6 +178,11 @@ class ConfigurationApplicationServiceTest {
 
         assertThrows(IllegalArgumentException.class, () -> service.probe(
                 new ProbeProviderCommand("file:///tmp/models", "test-api-key", 30)));
+        assertThrows(IllegalArgumentException.class, () -> service.probe(
+                new ProbeProviderCommand(
+                        "https://mimo2api.mimo2api.svc.cluster.local/v1",
+                        "test-api-key",
+                        30)));
     }
 
     private static ConfigurationApplicationService service(ConfigurationRepository repository) {

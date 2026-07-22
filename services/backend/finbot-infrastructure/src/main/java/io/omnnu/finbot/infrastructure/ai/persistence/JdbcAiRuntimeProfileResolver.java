@@ -9,11 +9,11 @@ import io.omnnu.finbot.application.ai.port.out.AiRuntimeBindingResolver;
 import io.omnnu.finbot.application.configuration.port.out.EnvironmentValueResolver;
 import io.omnnu.finbot.application.configuration.dto.RuntimeSecretScope;
 import io.omnnu.finbot.application.configuration.port.out.RuntimeSecretStore;
+import io.omnnu.finbot.application.configuration.validation.PublicAiProviderEndpointPolicy;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
-import java.net.URI;
 import java.util.Objects;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -121,48 +121,11 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
         return value.strip();
     }
 
-    private static URI parseAndValidateUri(String value) {
-        var uri = URI.create(value.strip());
-        if (uri.getHost() == null || uri.getUserInfo() != null || uri.getFragment() != null) {
-            throw new AiProviderConfigurationException("AI provider base URL is invalid");
-        }
-        if ("https".equalsIgnoreCase(uri.getScheme())) {
-            return uri;
-        }
-        if ("http".equalsIgnoreCase(uri.getScheme())
-                && (localOrPrivate(uri.getHost()) || insecureHttpExplicitlyAllowed())) {
-            return uri;
-        }
-        throw new AiProviderConfigurationException("Cleartext public AI provider transport is prohibited");
-    }
-
-    private static boolean insecureHttpExplicitlyAllowed() {
-        return Boolean.parseBoolean(System.getenv("FINBOT_ALLOW_INSECURE_AI_HTTP"));
-    }
-
-    private static boolean localOrPrivate(String host) {
-        return "localhost".equalsIgnoreCase(host)
-                || host.startsWith("127.")
-                || host.startsWith("10.")
-                || host.startsWith("192.168.")
-                || private172(host)
-                || host.endsWith(".svc")
-                || host.endsWith(".svc.cluster.local");
-    }
-
-    private static boolean private172(String host) {
-        if (!host.startsWith("172.")) {
-            return false;
-        }
-        var parts = host.split("\\.");
-        if (parts.length < 2) {
-            return false;
-        }
+    private static java.net.URI parseAndValidateUri(String value) {
         try {
-            var second = Integer.parseInt(parts[1]);
-            return second >= 16 && second <= 31;
-        } catch (NumberFormatException exception) {
-            return false;
+            return PublicAiProviderEndpointPolicy.parse(value);
+        } catch (IllegalArgumentException exception) {
+            throw new AiProviderConfigurationException(exception.getMessage());
         }
     }
 

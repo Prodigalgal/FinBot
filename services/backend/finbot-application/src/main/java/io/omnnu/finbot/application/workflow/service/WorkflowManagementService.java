@@ -7,6 +7,7 @@ import io.omnnu.finbot.application.workflow.exception.WorkflowManagementConflict
 import io.omnnu.finbot.application.workflow.exception.WorkflowNotFoundException;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowManagementUseCase;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowManagementRepository;
+import io.omnnu.finbot.application.workflow.validation.WorkflowPublicationValidator;
 
 import io.omnnu.finbot.application.shared.port.out.SortableIdGenerator;
 import io.omnnu.finbot.domain.shared.DomainText;
