@@ -1,5 +1,7 @@
 package io.omnnu.finbot.api.identity;
 
+import io.omnnu.finbot.api.identity.controller.AdminApiTokenController;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,12 +13,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import io.omnnu.finbot.application.identity.AdminApiTokenUseCase;
-import io.omnnu.finbot.application.identity.CreateAdminApiTokenCommand;
-import io.omnnu.finbot.application.identity.CreatedAdminApiToken;
+import io.omnnu.finbot.application.identity.port.in.AdminApiTokenUseCase;
+import io.omnnu.finbot.application.identity.dto.CreateAdminApiTokenCommand;
+import io.omnnu.finbot.application.identity.dto.CreatedAdminApiToken;
 import io.omnnu.finbot.domain.identity.AdminApiToken;
 import io.omnnu.finbot.domain.identity.AdminApiTokenId;
-import io.omnnu.finbot.security.AdminApiTokenPrincipal;
+import io.omnnu.finbot.security.principal.AdminApiTokenPrincipal;
 import java.lang.reflect.Modifier;
 import java.time.Clock;
 import java.time.Instant;

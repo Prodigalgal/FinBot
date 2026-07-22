@@ -1,0 +1,40 @@
+package io.omnnu.finbot.application.workflow.port.out;
+
+import io.omnnu.finbot.application.workflow.dto.DebateSession;
+import io.omnnu.finbot.application.workflow.dto.WorkflowCheckpoint;
+import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
+
+import io.omnnu.finbot.domain.workflow.AgentMessage;
+import io.omnnu.finbot.domain.workflow.DebateId;
+import io.omnnu.finbot.domain.workflow.DebateStatus;
+import io.omnnu.finbot.domain.workflow.WorkflowRunId;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
+public interface WorkflowExecutionStore extends WorkflowRunFailureStore, WorkflowRunResumeStore {
+    Optional<WorkflowExecutionContext> load(WorkflowRunId runId);
+
+    boolean markRunning(WorkflowRunId runId, Instant startedAt);
+
+    void saveCheckpoint(WorkflowCheckpoint checkpoint);
+
+    Optional<WorkflowCheckpoint> findCheckpoint(
+            WorkflowRunId runId,
+            io.omnnu.finbot.domain.workflow.WorkflowNodeId nodeId,
+            int roundIndex,
+            int iteration);
+
+    void startDebate(DebateSession session);
+
+    Optional<DebateSession> findDebate(WorkflowRunId runId);
+
+    void updateDebate(DebateId debateId, DebateStatus status, int completedRounds, Instant completedAt);
+
+    void saveMessage(AgentMessage message);
+
+    List<AgentMessage> messages(DebateId debateId);
+
+    void completeRun(WorkflowRunId runId, boolean partial, Instant completedAt);
+
+}

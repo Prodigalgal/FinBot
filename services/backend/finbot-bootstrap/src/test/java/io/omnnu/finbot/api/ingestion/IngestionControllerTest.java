@@ -1,17 +1,21 @@
 package io.omnnu.finbot.api.ingestion;
 
+import io.omnnu.finbot.api.ingestion.controller.IngestionController;
+import io.omnnu.finbot.api.ingestion.dto.CollectSourceRequest;
+import io.omnnu.finbot.api.ingestion.dto.TestSourceRequest;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import io.omnnu.finbot.application.ingestion.IngestionUseCase;
-import io.omnnu.finbot.application.operations.BackgroundTask;
-import io.omnnu.finbot.application.operations.BackgroundTaskCoordinator;
-import io.omnnu.finbot.application.operations.EnqueueTaskCommand;
-import io.omnnu.finbot.application.operations.IngestionTaskPayload;
-import io.omnnu.finbot.application.shared.IdempotencyKeys;
+import io.omnnu.finbot.application.ingestion.port.in.IngestionUseCase;
+import io.omnnu.finbot.application.operations.dto.BackgroundTask;
+import io.omnnu.finbot.application.operations.service.BackgroundTaskCoordinator;
+import io.omnnu.finbot.application.operations.dto.EnqueueTaskCommand;
+import io.omnnu.finbot.application.operations.dto.IngestionTaskPayload;
+import io.omnnu.finbot.application.shared.service.IdempotencyKeys;
 import io.omnnu.finbot.domain.operations.BackgroundTaskId;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import java.time.Instant;

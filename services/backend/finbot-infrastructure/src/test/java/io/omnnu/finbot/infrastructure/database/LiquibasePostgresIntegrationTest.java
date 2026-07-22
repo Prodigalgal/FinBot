@@ -6,43 +6,43 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.omnnu.finbot.application.configuration.AiModelProfile;
-import io.omnnu.finbot.application.configuration.AiProviderProfile;
+import io.omnnu.finbot.application.configuration.dto.AiModelProfile;
+import io.omnnu.finbot.application.configuration.dto.AiProviderProfile;
 import io.omnnu.finbot.domain.operations.WorkerId;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
-import io.omnnu.finbot.application.ai.AiProviderUnavailableException;
-import io.omnnu.finbot.application.configuration.RuntimeSecretScope;
-import io.omnnu.finbot.application.configuration.RuntimeSecretSource;
-import io.omnnu.finbot.application.configuration.RuntimeSecretStatus;
-import io.omnnu.finbot.application.configuration.RuntimeSecretStore;
+import io.omnnu.finbot.application.ai.exception.AiProviderUnavailableException;
+import io.omnnu.finbot.application.configuration.dto.RuntimeSecretScope;
+import io.omnnu.finbot.application.configuration.dto.RuntimeSecretSource;
+import io.omnnu.finbot.application.configuration.dto.RuntimeSecretStatus;
+import io.omnnu.finbot.application.configuration.port.out.RuntimeSecretStore;
 import io.omnnu.finbot.domain.operations.BackgroundTaskId;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
-import io.omnnu.finbot.infrastructure.exchange.JdbcExchangeAccountControlRepository;
-import io.omnnu.finbot.infrastructure.catalog.JdbcProductCatalogSyncStore;
-import io.omnnu.finbot.infrastructure.ingestion.JdbcIngestionRepository;
-import io.omnnu.finbot.infrastructure.ai.JdbcAiRuntimeProfileResolver;
-import io.omnnu.finbot.infrastructure.ai.JdbcAiInvocationRecoveryStore;
-import io.omnnu.finbot.infrastructure.identity.JdbcAdminApiTokenStore;
-import io.omnnu.finbot.infrastructure.identity.SecureAuthenticationCryptography;
-import io.omnnu.finbot.infrastructure.configuration.AesGcmRuntimeSecretCipher;
-import io.omnnu.finbot.infrastructure.configuration.JdbcConfigurationRepository;
-import io.omnnu.finbot.infrastructure.configuration.JdbcEncryptedRuntimeSecretStore;
-import io.omnnu.finbot.infrastructure.network.JdbcNetworkDiagnosticStore;
-import io.omnnu.finbot.infrastructure.setup.JdbcSetupProfileRepository;
-import io.omnnu.finbot.infrastructure.operations.JdbcBackgroundTaskStore;
-import io.omnnu.finbot.infrastructure.operations.TaskPayloadCodec;
-import io.omnnu.finbot.infrastructure.workflow.JdbcWorkflowStore;
-import io.omnnu.finbot.infrastructure.workflow.WorkflowEventCodec;
-import io.omnnu.finbot.application.workflow.StartWorkflowCommand;
-import io.omnnu.finbot.application.catalog.CatalogInstrumentSnapshot;
-import io.omnnu.finbot.application.catalog.CatalogSyncScope;
-import io.omnnu.finbot.application.setup.SetupProfileId;
+import io.omnnu.finbot.infrastructure.exchange.persistence.JdbcExchangeAccountControlRepository;
+import io.omnnu.finbot.infrastructure.catalog.persistence.JdbcProductCatalogSyncStore;
+import io.omnnu.finbot.infrastructure.ingestion.persistence.JdbcIngestionRepository;
+import io.omnnu.finbot.infrastructure.ai.persistence.JdbcAiRuntimeProfileResolver;
+import io.omnnu.finbot.infrastructure.ai.persistence.JdbcAiInvocationRecoveryStore;
+import io.omnnu.finbot.infrastructure.identity.persistence.JdbcAdminApiTokenStore;
+import io.omnnu.finbot.infrastructure.identity.adapter.SecureAuthenticationCryptography;
+import io.omnnu.finbot.infrastructure.configuration.persistence.AesGcmRuntimeSecretCipher;
+import io.omnnu.finbot.infrastructure.configuration.persistence.JdbcConfigurationRepository;
+import io.omnnu.finbot.infrastructure.configuration.persistence.JdbcEncryptedRuntimeSecretStore;
+import io.omnnu.finbot.infrastructure.network.persistence.JdbcNetworkDiagnosticStore;
+import io.omnnu.finbot.infrastructure.setup.persistence.JdbcSetupProfileRepository;
+import io.omnnu.finbot.infrastructure.operations.persistence.JdbcBackgroundTaskStore;
+import io.omnnu.finbot.infrastructure.operations.persistence.TaskPayloadCodec;
+import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcWorkflowStore;
+import io.omnnu.finbot.infrastructure.workflow.persistence.WorkflowEventCodec;
+import io.omnnu.finbot.application.workflow.dto.StartWorkflowCommand;
+import io.omnnu.finbot.application.catalog.dto.CatalogInstrumentSnapshot;
+import io.omnnu.finbot.application.catalog.dto.CatalogSyncScope;
+import io.omnnu.finbot.application.setup.dto.SetupProfileId;
 import io.omnnu.finbot.domain.catalog.CatalogStatus;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.MarketType;
@@ -55,7 +55,7 @@ import io.omnnu.finbot.domain.ingestion.SourcePriority;
 import io.omnnu.finbot.domain.ingestion.SourceTier;
 import io.omnnu.finbot.domain.identity.AdminApiToken;
 import io.omnnu.finbot.domain.identity.AdminApiTokenId;
-import io.omnnu.finbot.application.ingestion.SourceCollectionRun;
+import io.omnnu.finbot.application.ingestion.dto.SourceCollectionRun;
 import io.omnnu.finbot.domain.network.OutboundRoute;
 import io.omnnu.finbot.domain.workflow.WorkflowAccepted;
 import io.omnnu.finbot.domain.workflow.WorkflowEventId;
@@ -103,7 +103,7 @@ class LiquibasePostgresIntegrationTest {
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         var masterKey = Base64.getEncoder().encodeToString(
                 "0123456789abcdef0123456789abcdef".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        io.omnnu.finbot.application.configuration.EnvironmentValueResolver environment = name -> switch (name) {
+        io.omnnu.finbot.application.configuration.port.out.EnvironmentValueResolver environment = name -> switch (name) {
             case "FINBOT_RUNTIME_SECRET_MASTER_KEY" -> Optional.of(masterKey);
             case "FINBOT_AI_PROVIDER_KEYS_JSON" -> Optional.of(
                     "{\"provider_grok_sub2api\":\"environment-fallback-key\"}");
@@ -367,7 +367,7 @@ class LiquibasePostgresIntegrationTest {
         var referenced = repository.listProviders().stream()
                 .filter(candidate -> usages.getOrDefault(
                         candidate.profileId(),
-                        io.omnnu.finbot.application.configuration.AiProviderUsage.NONE).inUse())
+                        io.omnnu.finbot.application.configuration.dto.AiProviderUsage.NONE).inUse())
                 .findFirst()
                 .orElseThrow();
         assertFalse(repository.archiveProvider(

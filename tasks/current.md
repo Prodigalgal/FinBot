@@ -7,7 +7,7 @@
 - 决策：保持 Java 等后端服务和 Web 单副本，不引入 Redis、MQ、Outbox 或分布式锁；PostgreSQL 继续作为唯一事实源和持久任务队列。
 - 范围：AI 预算原子终态、真实取消、绝对 deadline、有界 Provider 准入、Scheduler 隔离、大型服务拆分、完整 OpenAPI 和单副本 `Recreate`。
 - ADR：[`../docs/decisions/033-single-replica-modular-monolith.md`](../docs/decisions/033-single-replica-modular-monolith.md)。
-- 任务：[`in-progress/TASK-20260722-single-replica-control-plane-hardening.md`](./in-progress/TASK-20260722-single-replica-control-plane-hardening.md)。
+- 任务：[`in-progress/TASK-20260722-java-package-modularization.md`](./in-progress/TASK-20260722-java-package-modularization.md)。
 - 状态：代码与离线生产候选验收已完成；本机 149 个 Java 测试通过，20 个 PostgreSQL Testcontainers 用例因无容器运行时跳过，待 GitHub CI 实跑；尚未执行 GitOps 推送和生产 smoke。
 
 ## P1：Crawler Challenge 运行态收口
