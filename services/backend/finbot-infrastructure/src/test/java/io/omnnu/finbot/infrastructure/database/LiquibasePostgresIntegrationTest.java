@@ -1024,7 +1024,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(62, result.getInt("changeset_count"));
+                    assertEquals(66, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
@@ -1651,15 +1651,16 @@ class LiquibasePostgresIntegrationTest {
 
         jdbcClient.sql("""
                 insert into workflow_run (
-                  run_id, workflow_type, status, trigger_type, request_summary,
+                  run_id, idempotency_key, workflow_type, status, trigger_type, request_summary,
                   accepted_at, created_at, updated_at
                 ) values (
-                  :runId, 'INSTANT_RESEARCH', 'RUNNING', 'MANUAL', 'SDB store test',
+                  :runId, :idempotencyKey, 'INSTANT_RESEARCH', 'RUNNING', 'MANUAL', 'SDB store test',
                   :now, :now, :now
                 )
                 on conflict (run_id) do nothing
                 """)
                 .param("runId", runId.value())
+                .param("idempotencyKey", "test:sdb-store:" + runId.value())
                 .param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
                 .update();
         jdbcClient.sql("""
