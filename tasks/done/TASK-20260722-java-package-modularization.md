@@ -50,4 +50,7 @@
 - 2026-07-22：完成 Application、Infrastructure、Bootstrap API、配置、后台运行时和安全入口的 feature-first 职责分包；测试 package 同步迁移。
 - 2026-07-22：增加 `PackageArchitectureTest`，覆盖 path/package 一致性、层依赖方向、职责落位、Bootstrap 子包和禁止生成代码。
 - 2026-07-22：Grok 执行 Bootstrap 分包与架构守卫初稿，MiMo 独立复核，主 Agent 修正 `AuthenticationPolicy` 分类及 `*Policy` 守卫漏检；两套 CLI 最终复核均无阻断问题。
-- 2026-07-22：本地 Java 全量测试通过；Web 契约检查通过（93 paths / 109 controller operations）；Vitest 20/20 通过；生产构建通过。等待 GitHub CI、GitOps 与生产 smoke 验收。
+- 2026-07-22：本地 Java 全量测试通过；Web 契约检查通过（93 paths / 109 controller operations）；Vitest 20/20 通过；生产构建通过。
+- 2026-07-22：提交 `001998c` 推送至 `main`；GitHub Actions run `29892673979` 全部通过，包含真实 PostgreSQL/Testcontainers、Java/Python/Web、Playwright、Kustomize、4 个 ARM64 镜像、Trivy 和 Cosign。
+- 2026-07-22：GitOps revision `5e66734` 已同步；四个核心镜像运行 `sha-001998c040f2d37bbbc72843b07bf844cd7dc307`，Argo CD 为 `Synced/Healthy`，所有生产 Pod `Ready` 且 0 重启。
+- 2026-07-22：生产 root/live/ready 为 HTTP 200，匿名敏感 API 为 401；认证后 13 页面桌面/移动端、CSRF 409 业务冲突链路与 Operations SSE smoke 通过。任务完成。

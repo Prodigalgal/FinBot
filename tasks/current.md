@@ -2,13 +2,12 @@
 
 > 2026-07-20 以 `main@d70397a`、Liquibase `55/55`、FinBot GitOps 发布提交 `a4ab96e` 和生产 K8S 为事实基线。共享 GitOps 仓库后续 revision 可能因其他应用前进，应以 FinBot 镜像与资源差异判断实际发布。完成任务只保留索引，不再在本页重复流水账。
 
-## P1：单副本执行控制面、服务拆分与完整 OpenAPI
+## P1：Java package 模块化整理
 
-- 决策：保持 Java 等后端服务和 Web 单副本，不引入 Redis、MQ、Outbox 或分布式锁；PostgreSQL 继续作为唯一事实源和持久任务队列。
-- 范围：AI 预算原子终态、真实取消、绝对 deadline、有界 Provider 准入、Scheduler 隔离、大型服务拆分、完整 OpenAPI 和单副本 `Recreate`。
-- ADR：[`../docs/decisions/033-single-replica-modular-monolith.md`](../docs/decisions/033-single-replica-modular-monolith.md)。
-- 任务：[`in-progress/TASK-20260722-java-package-modularization.md`](./in-progress/TASK-20260722-java-package-modularization.md)。
-- 状态：代码与离线生产候选验收已完成；本机 149 个 Java 测试通过，20 个 PostgreSQL Testcontainers 用例因无容器运行时跳过，待 GitHub CI 实跑；尚未执行 GitOps 推送和生产 smoke。
+- 决策：保持现有 Gradle 模块和依赖方向，按业务域优先，再划分 `service`、`dto`、`port.in/out`、`persistence`、`client`、`adapter`、`controller` 等职责；不引入代码生成。
+- ADR：[`../docs/decisions/034-feature-first-java-package-architecture.md`](../docs/decisions/034-feature-first-java-package-architecture.md)。
+- 任务：[`done/TASK-20260722-java-package-modularization.md`](./done/TASK-20260722-java-package-modularization.md)。
+- 状态：已完成并发布；Java 全量测试、真实 PostgreSQL 集成测试、OpenAPI/Web 契约、前端测试、Playwright e2e、镜像扫描/签名、GitOps 和生产 13 页面 smoke 全部通过。
 
 ## P1：Crawler Challenge 运行态收口
 
@@ -69,6 +68,7 @@
 
 ## 最近完成并归档
 
+- Java feature-first package 模块化：[`done/TASK-20260722-java-package-modularization.md`](./done/TASK-20260722-java-package-modularization.md)。
 - P0-P1 产品闭环：[`done/P0-P1-quality-closure.md`](./done/P0-P1-quality-closure.md)。
 - 产品库、Watchlist 与研究工作台：[`done/P3-product-research-workspace.md`](./done/P3-product-research-workspace.md)。
 - First-party crawler 与目录 v1-v4：[`done/TASK-20260718-first-party-crawler.md`](./done/TASK-20260718-first-party-crawler.md)。
