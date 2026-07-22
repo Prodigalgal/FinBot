@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { api } from './api';
 import { SecretTextField } from './SecretTextField';
 import type { AccountOverview, AccountsOverview, PositionRecord, TradeAutomationDetail, TradeAutomationSummary } from './types';
-import { EmptyBlock, ErrorBlock, SectionTitle, formatMoney, formatTime, statusColor, statusLabel } from './ui';
+import { EmptyBlock, ErrorBlock, MetricStrip, SectionTitle, formatMoney, formatTime, statusColor, statusLabel } from './ui';
 import { TradingExecutionDetail } from './TradingExecutionDetail';
 
 type RangePreset = 'HOURS_24' | 'DAYS_7' | 'DAYS_30' | 'ALL' | 'CUSTOM';
@@ -98,7 +98,7 @@ export function TradingAccountOverview({ initialAccounts, onAccountsChanged }: {
     try { setExecution(await api.tradeAutomation(workflowRunId)); } catch (cause) { setError(cause); }
   };
 
-  return <Stack spacing={3}>
+  return <Stack spacing={2.25}>
     {error !== null && <ErrorBlock error={error} />}{message && <Alert severity="success">{message}</Alert>}
     <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}>
       <FormControl size="small" sx={{ minWidth: 150 }}><InputLabel>盈亏区间</InputLabel><Select label="盈亏区间" value={range} onChange={(event) => setRange(event.target.value as RangePreset)}><MenuItem value="HOURS_24">24 小时</MenuItem><MenuItem value="DAYS_7">7 天</MenuItem><MenuItem value="DAYS_30">30 天</MenuItem><MenuItem value="ALL">全部历史</MenuItem><MenuItem value="CUSTOM">自定义</MenuItem></Select></FormControl>
@@ -107,14 +107,24 @@ export function TradingAccountOverview({ initialAccounts, onAccountsChanged }: {
       <Typography variant="caption" color="text.secondary" sx={{ ml: { lg: 'auto' } }}>统计区间 {formatTime(accounts.range.fromInclusive)} 至 {formatTime(accounts.range.toExclusive)} · 生成于 {formatTime(accounts.generatedAt)}</Typography>
     </Stack>
 
-    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>{[
-      ['总权益', formatMoney(accounts.totalEquity, accounts.currency)],
-      ['可用余额', formatMoney(accounts.totalAvailableBalance, accounts.currency)],
-      ['未实现盈亏', formatMoney(accounts.totalUnrealizedPnl, accounts.currency)],
-      ['区间已实现盈亏', formatMoney(accounts.totalRealizedPnl, accounts.currency)],
-    ].map(([label, value]) => <Paper key={label} variant="outlined" sx={{ p: 2, flex: 1 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="h2" color={label.includes('盈亏') && numericMoney(value) < 0 ? 'error.main' : 'text.primary'}>{value}</Typography></Paper>)}</Stack>
+    <MetricStrip items={[
+      { label: '总权益', value: formatMoney(accounts.totalEquity, accounts.currency), detail: '全部模拟账户合计' },
+      { label: '可用余额', value: formatMoney(accounts.totalAvailableBalance, accounts.currency), detail: '当前可用于模拟委托' },
+      { label: '未实现盈亏', value: formatMoney(accounts.totalUnrealizedPnl, accounts.currency), detail: '当前持仓浮动盈亏', tone: Number(accounts.totalUnrealizedPnl) < 0 ? 'error' : 'success' },
+      { label: '区间已实现盈亏', value: formatMoney(accounts.totalRealizedPnl, accounts.currency), detail: '所选时间区间', tone: Number(accounts.totalRealizedPnl) < 0 ? 'error' : 'success' },
+    ]} />
 
-    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5}>{accounts.accounts.map((account) => <Paper key={account.accountId} variant="outlined" onClick={() => void chooseAccount(account.accountId)} sx={{ p: 2, flex: 1, cursor: 'pointer', borderColor: selectedAccount === account.accountId ? 'primary.main' : 'divider' }}><Stack direction="row" justifyContent="space-between" spacing={1}><Box><Typography fontWeight={700}>{account.displayName}</Typography><Typography variant="caption" color="text.secondary">{account.exchange} · {account.environment}</Typography></Box><Stack alignItems="flex-end"><Chip size="small" color={account.enabled && account.dataStatus === 'READY' ? 'success' : 'warning'} label={!account.enabled ? '已停用' : account.dataStatus === 'READY' ? '数据正常' : statusLabel(account.dataStatus)} /><FormControlLabel sx={{ mr: 0, mt: 0.5 }} control={<Switch size="small" checked={account.enabled} disabled={savingAccountId === account.accountId} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.stopPropagation(); void setAccountEnabled(account.accountId, event.target.checked, account.version); }} />} label="启用" /></Stack></Stack><Typography variant="h2" sx={{ mt: 1 }}>{formatMoney(account.equity, account.currency)}</Typography><Typography variant="body2" color="text.secondary">未实现 {formatMoney(account.unrealizedPnl, account.currency)} · 区间已实现 {formatMoney(account.realizedPnl, account.currency)}</Typography><Typography variant="caption" color="text.secondary">可用 {formatMoney(account.availableBalance, account.currency)} · 快照 {formatTime(account.snapshotAt)}</Typography></Paper>)}</Stack>
+    <Box><SectionTitle title="模拟账户" /><Paper variant="outlined" sx={{ overflow: 'hidden' }}>{accounts.accounts.map((account, index) => {
+      const selected = selectedAccount === account.accountId;
+      return <Box key={account.accountId} onClick={() => void chooseAccount(account.accountId)} sx={{ position: 'relative', cursor: 'pointer', px: 2, py: 1.5, borderTop: index ? '1px solid' : 0, borderColor: 'divider', bgcolor: selected ? 'primary.light' : 'background.paper', '&:hover': { bgcolor: selected ? 'primary.light' : 'action.hover' }, '&::before': selected ? { content: '""', position: 'absolute', inset: '0 auto 0 0', width: 3, bgcolor: 'primary.main' } : undefined }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} spacing={1.5}>
+          <Box sx={{ minWidth: 180 }}><Stack direction="row" spacing={1} alignItems="center"><Typography variant="subtitle1">{account.displayName}</Typography><Chip size="small" color={account.enabled && account.dataStatus === 'READY' ? 'success' : 'warning'} label={!account.enabled ? '已停用' : account.dataStatus === 'READY' ? '数据正常' : statusLabel(account.dataStatus)} /></Stack><Typography variant="caption" color="text.secondary">{account.exchange} · {account.environment}</Typography></Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="h2">{formatMoney(account.equity, account.currency)}</Typography><Typography variant="caption" color="text.secondary">可用 {formatMoney(account.availableBalance, account.currency)} · 快照 {formatTime(account.snapshotAt)}</Typography></Box>
+          <Stack direction="row" spacing={2} sx={{ minWidth: { md: 300 } }}><Box><Typography variant="caption" color="text.secondary">未实现</Typography><Typography variant="body2" color={Number(account.unrealizedPnl) < 0 ? 'error.main' : 'success.main'}>{formatMoney(account.unrealizedPnl, account.currency)}</Typography></Box><Box><Typography variant="caption" color="text.secondary">区间已实现</Typography><Typography variant="body2" color={Number(account.realizedPnl) < 0 ? 'error.main' : 'success.main'}>{formatMoney(account.realizedPnl, account.currency)}</Typography></Box></Stack>
+          <FormControlLabel sx={{ mr: 0 }} control={<Switch size="small" checked={account.enabled} disabled={savingAccountId === account.accountId} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.stopPropagation(); void setAccountEnabled(account.accountId, event.target.checked, account.version); }} />} label="启用" />
+        </Stack>
+      </Box>;
+    })}</Paper></Box>
 
     {accounts.accounts.find((account) => account.accountId === selectedAccount) && <AccountCredentialEditor account={accounts.accounts.find((account) => account.accountId === selectedAccount)!} draft={credentialDraft} setDraft={setCredentialDraft} busy={loading} put={putCredential} clear={clearCredential} test={testAccount} />}
 
@@ -126,7 +136,8 @@ export function TradingAccountOverview({ initialAccounts, onAccountsChanged }: {
 }
 
 function AccountCredentialEditor({ account, draft, setDraft, busy, put, clear, test }: { account: AccountOverview; draft: { apiKey: string; apiSecret: string }; setDraft: (value: { apiKey: string; apiSecret: string }) => void; busy: boolean; put: (account: AccountOverview, name: 'API_KEY' | 'API_SECRET', value: string, version: number) => Promise<void>; clear: (account: AccountOverview, name: 'API_KEY' | 'API_SECRET', version: number) => Promise<void>; test: (account: AccountOverview) => Promise<void> }) {
-  return <Box><SectionTitle title={`${account.displayName}凭据`} /><Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><SecretTextField fullWidth autoComplete="new-password" label={`API Key · ${secretSourceLabel(account.apiKeySource)}`} value={draft.apiKey} onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })} helperText={account.apiKeyFingerprint ? `当前指纹 ${account.apiKeyFingerprint}` : '当前无凭据'} /><Button disabled={busy || draft.apiKey.trim().length < 8} onClick={() => void put(account, 'API_KEY', draft.apiKey, account.apiKeyVersion)}>设置 Key</Button><Button color="error" disabled={busy || account.apiKeySource !== 'DATABASE_OVERRIDE'} onClick={() => void clear(account, 'API_KEY', account.apiKeyVersion)}>清除</Button></Stack><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><SecretTextField fullWidth autoComplete="new-password" label={`API Secret · ${secretSourceLabel(account.apiSecretSource)}`} value={draft.apiSecret} onChange={(event) => setDraft({ ...draft, apiSecret: event.target.value })} helperText={account.apiSecretFingerprint ? `当前指纹 ${account.apiSecretFingerprint}` : '当前无凭据'} /><Button disabled={busy || draft.apiSecret.trim().length < 8} onClick={() => void put(account, 'API_SECRET', draft.apiSecret, account.apiSecretVersion)}>设置 Secret</Button><Button color="error" disabled={busy || account.apiSecretSource !== 'DATABASE_OVERRIDE'} onClick={() => void clear(account, 'API_SECRET', account.apiSecretVersion)}>清除</Button></Stack><Button variant="contained" disabled={busy || !account.credentialConfigured} onClick={() => void test(account)} sx={{ alignSelf: 'flex-end' }}>在线同步测试</Button></Stack></Paper></Box>;
+  const commandSx = { minWidth: { md: 92 }, whiteSpace: 'nowrap' } as const;
+  return <Box><SectionTitle title={`${account.displayName}凭据`} /><Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><SecretTextField fullWidth autoComplete="new-password" label={`API Key · ${secretSourceLabel(account.apiKeySource)}`} value={draft.apiKey} onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })} helperText={account.apiKeyFingerprint ? `当前指纹 ${account.apiKeyFingerprint}` : '当前无凭据'} /><Button sx={commandSx} disabled={busy || draft.apiKey.trim().length < 8} onClick={() => void put(account, 'API_KEY', draft.apiKey, account.apiKeyVersion)}>设置 Key</Button><Button sx={commandSx} color="error" disabled={busy || account.apiKeySource !== 'DATABASE_OVERRIDE'} onClick={() => void clear(account, 'API_KEY', account.apiKeyVersion)}>清除</Button></Stack><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><SecretTextField fullWidth autoComplete="new-password" label={`API Secret · ${secretSourceLabel(account.apiSecretSource)}`} value={draft.apiSecret} onChange={(event) => setDraft({ ...draft, apiSecret: event.target.value })} helperText={account.apiSecretFingerprint ? `当前指纹 ${account.apiSecretFingerprint}` : '当前无凭据'} /><Button sx={commandSx} disabled={busy || draft.apiSecret.trim().length < 8} onClick={() => void put(account, 'API_SECRET', draft.apiSecret, account.apiSecretVersion)}>设置 Secret</Button><Button sx={commandSx} color="error" disabled={busy || account.apiSecretSource !== 'DATABASE_OVERRIDE'} onClick={() => void clear(account, 'API_SECRET', account.apiSecretVersion)}>清除</Button></Stack><Button variant="contained" disabled={busy || !account.credentialConfigured} onClick={() => void test(account)} sx={{ alignSelf: 'flex-end', whiteSpace: 'nowrap' }}>在线同步测试</Button></Stack></Paper></Box>;
 }
 
 function secretSourceLabel(source: AccountOverview['apiKeySource']): string { return ({ DATABASE_OVERRIDE: '后台热配置', ENVIRONMENT_FALLBACK: '启动备用配置', UNCONFIGURED: '未配置' } as const)[source]; }
@@ -142,5 +153,3 @@ function dayBoundary(value: string, end: boolean): string {
   if (end) date.setDate(date.getDate() + 1);
   return date.toISOString();
 }
-
-function numericMoney(value: string): number { return Number(value.split(' ')[0].replace(/,/g, '')); }

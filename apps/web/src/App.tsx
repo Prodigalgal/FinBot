@@ -8,13 +8,31 @@ import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import LanOutlinedIcon from '@mui/icons-material/LanOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
+import MenuIcon from '@mui/icons-material/Menu';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SchemaOutlinedIcon from '@mui/icons-material/SchemaOutlined';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined';
-import { AppBar, Box, ButtonBase, Chip, Collapse, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, ListSubheader, MenuItem, Stack, TextField, Toolbar, Tooltip, Typography, useMediaQuery } from '@mui/material';
+import {
+  AppBar,
+  Box,
+  ButtonBase,
+  Chip,
+  Collapse,
+  Drawer,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Stack,
+  Toolbar,
+  Tooltip,
+  Typography,
+  useMediaQuery,
+} from '@mui/material';
 import type { ReactElement } from 'react';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useTheme } from '@mui/material/styles';
@@ -37,7 +55,12 @@ const SettingsPage = lazy(() => import('./SettingsPage').then((module) => ({ def
 const TradingPage = lazy(() => import('./TradingPage').then((module) => ({ default: module.TradingPage })));
 const WorkflowPage = lazy(() => import('./WorkflowPage').then((module) => ({ default: module.WorkflowPage })));
 
-const drawerWidth = 236;
+/** Desktop rail width (~240px). */
+const drawerWidth = 240;
+const commandBarHeight = { xs: 60, sm: 64 } as const;
+const shellRadius = 1; // theme shape max 6px
+const zeroTracking = { letterSpacing: 0 } as const;
+
 type PageId = 'dashboard' | 'catalog' | 'research' | 'autonomous' | 'review' | 'market' | 'quant' | 'trading' | 'ingestion' | 'reports' | 'settings' | 'workflow' | 'network';
 interface PageDefinition { id: PageId; group: string; label: string; title: string; icon: ReactElement }
 interface NavigationGroupDefinition {
@@ -78,10 +101,12 @@ export function App() {
   const [operations, setOperations] = useState<OperationsOverview | null>(null);
   const [researchQuestion, setResearchQuestion] = useState<string | undefined>();
   const [researchLaunch, setResearchLaunch] = useState<ResearchLaunch | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(navigationGroups.map((group) => [group.key, group.initiallyExpanded])),
   );
   const current = useMemo(() => pages.find((item) => item.id === page) || pages[0], [page]);
+  const currentGroupLabel = navigationGroups.find((group) => group.key === current.group)?.label ?? current.group;
   const refreshStatus = () => api.operations().then(setOperations).catch(() => undefined);
   const navigate = (target: string) => {
     if (!pageIds.has(target as PageId)) return;
@@ -89,6 +114,10 @@ export function App() {
     setPageState(next);
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${next}`);
     window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+  const navigateFromMenu = (target: PageId) => {
+    navigate(target);
+    setMobileNavOpen(false);
   };
 
   useEffect(() => {
@@ -104,25 +133,46 @@ export function App() {
         retryMilliseconds = 3000;
       });
       source.onerror = () => {
-        source?.close(); source = null;
+        source?.close();
+        source = null;
         void refreshStatus();
         if (!disposed) timer = window.setTimeout(connect, retryMilliseconds);
         retryMilliseconds = Math.min(30000, retryMilliseconds * 2);
       };
     };
-    void refreshStatus(); connect();
+    void refreshStatus();
+    connect();
     const hashListener = () => setPageState(pageFromHash());
     window.addEventListener('hashchange', hashListener);
-    return () => { disposed = true; source?.close(); if (timer !== undefined) window.clearTimeout(timer); window.removeEventListener('hashchange', hashListener); };
+    return () => {
+      disposed = true;
+      source?.close();
+      if (timer !== undefined) window.clearTimeout(timer);
+      window.removeEventListener('hashchange', hashListener);
+    };
   }, []);
 
   useEffect(() => {
-    setExpandedGroups((groups) => groups[current.group] ? groups : { ...groups, [current.group]: true });
+    setExpandedGroups((groups) => (groups[current.group] ? groups : { ...groups, [current.group]: true }));
   }, [current.group]);
 
-  const openResearch = (question: string) => { setResearchQuestion(question); setResearchLaunch(null); navigate('research'); };
-  const openLaunch = (launch: ResearchLaunch) => { setResearchLaunch(launch); setResearchQuestion(undefined); navigate('research'); };
-  const toggleGroup = (groupKey: string) => setExpandedGroups((groups) => ({ ...groups, [groupKey]: !groups[groupKey] }));
+  useEffect(() => {
+    if (desktop) setMobileNavOpen(false);
+  }, [desktop]);
+
+  const openResearch = (question: string) => {
+    setResearchQuestion(question);
+    setResearchLaunch(null);
+    navigate('research');
+  };
+  const openLaunch = (launch: ResearchLaunch) => {
+    setResearchLaunch(launch);
+    setResearchQuestion(undefined);
+    navigate('research');
+  };
+  const toggleGroup = (groupKey: string) =>
+    setExpandedGroups((groups) => ({ ...groups, [groupKey]: !groups[groupKey] }));
+
   const content = (() => {
     switch (page) {
       case 'dashboard': return <DashboardPage onNavigate={navigate} />;
@@ -140,38 +190,318 @@ export function App() {
       case 'network': return <NetworkPage />;
     }
   })();
+
   const workerOnline = operations?.workers.some((worker) => worker.status === 'RUNNING') || false;
-  return <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
-    {desktop && <Drawer component="nav" aria-label="主导航" variant="permanent" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', borderRightColor: 'divider' } }}>
-      <Box sx={{ px: 2, py: 2.25, borderBottom: '1px solid', borderColor: 'divider' }}><Typography variant="h2">FinBot</Typography><Typography variant="caption" color="text.secondary">AI 研究与走势预测</Typography></Box>
-      <Box sx={{ overflowY: 'auto', px: 1, py: 1.25 }}>{navigationGroups.map((group) => {
-        const expanded = expandedGroups[group.key] ?? group.initiallyExpanded;
-        const groupPages = pages.filter((item) => item.group === group.key);
-        return <Box key={group.key} sx={{ mb: 1 }}>
-          <ButtonBase
-            data-testid={`nav-group-${group.key}`}
-            aria-expanded={expanded}
-            onClick={() => toggleGroup(group.key)}
-            sx={{ width: '100%', borderRadius: 1, px: 1.25, py: .6, textAlign: 'left', '&:hover': { bgcolor: 'action.hover' } }}
+
+  const navigationBody = (
+    <>
+      <Box
+        sx={{
+          px: 2,
+          py: 2,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          flexShrink: 0,
+        }}
+      >
+        <Typography variant="h2" sx={{ ...zeroTracking, fontSize: 18, lineHeight: 1.25 }}>
+          FinBot
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={zeroTracking}>
+          AI 研究与走势预测
+        </Typography>
+      </Box>
+      <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0, px: 1, py: 1.25 }}>
+        {navigationGroups.map((group) => {
+          const expanded = expandedGroups[group.key] ?? group.initiallyExpanded;
+          const groupPages = pages.filter((item) => item.group === group.key);
+          return (
+            <Box key={group.key} sx={{ mb: 1 }}>
+              <ButtonBase
+                data-testid={`nav-group-${group.key}`}
+                aria-expanded={expanded}
+                onClick={() => toggleGroup(group.key)}
+                sx={{
+                  width: '100%',
+                  borderRadius: shellRadius,
+                  px: 1.25,
+                  py: 0.6,
+                  textAlign: 'left',
+                  ...zeroTracking,
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+              >
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography
+                    variant="overline"
+                    color="text.secondary"
+                    display="block"
+                    lineHeight={1.2}
+                    sx={zeroTracking}
+                  >
+                    {group.label}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap sx={zeroTracking}>
+                    {group.description}
+                  </Typography>
+                </Box>
+                <ExpandMoreIcon
+                  fontSize="small"
+                  sx={{
+                    color: 'text.secondary',
+                    transform: expanded ? 'rotate(180deg)' : 'none',
+                    transition: 'transform 160ms ease',
+                  }}
+                />
+              </ButtonBase>
+              <Collapse in={expanded} timeout="auto" unmountOnExit>
+                <List disablePadding sx={{ mt: 0.35 }}>
+                  {groupPages.map((item) => {
+                    const selected = page === item.id;
+                    return (
+                      <ListItemButton
+                        key={item.id}
+                        selected={selected}
+                        aria-current={selected ? 'page' : undefined}
+                        onClick={() => (desktop ? navigate(item.id) : navigateFromMenu(item.id))}
+                        sx={{
+                          borderRadius: shellRadius,
+                          mb: 0.25,
+                          minHeight: 40,
+                          pl: 1.25,
+                          pr: 1,
+                          borderLeft: '3px solid',
+                          borderLeftColor: selected ? 'primary.main' : 'transparent',
+                          bgcolor: selected ? 'action.selected' : 'transparent',
+                          '&.Mui-selected': {
+                            bgcolor: 'action.selected',
+                            color: 'primary.dark',
+                            '&:hover': { bgcolor: 'action.selected' },
+                            '& .MuiListItemIcon-root': { color: 'primary.main' },
+                          },
+                          '&:hover': {
+                            bgcolor: selected ? 'action.selected' : 'action.hover',
+                          },
+                        }}
+                      >
+                        <ListItemIcon sx={{ minWidth: 34, color: selected ? 'primary.main' : 'text.secondary' }}>
+                          {item.icon}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={item.label}
+                          primaryTypographyProps={{
+                            fontSize: 13,
+                            fontWeight: selected ? 700 : 600,
+                            letterSpacing: 0,
+                            noWrap: true,
+                          }}
+                        />
+                      </ListItemButton>
+                    );
+                  })}
+                </List>
+              </Collapse>
+            </Box>
+          );
+        })}
+      </Box>
+      <Box
+        sx={{
+          mt: 'auto',
+          p: 1.5,
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          flexShrink: 0,
+        }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Chip size="small" color={workerOnline ? 'success' : 'warning'} label={workerOnline ? 'Worker 在线' : 'Worker 离线'} />
+          <Typography variant="caption" color="text.secondary" sx={zeroTracking}>
+            常驻调度
+          </Typography>
+        </Stack>
+      </Box>
+    </>
+  );
+
+  const drawerPaperSx = {
+    width: drawerWidth,
+    boxSizing: 'border-box' as const,
+    borderRightColor: 'divider',
+    bgcolor: 'background.paper',
+    display: 'flex',
+    flexDirection: 'column' as const,
+  };
+
+  return (
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default', overflowX: 'hidden' }}>
+      {desktop && (
+        <Drawer
+          component="nav"
+          aria-label="主导航"
+          variant="permanent"
+          open
+          sx={{
+            width: drawerWidth,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': drawerPaperSx,
+          }}
+        >
+          {navigationBody}
+        </Drawer>
+      )}
+
+      {!desktop && (
+        <Drawer
+          id="mobile-navigation-drawer"
+          component="nav"
+          aria-label="主导航"
+          variant="temporary"
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            display: { xs: 'block', md: 'none' },
+            '& .MuiDrawer-paper': {
+              ...drawerPaperSx,
+              maxWidth: 'min(240px, 86vw)',
+            },
+          }}
+        >
+          {navigationBody}
+        </Drawer>
+      )}
+
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <AppBar
+          position="sticky"
+          color="inherit"
+          elevation={0}
+          sx={{
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            backgroundImage: 'none',
+          }}
+        >
+          <Toolbar
+            disableGutters
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 0.75, sm: 1.25 },
+              px: { xs: 1.5, sm: 2 },
+              minHeight: commandBarHeight,
+              height: commandBarHeight,
+              boxSizing: 'border-box',
+            }}
           >
-            <Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="overline" color="text.secondary" display="block" lineHeight={1.2}>{group.label}</Typography><Typography variant="caption" color="text.secondary" noWrap>{group.description}</Typography></Box>
-            <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 160ms ease' }} />
-          </ButtonBase>
-          <Collapse in={expanded} timeout="auto" unmountOnExit>
-            <List disablePadding sx={{ mt: .35 }}>{groupPages.map((item) => <ListItemButton key={item.id} selected={page === item.id} aria-current={page === item.id ? 'page' : undefined} onClick={() => navigate(item.id)} sx={{ borderRadius: 1, mb: .25, minHeight: 38, pl: 1.25 }}><ListItemIcon sx={{ minWidth: 34 }}>{item.icon}</ListItemIcon><ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 13, fontWeight: 700 }} /></ListItemButton>)}</List>
-          </Collapse>
-        </Box>;
-      })}</Box>
-      <Box sx={{ mt: 'auto', p: 1.5, borderTop: '1px solid', borderColor: 'divider' }}><Stack direction="row" spacing={1} alignItems="center"><Chip size="small" color={workerOnline ? 'success' : 'warning'} label={workerOnline ? 'Worker 在线' : 'Worker 离线'} /><Typography variant="caption" color="text.secondary">常驻调度</Typography></Stack></Box>
-    </Drawer>}
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}><Toolbar sx={{ display: { xs: 'grid', sm: 'flex' }, gridTemplateColumns: { xs: 'minmax(0, 1fr) auto auto' }, gridTemplateAreas: { xs: '"navigation refresh logout" "heading heading heading"' }, columnGap: { xs: .75, sm: 1.25 }, rowGap: { xs: .75 }, py: { xs: 1, sm: 0 }, minHeight: { xs: 'auto', sm: 64, md: 68 } }}>{!desktop && <TextField data-testid="mobile-navigation" select SelectProps={{ inputProps: { 'aria-label': '移动导航' } }} size="small" value={page} onChange={(event) => navigate(event.target.value)} sx={{ gridArea: { xs: 'navigation', sm: 'auto' }, width: { xs: '100%', sm: 190 }, minWidth: 0 }}>{navigationGroups.flatMap((group) => [<ListSubheader key={`${group.key}-header`} disableSticky>{group.label}</ListSubheader>, ...pages.filter((item) => item.group === group.key).map((item) => <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>)])}</TextField>}<Box sx={{ gridArea: { xs: 'heading', sm: 'auto' }, flex: 1, minWidth: 0, overflow: 'hidden' }}><Typography variant="caption" color="text.secondary" noWrap>{navigationGroups.find((group) => group.key === current.group)?.label} / {current.label}</Typography><Typography data-testid="app-page-title" variant="h1" sx={{ overflowWrap: 'anywhere' }}>{current.title}</Typography><Typography variant="caption" color="text.secondary" noWrap>Java 26 · PostgreSQL · Python Quant{operations && <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}> · 状态更新 {formatTime(operations.generatedAt)}</Box>}</Typography></Box><Chip size="small" color={statusColor(workerOnline ? 'RUNNING' : 'FAILED')} label={workerOnline ? '常驻运行' : '需检查'} sx={{ display: { xs: 'none', sm: 'inline-flex' } }} /><Tooltip title="刷新运行状态"><IconButton sx={{ gridArea: { xs: 'refresh', sm: 'auto' } }} onClick={() => void refreshStatus()}><RefreshIcon /></IconButton></Tooltip><Tooltip title="退出登录"><IconButton sx={{ gridArea: { xs: 'logout', sm: 'auto' } }} onClick={() => api.logout().finally(() => window.location.reload())}><LogoutIcon /></IconButton></Tooltip></Toolbar></AppBar>
-      <Box component="main" sx={{ p: { xs: 1.25, sm: 2, lg: 2.5 }, maxWidth: 1680, mx: 'auto' }}><Suspense fallback={<LoadingBlock label="正在加载工作区" />}>{content}</Suspense></Box>
+            {!desktop && (
+              <IconButton
+                data-testid="mobile-navigation"
+                aria-label="打开导航菜单"
+                aria-controls="mobile-navigation-drawer"
+                aria-expanded={mobileNavOpen}
+                edge="start"
+                onClick={() => setMobileNavOpen(true)}
+                sx={{
+                  width: 44,
+                  height: 44,
+                  flexShrink: 0,
+                  borderRadius: shellRadius,
+                }}
+              >
+                <MenuIcon />
+              </IconButton>
+            )}
+
+            <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden', py: 0.5 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                noWrap
+                sx={{ ...zeroTracking, display: 'block', lineHeight: 1.2 }}
+              >
+                {currentGroupLabel} / {current.label}
+              </Typography>
+              <Typography
+                data-testid="app-page-title"
+                component="h1"
+                variant="h1"
+                noWrap
+                sx={{
+                  ...zeroTracking,
+                  fontSize: { xs: 16, sm: 18, md: 20 },
+                  fontWeight: 700,
+                  lineHeight: 1.25,
+                  color: 'text.primary',
+                }}
+              >
+                {current.title}
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                noWrap
+                sx={{ ...zeroTracking, display: { xs: 'none', sm: 'block' }, lineHeight: 1.25 }}
+              >
+                Java 26 · PostgreSQL · Python Quant
+                {operations && (
+                  <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}>
+                    {' '}
+                    · 状态更新 {formatTime(operations.generatedAt)}
+                  </Box>
+                )}
+              </Typography>
+            </Box>
+
+            <Chip
+              size="small"
+              color={statusColor(workerOnline ? 'RUNNING' : 'FAILED')}
+              label={workerOnline ? '常驻运行' : '需检查'}
+              sx={{ display: { xs: 'none', sm: 'inline-flex' }, flexShrink: 0 }}
+            />
+            <Tooltip title="刷新运行状态">
+              <IconButton
+                aria-label="刷新运行状态"
+                onClick={() => void refreshStatus()}
+                sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: shellRadius }}
+              >
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="退出登录">
+              <IconButton
+                aria-label="退出登录"
+                onClick={() => api.logout().finally(() => window.location.reload())}
+                sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: shellRadius }}
+              >
+                <LogoutIcon />
+              </IconButton>
+            </Tooltip>
+          </Toolbar>
+        </AppBar>
+
+        <Box
+          component="main"
+          sx={{
+            flex: 1,
+            p: { xs: 2, sm: 2, lg: 2.5 },
+            maxWidth: 1680,
+            width: '100%',
+            mx: 'auto',
+            boxSizing: 'border-box',
+            minWidth: 0,
+          }}
+        >
+          <Suspense fallback={<LoadingBlock label="正在加载工作区" />}>{content}</Suspense>
+        </Box>
+      </Box>
     </Box>
-  </Box>;
+  );
 }
 
 function pageFromHash(): PageId {
   const value = window.location.hash.replace(/^#/, '').split('/', 1)[0];
-  return pageIds.has(value as PageId) ? value as PageId : 'dashboard';
+  return pageIds.has(value as PageId) ? (value as PageId) : 'dashboard';
 }

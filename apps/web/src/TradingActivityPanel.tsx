@@ -6,7 +6,7 @@ import { Fragment, useEffect, useState } from 'react';
 
 import { api } from './api';
 import type { AccountOverview, ActivityPage, ActivityRecord } from './types';
-import { EmptyBlock, ErrorBlock, LoadingBlock, SectionTitle, formatMoney, formatTime, statusColor, statusLabel } from './ui';
+import { EmptyBlock, ErrorBlock, LoadingBlock, MetricStrip, SectionTitle, formatMoney, formatTime, statusColor, statusLabel } from './ui';
 
 type Cursor = ActivityPage['nextCursor'];
 type Filters = { accountId: string; source: string; activityType: string; status: string; symbol: string; range: string; from: string; to: string; limit: number };
@@ -74,7 +74,7 @@ export function TradingActivityPanel({ accounts }: { accounts: AccountOverview[]
     void load(filters, previousCursor);
   };
 
-  return <Stack spacing={2.5}>
+  return <Stack spacing={2.25}>
     {error !== null && <ErrorBlock error={error} />}
     <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}><Stack direction="row" spacing={1} alignItems="center"><FilterAltOutlinedIcon color="primary" /><Typography fontWeight={700}>历史筛选</Typography></Stack><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} flexWrap={{ md: 'wrap' }} useFlexGap>
       <TextField select size="small" label="账户" value={draft.accountId} onChange={(event) => setDraft({ ...draft, accountId: event.target.value })} sx={{ minWidth: 190 }}><MenuItem value="">全部账户与无账户记录</MenuItem>{accounts.map((account) => <MenuItem key={account.accountId} value={account.accountId}>{account.displayName}</MenuItem>)}</TextField>
@@ -89,15 +89,15 @@ export function TradingActivityPanel({ accounts }: { accounts: AccountOverview[]
     </Stack></Stack></Paper>
 
     {loading && !payload ? <LoadingBlock label="正在读取永久交易仓库" /> : payload && <>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-        <Metric label="匹配记录" value={payload.matchedCount} />
-        <Metric label="AI 决策" value={count(payload, 'DECISION')} />
-        <Metric label="风险/预估" value={count(payload, 'RISK_ASSESSMENT') + count(payload, 'ESTIMATE')} />
-        <Metric label="本地订单事件" value={count(payload, 'OMS_ORDER') + count(payload, 'OMS_EVENT')} />
-        <Metric label="交易所订单/成交" value={count(payload, 'ORDER') + count(payload, 'FILL')} />
-      </Stack>
+      <MetricStrip items={[
+        { label: '匹配记录', value: payload.matchedCount },
+        { label: 'AI 决策', value: count(payload, 'DECISION') },
+        { label: '风险 / 预估', value: count(payload, 'RISK_ASSESSMENT') + count(payload, 'ESTIMATE') },
+        { label: '本地订单事件', value: count(payload, 'OMS_ORDER') + count(payload, 'OMS_EVENT') },
+        { label: '交易所订单 / 成交', value: count(payload, 'ORDER') + count(payload, 'FILL') },
+      ]} />
 
-      <Box><SectionTitle title="数据来源与完整性" /><Stack spacing={1}>{payload.sources.map((source) => <Paper key={`${source.source}-${source.accountId || 'local'}`} variant="outlined" sx={{ px: 2, py: 1.25 }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}><Box><Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap"><Typography fontWeight={700}>{source.source === 'LOCAL_OMS' ? 'FinBot 本地永久审计' : `${source.exchange} · ${source.accountId}`}</Typography><Chip size="small" color={statusColor(source.status)} label={statusLabel(source.status)} /><Chip size="small" variant="outlined" label={source.complete ? '来源完整' : '需要关注'} /></Stack><Typography variant="caption" color="text.secondary">{source.message}</Typography></Box><Typography variant="caption" color="text.secondary">最新 {formatTime(source.latestAt)}</Typography></Stack></Paper>)}</Stack></Box>
+      <Box><SectionTitle title="数据来源与完整性" /><Paper variant="outlined" sx={{ overflow: 'hidden' }}>{payload.sources.map((source, index) => <Stack key={`${source.source}-${source.accountId || 'local'}`} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} sx={{ px: 2, py: 1.25, borderTop: index ? '1px solid' : 0, borderColor: 'divider', '&:hover': { bgcolor: 'action.hover' } }}><Box><Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap"><Typography variant="body2" fontWeight={700}>{source.source === 'LOCAL_OMS' ? 'FinBot 本地永久审计' : `${source.exchange} · ${source.accountId}`}</Typography><Chip size="small" color={statusColor(source.status)} label={statusLabel(source.status)} /><Chip size="small" variant="outlined" label={source.complete ? '来源完整' : '需要关注'} /></Stack><Typography variant="caption" color="text.secondary">{source.message}</Typography></Box><Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>最新 {formatTime(source.latestAt)}</Typography></Stack>)}</Paper></Box>
 
       <Box><SectionTitle title="统一操作时间线" />{desktop ? <DesktopActivityTable payload={payload} expanded={expanded} setExpanded={setExpanded} /> : <MobileActivityList payload={payload} expanded={expanded} setExpanded={setExpanded} />}{payload.activities.length === 0 && <Paper variant="outlined"><EmptyBlock>{payload.matchedCount === 0 ? '当前筛选条件下确实没有操作记录' : '本页没有可显示记录'}</EmptyBlock></Paper>}</Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="caption" color="text.secondary">第 {history.length + 1} 页 · 当前 {payload.activities.length} 条 / 共 {payload.matchedCount} 条</Typography><Stack direction="row" spacing={1}><Button variant="outlined" onClick={previous} disabled={loading || history.length === 0}>上一页</Button><Button variant="outlined" onClick={next} disabled={loading || !payload.nextCursor}>下一页</Button></Stack></Stack>
@@ -124,7 +124,6 @@ function ActivityDetail({ activity }: { activity: ActivityRecord }) {
   return <Box sx={{ my: 1, p: 1.5, bgcolor: 'action.hover' }}><Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>{facts.map(([label, value], index) => <Box key={`${label}-${index}`} sx={{ minWidth: 0 }}><Typography variant="caption" color="text.secondary">{detailLabel(label)}</Typography><Typography variant="body2" sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{detailValue(value)}</Typography></Box>)}</Box></Box>;
 }
 
-function Metric({ label, value }: { label: string; value: number }) { return <Paper variant="outlined" sx={{ p: 1.5, flex: 1, minWidth: 0 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="h2">{value}</Typography></Paper>; }
 function count(payload: ActivityPage, type: string): number { return payload.counts.find((item) => item.activityType === type)?.count || 0; }
 function parseDetails(value: string): Record<string, unknown> { try { const parsed = JSON.parse(value) as unknown; return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}; } catch { return {}; } }
 function detailValue(value: unknown): string { return typeof value === 'object' && value !== null ? JSON.stringify(value, null, 2) : String(value ?? '-'); }

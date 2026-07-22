@@ -12,6 +12,7 @@ import type { ResearchCase, ResearchForecast, ResearchHistoryDetail, ResearchLau
 import { ErrorBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
 
 const eventTypes = ['workflow.accepted', 'workflow.stage.started', 'workflow.progressed', 'workflow.ai.text.delta', 'workflow.agent.message', 'workflow.completed', 'workflow.failed'];
+const previewStages = ['信息收集', 'AI 清洗', '多 Agent 压缩', '多轮辩论', '走势预测', '模拟验证', '生成报告'];
 
 export function ResearchPage({ initialQuestion, initialLaunch }: { initialQuestion?: string; initialLaunch?: ResearchLaunch | null }) {
   const [question, setQuestion] = useState(initialQuestion || '分析当前默认自选产品的市场方向、主要证据、反方风险和可执行的模拟交易建议');
@@ -145,16 +146,20 @@ export function ResearchPage({ initialQuestion, initialLaunch }: { initialQuesti
     <Stack spacing={2.5}>
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={1.5}>
-          <TextField multiline minRows={4} value={question} onChange={(event) => setQuestion(event.target.value)} label="研究问题" inputProps={{ maxLength: 2000 }} />
-          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1.25}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Typography variant="subtitle1">研究输入</Typography>
             <Typography variant="caption" color="text.secondary">{question.length} / 2000</Typography>
-            <TextField select size="small" label="实盘研究工作流" value={workflowVersionId} onChange={(event) => setWorkflowVersionId(event.target.value)} sx={{ minWidth: 240 }}><MenuItem value="">系统默认工作流</MenuItem>{workflows.map((workflow) => <MenuItem key={workflow.definitionId} value={workflow.publishedVersionId || ''}>{workflow.name} · v{workflow.publishedVersionNumber}{workflow.active ? ' · 已激活' : ''}</MenuItem>)}</TextField>
-            <TextField select size="small" label="模拟验证工作流" value={demoWorkflowVersionId} onChange={(event) => setDemoWorkflowVersionId(event.target.value)} sx={{ minWidth: 240 }}><MenuItem value="">与实盘工作流相同</MenuItem>{workflows.map((workflow) => <MenuItem key={workflow.definitionId} value={workflow.publishedVersionId || ''}>{workflow.name} · v{workflow.publishedVersionNumber}</MenuItem>)}</TextField>
-            <Button variant="contained" startIcon={<PlayArrowIcon />} disabled={busy || question.trim().length === 0} onClick={() => void start()}>{busy ? '正在受理' : '发起研究'}</Button>
           </Stack>
+          <TextField multiline minRows={4} value={question} onChange={(event) => setQuestion(event.target.value)} label="研究问题" inputProps={{ maxLength: 2000 }} />
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) minmax(0, 1fr) auto' }, gap: 1.25, alignItems: 'stretch' }}>
+            <TextField select size="small" label="实盘研究工作流" value={workflowVersionId} onChange={(event) => setWorkflowVersionId(event.target.value)} sx={{ minWidth: 0, '& .MuiOutlinedInput-root': { minHeight: 44 } }}><MenuItem value="">系统默认工作流</MenuItem>{workflows.map((workflow) => <MenuItem key={workflow.definitionId} value={workflow.publishedVersionId || ''}>{workflow.name} · v{workflow.publishedVersionNumber}{workflow.active ? ' · 已激活' : ''}</MenuItem>)}</TextField>
+            <TextField select size="small" label="模拟验证工作流" value={demoWorkflowVersionId} onChange={(event) => setDemoWorkflowVersionId(event.target.value)} sx={{ minWidth: 0, '& .MuiOutlinedInput-root': { minHeight: 44 } }}><MenuItem value="">与实盘工作流相同</MenuItem>{workflows.map((workflow) => <MenuItem key={workflow.definitionId} value={workflow.publishedVersionId || ''}>{workflow.name} · v{workflow.publishedVersionNumber}</MenuItem>)}</TextField>
+            <Button variant="contained" startIcon={<PlayArrowIcon />} disabled={busy || question.trim().length === 0} onClick={() => void start()} sx={{ minHeight: 44, px: 2.5, whiteSpace: 'nowrap' }}>{busy ? '正在受理' : '发起研究'}</Button>
+          </Box>
         </Stack>
       </Paper>
       {error !== null && <ErrorBlock error={error} />}
+      {!launch && <ResearchProcessPreview />}
       {launch && <>
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="space-between"><Box><Typography fontWeight={700}>{run?.requestSummary || question}</Typography><Typography variant="caption" color="text.secondary">{launch.runId} · 任务 {launch.taskId}</Typography></Box><Stack direction="row" spacing={1}><Chip size="small" color={statusColor(run?.status || launch.workflowStatus)} label={statusLabel(run?.status || launch.workflowStatus)} /><Chip size="small" color={statusColor(task?.status || launch.taskStatus)} label={`任务 ${statusLabel(task?.status || launch.taskStatus)}`} /></Stack></Stack>
@@ -180,6 +185,23 @@ export function ResearchPage({ initialQuestion, initialLaunch }: { initialQuesti
       </>}
     </Stack>
   );
+}
+
+function ResearchProcessPreview() {
+  return <Box>
+    <SectionTitle title="流程预览" />
+    <Box sx={{ pl: 1 }}>
+      {previewStages.map((stage, index) => <Stack key={stage} direction="row" spacing={1.5} alignItems="stretch">
+        <Stack alignItems="center" sx={{ width: 28, flexShrink: 0 }}>
+          <Box sx={{ width: 26, height: 26, display: 'grid', placeItems: 'center', border: '1px solid', borderColor: index === 0 ? 'primary.main' : 'divider', bgcolor: index === 0 ? 'primary.main' : 'background.paper', color: index === 0 ? 'primary.contrastText' : 'text.secondary', borderRadius: 1, fontSize: 12, fontWeight: 700 }}>{index + 1}</Box>
+          {index < previewStages.length - 1 && <Box sx={{ width: 1, flex: 1, minHeight: 16, bgcolor: 'divider' }} />}
+        </Stack>
+        <Box sx={{ flex: 1, minWidth: 0, pb: index < previewStages.length - 1 ? 1.5 : 0, pt: .25, borderBottom: index < previewStages.length - 1 ? '1px solid' : 0, borderColor: 'divider' }}>
+          <Typography variant="body2" fontWeight={700}>{stage}</Typography>
+        </Box>
+      </Stack>)}
+    </Box>
+  </Box>;
 }
 
 function ResearchResult({ detail, demoDetail, automation, forecast, demoForecast }: { detail: ResearchHistoryDetail; demoDetail: ResearchHistoryDetail | null; automation: TradeAutomationDetail | null; forecast: ResearchForecast | null; demoForecast: ResearchForecast | null }) {

@@ -818,7 +818,7 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals("sub2api-gemini", result.getString("gemini_provider_name"));
                 assertFalse(result.getBoolean("deepseek_enabled"));
                 assertEquals(
-                        "http://mimo2api.mimo2api.svc.cluster.local:8080/v1",
+                        "https://mimo2api-direct.mnnu.eu.org/v1",
                         result.getString("mimo_base_url"));
                 assertEquals(3, result.getInt("sub2api_direct_endpoint_count"));
                 assertEquals("provider_grok_sub2api", result.getString("bull_provider"));

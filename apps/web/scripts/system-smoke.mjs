@@ -91,8 +91,8 @@ try {
   const desktopOverflowElements = await horizontalOverflowElements(page);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByTestId('mobile-navigation').getByRole('combobox').click();
-  await page.getByRole('option', { name: '发起研究', exact: true }).click();
+  await page.getByTestId('mobile-navigation').click();
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '发起研究', exact: true }).click();
   await page.getByRole('heading', { name: '即时研究流水线', exact: true }).waitFor();
   const mobileOverflowElements = await horizontalOverflowElements(page);
   await page.screenshot({ path: path.join(outputDir, 'research-mobile.png'), fullPage: true });

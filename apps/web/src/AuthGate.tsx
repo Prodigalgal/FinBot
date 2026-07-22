@@ -80,35 +80,150 @@ export function AuthGate({ children }: { children: ReactNode }) {
   };
 
   if (authenticated === null) {
-    return <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><CircularProgress size={28} /></Box>;
+    return <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', bgcolor: 'background.default' }}><CircularProgress size={24} /></Box>;
   }
   if (authenticated) return children;
 
   return (
-    <Box component="main" sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', px: 2, bgcolor: 'background.default' }}>
-      <Paper component="form" onSubmit={submit} variant="outlined" sx={{ width: '100%', maxWidth: 390, p: 3 }}>
-        <Stack spacing={2}>
-          <Stack direction="row" spacing={1.25} alignItems="center">
-            <Box sx={{ width: 38, height: 38, display: 'grid', placeItems: 'center', bgcolor: 'primary.main', color: 'white', borderRadius: 1 }}>
-              <LockOutlinedIcon fontSize="small" />
+    <Box
+      component="main"
+      sx={{
+        minHeight: '100vh',
+        display: 'grid',
+        placeItems: 'center',
+        px: 2,
+        py: 3,
+        bgcolor: 'background.default',
+      }}
+    >
+      <Paper
+        component="form"
+        onSubmit={submit}
+        variant="outlined"
+        sx={{
+          width: '100%',
+          maxWidth: 390,
+          p: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <Box
+          sx={{
+            px: 3,
+            pt: 3,
+            pb: 2,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                display: 'grid',
+                placeItems: 'center',
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+                borderRadius: 1,
+                flexShrink: 0,
+              }}
+            >
+              <LockOutlinedIcon sx={{ fontSize: 20 }} />
             </Box>
             <Box>
-              <Typography variant="h2">FinBot</Typography>
+              <Typography variant="h2" sx={{ fontSize: 18, letterSpacing: 0, mb: 0.25 }}>FinBot</Typography>
               <Typography variant="caption" color="text.secondary">管理员安全登录</Typography>
             </Box>
           </Stack>
+        </Box>
+
+        <Stack spacing={2.5} sx={{ px: 3, pt: 2.5, pb: 3 }}>
           {error && <Alert severity="error">{error}</Alert>}
-          <TextField label="用户名" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required disabled={busy} />
-          <SecretTextField label="密码" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required disabled={busy} />
-          <Stack direction="row" spacing={1} alignItems="stretch">
-            <Box sx={{ flex: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1 }}>
-              <Typography variant="caption" color="text.secondary">数学验证码</Typography>
-              <Typography variant="subtitle1" data-testid="auth-math-question">{challenge?.mathExpression || '正在获取'}</Typography>
-            </Box>
-            <Tooltip title="刷新验证码"><span><IconButton onClick={() => void loadChallenge()} disabled={busy}><RefreshIcon /></IconButton></span></Tooltip>
+
+          <Stack spacing={2}>
+            <TextField
+              label="用户名"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+              required
+              disabled={busy}
+              fullWidth
+              size="small"
+              sx={{ '& .MuiOutlinedInput-root': { minHeight: 44 } }}
+            />
+
+            <SecretTextField
+              label="密码"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+              disabled={busy}
+              fullWidth
+              size="small"
+              sx={{ '& .MuiOutlinedInput-root': { minHeight: 44 } }}
+            />
           </Stack>
-          <TextField label="验证码答案" type="number" value={mathAnswer} onChange={(event) => setMathAnswer(event.target.value)} required disabled={busy || !challenge} />
-          <Button type="submit" variant="contained" disabled={busy || !challenge || !username.trim() || !password || !mathAnswer}>
+
+          <Box>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+              <Typography variant="caption" color="text.secondary">数学验证码</Typography>
+              <Box sx={{ flex: 1 }} />
+              <Tooltip title="刷新验证码">
+                <span>
+                  <IconButton
+                    aria-label="刷新验证码"
+                    onClick={() => void loadChallenge()}
+                    disabled={busy}
+                    size="small"
+                    sx={{ width: 44, height: 44 }}
+                  >
+                    <RefreshIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Stack>
+
+            <Box
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                px: 2,
+                py: 1.5,
+                bgcolor: 'background.default',
+                minHeight: 44,
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <Typography variant="subtitle1" data-testid="auth-math-question" sx={{ fontSize: 16 }}>
+                {challenge?.mathExpression || '正在获取'}
+              </Typography>
+            </Box>
+          </Box>
+
+          <TextField
+            label="验证码答案"
+            type="number"
+            value={mathAnswer}
+            onChange={(event) => setMathAnswer(event.target.value)}
+            required
+            disabled={busy || !challenge}
+            fullWidth
+            size="small"
+            sx={{ '& .MuiOutlinedInput-root': { minHeight: 44 } }}
+          />
+
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={busy || !challenge || !username.trim() || !password || !mathAnswer}
+            fullWidth
+            sx={{ minHeight: 44 }}
+          >
             {busy ? '正在完成安全校验' : '登录'}
           </Button>
         </Stack>
