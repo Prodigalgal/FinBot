@@ -15,7 +15,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 @Component
-public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResolver {
+public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResolver, AiRuntimeProfileResolver {
     private final JdbcClient jdbcClient;
     private final RuntimeSecretStore runtimeSecrets;
     private final EnvironmentValueResolver environment;
@@ -29,7 +29,8 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
         this.environment = Objects.requireNonNull(environment, "environment");
     }
 
-    AiRuntimeProfile resolve(AiProviderProfileId profileId) {
+    @Override
+    public AiRuntimeProfile resolve(AiProviderProfileId profileId) {
         var stored = jdbcClient.sql("""
                 select protocol, reasoning_parameter_style, base_url, base_url_env, api_key_env,
                        enabled, request_timeout_seconds,

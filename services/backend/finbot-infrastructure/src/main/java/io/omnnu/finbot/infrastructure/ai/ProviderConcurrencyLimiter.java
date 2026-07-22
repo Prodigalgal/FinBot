@@ -1,5 +1,9 @@
 package io.omnnu.finbot.infrastructure.ai;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import java.time.Duration;
 import java.util.Objects;
@@ -10,8 +14,17 @@ import org.springframework.stereotype.Component;
 
 @Component
 public final class ProviderConcurrencyLimiter {
+    private static final int MAXIMUM_WAITERS_PER_PERMIT = 5;
+
+    private final MeterRegistry meterRegistry;
     private final ConcurrentHashMap<AiProviderProfileId, ProviderGate> providerGates =
             new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<AiProviderProfileId, ProviderMetrics> providerMetrics =
+            new ConcurrentHashMap<>();
+
+    public ProviderConcurrencyLimiter(MeterRegistry meterRegistry) {
+        this.meterRegistry = Objects.requireNonNull(meterRegistry, "meterRegistry");
+    }
 
     public Permit acquire(
             AiProviderProfileId providerProfileId,
@@ -32,11 +45,54 @@ public final class ProviderConcurrencyLimiter {
         }
         var gate = providerGates.computeIfAbsent(
                 providerProfileId,
-                ignored -> new ProviderGate(maximumConcurrentRequests, configurationVersion));
-        if (!gate.acquire(maximumConcurrentRequests, configurationVersion, acquireTimeout)) {
-            throw new ProviderCapacityTimeoutException(providerProfileId);
+                ignored -> createGate(providerProfileId, maximumConcurrentRequests, configurationVersion));
+        var metrics = providerMetrics.get(providerProfileId);
+        var started = System.nanoTime();
+        try {
+            if (!gate.acquire(maximumConcurrentRequests, configurationVersion, acquireTimeout)) {
+                metrics.capacityTimeouts().increment();
+                throw new ProviderCapacityTimeoutException(providerProfileId);
+            }
+            metrics.queueWait().record(Duration.ofNanos(System.nanoTime() - started));
+        } catch (ProviderQueueFullException exception) {
+            metrics.queueRejections().increment();
+            throw exception;
         }
         return new Permit(gate);
+    }
+
+    private ProviderGate createGate(
+            AiProviderProfileId providerProfileId,
+            int maximumConcurrentRequests,
+            long configurationVersion) {
+        var gate = new ProviderGate(maximumConcurrentRequests, configurationVersion);
+        var providerTag = providerProfileId.value();
+        Gauge.builder("finbot.ai.provider.active", gate, ProviderGate::activeCount)
+                .tag("provider.profile.id", providerTag)
+                .description("Active AI requests holding provider permits")
+                .register(meterRegistry);
+        Gauge.builder("finbot.ai.provider.queue.depth", gate, ProviderGate::queueDepth)
+                .tag("provider.profile.id", providerTag)
+                .description("AI requests waiting for provider permits")
+                .register(meterRegistry);
+        Gauge.builder("finbot.ai.provider.concurrency.limit", gate, ProviderGate::configuredLimit)
+                .tag("provider.profile.id", providerTag)
+                .description("Configured concurrent AI request limit")
+                .register(meterRegistry);
+        providerMetrics.put(providerProfileId, new ProviderMetrics(
+                Counter.builder("finbot.ai.provider.queue.rejected")
+                        .tag("provider.profile.id", providerTag)
+                        .description("AI requests rejected because the provider queue was full")
+                        .register(meterRegistry),
+                Counter.builder("finbot.ai.provider.capacity.timeout")
+                        .tag("provider.profile.id", providerTag)
+                        .description("AI requests that exceeded the provider capacity wait deadline")
+                        .register(meterRegistry),
+                Timer.builder("finbot.ai.provider.queue.wait")
+                        .tag("provider.profile.id", providerTag)
+                        .description("Time spent waiting for an AI provider permit")
+                        .register(meterRegistry)));
+        return gate;
     }
 
     int activeCount(AiProviderProfileId providerProfileId) {
@@ -75,6 +131,10 @@ public final class ProviderConcurrencyLimiter {
             lock.lockInterruptibly();
             try {
                 applyConfiguration(requestedLimit, requestedConfigurationVersion);
+                var maximumWaiters = Math.multiplyExact(configuredLimit, MAXIMUM_WAITERS_PER_PERMIT);
+                if (active >= configuredLimit && waiting >= maximumWaiters) {
+                    throw new ProviderQueueFullException(maximumWaiters);
+                }
                 waiting++;
                 try {
                     while (active >= configuredLimit) {
@@ -97,9 +157,12 @@ public final class ProviderConcurrencyLimiter {
             if (requestedConfigurationVersion <= configurationVersion) {
                 return;
             }
+            var previousLimit = configuredLimit;
             configuredLimit = requestedLimit;
             configurationVersion = requestedConfigurationVersion;
-            capacityAvailable.signalAll();
+            if (configuredLimit > previousLimit) {
+                capacityAvailable.signalAll();
+            }
         }
 
         private int activeCount() {
@@ -136,7 +199,7 @@ public final class ProviderConcurrencyLimiter {
                     throw new IllegalStateException("Provider concurrency permit was released more than once");
                 }
                 active--;
-                capacityAvailable.signalAll();
+                capacityAvailable.signal();
             } finally {
                 lock.unlock();
             }
@@ -166,5 +229,19 @@ public final class ProviderConcurrencyLimiter {
         private ProviderCapacityTimeoutException(AiProviderProfileId providerProfileId) {
             super("Provider concurrency capacity timed out: " + providerProfileId.value());
         }
+    }
+
+    public static final class ProviderQueueFullException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        private ProviderQueueFullException(int maximumWaiters) {
+            super("Provider concurrency queue is full at " + maximumWaiters + " waiting requests");
+        }
+    }
+
+    private record ProviderMetrics(
+            Counter queueRejections,
+            Counter capacityTimeouts,
+            Timer queueWait) {
     }
 }

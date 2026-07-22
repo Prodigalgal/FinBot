@@ -202,7 +202,7 @@ function RiskPolicyEditor({ policy, save }: { policy: RiskPolicy; save: (value: 
   return <Box><SectionTitle title="模拟交易风险策略" /><Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} flexWrap={{ md: 'wrap' }} useFlexGap><TextField label="新策略版本" value={version} onChange={(event) => setVersion(event.target.value)} sx={{ width: { xs: '100%', md: 260 } }} />{fields.map(([key, label]) => <TextField key={key} label={label} type="number" value={String(value[key])} onChange={(event) => setValue({ ...value, [key]: key === 'maximumOpenPositions' ? Number.parseInt(event.target.value, 10) : Number(event.target.value) })} sx={{ width: { xs: '100%', md: 170 } }} />)}</Stack><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }}><FormControlLabel control={<Switch checked={value.testEnvironmentOnly} onChange={(event) => setValue({ ...value, testEnvironmentOnly: event.target.checked })} />} label="仅 TestNet / Demo" /><Button variant="contained" startIcon={<SaveIcon />} onClick={() => save({ ...value, policyVersion: version })}>创建并启用版本</Button></Stack></Stack></Paper></Box>;
 }
 
-function bindingProviderId(binding: AiModelBinding): string { return typeof binding.providerProfileId === 'string' ? binding.providerProfileId : binding.providerProfileId.value; }
+function bindingProviderId(binding: AiModelBinding): string { return binding.providerProfileId; }
 
 function requestBinding(binding: AiModelBinding) {
   return { providerProfileId: bindingProviderId(binding), modelName: binding.modelName, reasoningEffort: binding.reasoningEffort };

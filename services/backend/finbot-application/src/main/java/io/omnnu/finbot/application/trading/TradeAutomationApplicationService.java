@@ -1,7 +1,9 @@
 package io.omnnu.finbot.application.trading;
 
 import io.omnnu.finbot.application.ai.AiInvocationResult;
-import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
+import io.omnnu.finbot.application.ai.AiExecutionFailure;
+import io.omnnu.finbot.application.ai.AiExecutionPolicyExecutor;
+import io.omnnu.finbot.application.operations.TaskCancellationContext;
 import io.omnnu.finbot.application.exchange.ExchangeSubmissionStatus;
 import io.omnnu.finbot.application.exchange.PaperOrderExecutionUseCase;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionContext;
@@ -43,7 +45,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -60,7 +61,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
     private static final int MAXIMUM_PROMPT_CHARACTERS = 180_000;
 
     private final WorkflowExecutionStore workflowStore;
-    private final WorkflowAiInvoker aiInvoker;
+    private final AiExecutionPolicyExecutor aiExecution;
     private final TradeDecisionOutputParser outputParser;
     private final TradeAutomationStore store;
     private final PaperOrderExecutionUseCase orderExecution;
@@ -71,7 +72,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
 
     public TradeAutomationApplicationService(
             WorkflowExecutionStore workflowStore,
-            WorkflowAiInvoker aiInvoker,
+            AiExecutionPolicyExecutor aiExecution,
             TradeDecisionOutputParser outputParser,
             TradeAutomationStore store,
             PaperOrderExecutionUseCase orderExecution,
@@ -80,7 +81,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             Clock clock,
             Executor executor) {
         this.workflowStore = Objects.requireNonNull(workflowStore, "workflowStore");
-        this.aiInvoker = Objects.requireNonNull(aiInvoker, "aiInvoker");
+        this.aiExecution = Objects.requireNonNull(aiExecution, "aiExecution");
         this.outputParser = Objects.requireNonNull(outputParser, "outputParser");
         this.store = Objects.requireNonNull(store, "store");
         this.orderExecution = Objects.requireNonNull(orderExecution, "orderExecution");
@@ -147,9 +148,11 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
 
             var finalDraft = reflectedDecision(parsedDraft.decision(), parsedReflection.reflection());
             var decision = toDecision(workflowRunId, finalDraft);
+            TaskCancellationContext.throwIfCancelled();
             store.saveDecision(workflowRunId, decision);
             if (!(decision instanceof DirectionalTradeDecision directional)) {
                 var reasons = decision.rationale();
+                TaskCancellationContext.throwIfCancelled();
                 store.complete(
                         automationRunId,
                         TradeAutomationStatus.NO_ACTION,
@@ -176,9 +179,11 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         if (planned.plannedOrderIds().isEmpty()) {
             return planned;
         }
+        TaskCancellationContext.throwIfCancelled();
         var results = orderExecution.submitAll(planned.plannedOrderIds())
                 .toCompletableFuture()
                 .join();
+        TaskCancellationContext.throwIfCancelled();
         store.recordExecutionResults(planned.automationRunId(), results, clock.instant());
         var acknowledged = results.stream()
                 .filter(result -> result.status() == ExchangeSubmissionStatus.ACKNOWLEDGED)
@@ -211,6 +216,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 new TradeProposalId(deterministicId("proposal_", decision.id().value())),
                 decision,
                 clock.instant());
+        TaskCancellationContext.throwIfCancelled();
         store.saveProposal(proposal);
         var policy = store.activeRiskPolicy();
         var normalizedSymbol = normalizeSymbol(decision.symbol().value());
@@ -238,6 +244,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     policy.version(),
                     plan,
                     clock.instant());
+            TaskCancellationContext.throwIfCancelled();
             store.saveRiskAssessment(assessment);
             assessments.add(assessment);
             if (plan.status() == RiskAssessmentStatus.BLOCKED) {
@@ -275,6 +282,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     plan.leverage(),
                     clientOrderId(orderId),
                     clock.instant());
+            TaskCancellationContext.throwIfCancelled();
             store.saveApprovedIntentAndOrder(intent, order);
             orders.add(order);
         }
@@ -285,6 +293,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         var status = orders.isEmpty()
                 ? TradeAutomationStatus.BLOCKED
                 : TradeAutomationStatus.ORDER_PLANNED;
+        TaskCancellationContext.throwIfCancelled();
         store.complete(
                 automationRunId,
                 status,
@@ -312,6 +321,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         var candidates = store.projectionCandidates(normalizedSymbol);
         if (candidates.isEmpty()) {
             var reasons = List.of("没有与决策标的匹配的可执行或仅研究产品");
+            TaskCancellationContext.throwIfCancelled();
             store.complete(
                     automationRunId,
                     TradeAutomationStatus.BLOCKED,
@@ -348,6 +358,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     proposal.invalidationPrice(),
                     plan,
                     clock.instant());
+            TaskCancellationContext.throwIfCancelled();
             store.saveEstimatedTradeProjection(projection);
             estimatedCount++;
             reasons.add(candidateLabel + ": 已生成预估交易，不会向交易所下单");
@@ -355,6 +366,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         var status = estimatedCount > 0
                 ? TradeAutomationStatus.ESTIMATED
                 : TradeAutomationStatus.BLOCKED;
+        TaskCancellationContext.throwIfCancelled();
         store.complete(
                 automationRunId,
                 status,
@@ -373,42 +385,32 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             String prompt,
             Function<String, T> parser) {
         var node = executionNode(workflow, stage);
-        var bindings = stage.fallbackAiBinding() == null
-                ? List.of(stage.primaryAiBinding())
-                : List.of(stage.primaryAiBinding(), stage.fallbackAiBinding());
-        RuntimeException lastFailure = null;
-        for (var binding : bindings) {
-            for (var attempt = 1; attempt <= stage.retryPolicy().maximumAttempts(); attempt++) {
-                try {
-                    var invocation = aiInvoker.invokeDetailed(
-                            workflow.runId(),
-                            workflow.definitionVersion(),
-                            node,
-                            binding,
-                            bounded(stage.userPromptTemplate() + "\n\n" + prompt),
-                            clock.instant().plusSeconds(stage.timeoutSeconds()));
-                    return new ParsedAiStage<>(invocation, parser.apply(invocation.output()));
-                } catch (RuntimeException exception) {
-                    lastFailure = exception;
-                    if (attempt < stage.retryPolicy().maximumAttempts()) {
-                        pause(stage.retryPolicy().backoff().multipliedBy(attempt));
-                    }
-                }
-            }
+        var deadline = clock.instant().plusSeconds(stage.timeoutSeconds());
+        try {
+            var result = aiExecution.execute(
+                    workflow.runId(),
+                    workflow.definitionVersion(),
+                    node,
+                    bounded(stage.userPromptTemplate() + "\n\n" + prompt),
+                    deadline,
+                    1,
+                    parser,
+                    AiExecutionPolicyExecutor.AiAttemptListener.noOp());
+            return new ParsedAiStage<>(result.invocation(), result.parsed());
+        } catch (AiExecutionFailure failure) {
+            TaskCancellationContext.throwIfCancelled();
+            store.saveExecutionAiFailure(
+                    deterministicId(
+                            "review_",
+                            workflow.runId().value() + ':' + stage.stage().name()),
+                    deterministicId("automation_", workflow.runId().value()),
+                    workflow.runId(),
+                    stage.stage(),
+                    failure.errorCode(),
+                    failure.getMessage(),
+                    clock.instant());
+            throw failure;
         }
-        var failure = Objects.requireNonNullElseGet(lastFailure, () ->
-                new IllegalStateException("Execution AI stage failed without a classified error"));
-        store.saveExecutionAiFailure(
-                deterministicId(
-                        "review_",
-                        workflow.runId().value() + ':' + stage.stage().name()),
-                deterministicId("automation_", workflow.runId().value()),
-                workflow.runId(),
-                stage.stage(),
-                "AI_EXECUTION_STAGE_FAILED",
-                "Execution AI stage failed: " + failure.getClass().getSimpleName(),
-                clock.instant());
-        throw failure;
     }
 
     private void saveReview(
@@ -417,6 +419,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             TradeExecutionAiStage stage,
             AiInvocationResult invocation,
             String canonicalJson) {
+        TaskCancellationContext.throwIfCancelled();
         store.saveExecutionAiReview(new StoredExecutionAiReview(
                 deterministicId("review_", workflowRunId.value() + ':' + stage.name()),
                 automationRunId,
@@ -554,18 +557,6 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 stage.stage().name().toLowerCase(Locale.ROOT),
                 new WorkflowCanvasPosition(BigDecimal.ZERO, BigDecimal.ZERO),
                 true);
-    }
-
-    private static void pause(Duration duration) {
-        if (duration.isZero()) {
-            return;
-        }
-        try {
-            Thread.sleep(duration);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Execution AI retry was interrupted", exception);
-        }
     }
 
     private record ParsedAiStage<T>(AiInvocationResult invocation, T value) {

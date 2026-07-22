@@ -17,6 +17,4 @@ public interface AiBudgetReservationStore {
             long maximumWorkflowTokens,
             BigDecimal maximumWorkflowCostUsd,
             Instant reservedAt);
-
-    void release(AiInvocationId invocationId, Instant releasedAt);
 }

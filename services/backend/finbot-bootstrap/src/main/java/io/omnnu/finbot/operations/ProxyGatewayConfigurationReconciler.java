@@ -17,7 +17,10 @@ public final class ProxyGatewayConfigurationReconciler {
         this.useCase = Objects.requireNonNull(useCase, "useCase");
     }
 
-    @Scheduled(initialDelayString = "PT15S", fixedDelayString = "PT30S")
+    @Scheduled(
+            initialDelayString = "PT15S",
+            fixedDelayString = "PT30S",
+            scheduler = "workerControlScheduler")
     public void reconcile() {
         for (var reconciliation : useCase.reconcileAll()) {
             reconciliation.exceptionally(exception -> {

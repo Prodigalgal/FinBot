@@ -2,6 +2,7 @@ package io.omnnu.finbot.configuration;
 
 import io.omnnu.finbot.application.ai.AiBudgetReservationStore;
 import io.omnnu.finbot.application.ai.AiCompletionGateway;
+import io.omnnu.finbot.application.ai.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.ai.AiInvocationAuditStore;
 import io.omnnu.finbot.application.ai.AiRuntimeBindingResolver;
 import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
@@ -340,51 +341,6 @@ public class RuntimeConfiguration {
         return new AiExperimentService(repository, workflows, idGenerator, clock);
     }
 
-    @Bean(name = "workflowVirtualThreadExecutor", destroyMethod = "close")
-    ExecutorService workflowVirtualThreadExecutor() {
-        var factory = Thread.ofVirtual().name("finbot-workflow-", 0).factory();
-        return Executors.newThreadPerTaskExecutor(factory);
-    }
-
-    @Bean(name = "sseHeartbeatScheduler", destroyMethod = "close")
-    ScheduledExecutorService sseHeartbeatScheduler() {
-        var factory = Thread.ofPlatform().daemon(true).name("finbot-sse-heartbeat").factory();
-        return Executors.newSingleThreadScheduledExecutor(factory);
-    }
-
-    @Bean(name = "quantHttpClient")
-    HttpClient quantHttpClient(
-            @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
-        return HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .executor(executor)
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .version(HttpClient.Version.HTTP_1_1)
-                .build();
-    }
-
-    @Bean(name = "aiHttpClient")
-    HttpClient aiHttpClient(
-            @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
-        return HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .executor(executor)
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .version(HttpClient.Version.HTTP_2)
-                .build();
-    }
-
-    @Bean(name = "searxngHttpClient")
-    HttpClient searxngHttpClient(
-            @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
-        return HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
-                .executor(executor)
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .version(HttpClient.Version.HTTP_1_1)
-                .build();
-    }
-
     @Bean
     StartWorkflowUseCase startWorkflowUseCase(
             SortableIdGenerator idGenerator,
@@ -464,6 +420,13 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    AiExecutionPolicyExecutor aiExecutionPolicyExecutor(
+            WorkflowAiInvoker aiInvoker,
+            Clock clock) {
+        return new AiExecutionPolicyExecutor(aiInvoker, clock);
+    }
+
+    @Bean
     WorkflowRunFailureUseCase workflowRunFailureUseCase(
             WorkflowExecutionStore executionStore,
             WorkflowEventPublisher eventPublisher) {
@@ -475,7 +438,7 @@ public class RuntimeConfiguration {
             WorkflowExecutionStore executionStore,
             WorkflowEventPublisher eventPublisher,
             WorkflowRunFailureUseCase workflowFailure,
-            WorkflowAiInvoker aiInvoker,
+            AiExecutionPolicyExecutor aiExecution,
             StructuredAiOutputParser outputParser,
             Clock clock,
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
@@ -483,7 +446,7 @@ public class RuntimeConfiguration {
                 executionStore,
                 eventPublisher,
                 workflowFailure,
-                aiInvoker,
+                aiExecution,
                 outputParser,
                 clock,
                 executor);
@@ -580,7 +543,7 @@ public class RuntimeConfiguration {
     CompressionUseCase compressionUseCase(
             CompressionRepository repository,
             WorkflowExecutionStore workflowStore,
-            WorkflowAiInvoker aiInvoker,
+            AiExecutionPolicyExecutor aiExecution,
             CompressionOutputParser outputParser,
             SortableIdGenerator idGenerator,
             Clock clock,
@@ -588,7 +551,7 @@ public class RuntimeConfiguration {
         return new CompressionApplicationService(
                 repository,
                 workflowStore,
-                aiInvoker,
+                aiExecution,
                 outputParser,
                 idGenerator,
                 clock,
@@ -666,7 +629,7 @@ public class RuntimeConfiguration {
     @Bean
     TradeAutomationUseCase tradeAutomationUseCase(
             WorkflowExecutionStore workflowStore,
-            WorkflowAiInvoker aiInvoker,
+            AiExecutionPolicyExecutor aiExecution,
             TradeDecisionOutputParser outputParser,
             TradeAutomationStore store,
             PaperOrderExecutionUseCase orderExecution,
@@ -674,7 +637,7 @@ public class RuntimeConfiguration {
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
         return new TradeAutomationApplicationService(
                 workflowStore,
-                aiInvoker,
+                aiExecution,
                 outputParser,
                 store,
                 orderExecution,

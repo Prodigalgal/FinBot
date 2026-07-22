@@ -12,7 +12,7 @@ import { Alert, Box, Button, Chip, FormControlLabel, MenuItem, Paper, Stack, Swi
 import { useEffect, useMemo, useState } from 'react';
 
 import { api } from './api';
-import type { AgentRole, AiModel, AiModelBinding, AiProvider, ConfigurationSnapshot, ReasoningEffort, ResearchSummary, WorkflowCondition, WorkflowConditionOperandType, WorkflowDefinitionSummary, WorkflowEdge, WorkflowEstimate, WorkflowExecutionPlan, WorkflowLearning, WorkflowNode, WorkflowNodeTestResult, WorkflowSchema, WorkflowVersion } from './types';
+import type { AgentRole, AiModel, AiModelBinding, AiProvider, ConfigurationSnapshot, ReasoningEffort, ResearchSummary, WorkflowCondition, WorkflowConditionOperandType, WorkflowDefinitionSummary, WorkflowEdge, WorkflowEstimate, WorkflowExecutionPlan, WorkflowFailurePolicy, WorkflowLearning, WorkflowNode, WorkflowNodeTestResult, WorkflowNodeType, WorkflowOutputContract, WorkflowSchema, WorkflowVersion } from './types';
 import { ErrorBlock, LoadingBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
 
 interface CanvasData extends Record<string, unknown> { label: string; workflowNode: WorkflowNode }
@@ -37,7 +37,7 @@ export function WorkflowPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [newNodeType, setNewNodeType] = useState('AGENT');
+  const [newNodeType, setNewNodeType] = useState<WorkflowNodeType>('AGENT');
   const [error, setError] = useState<unknown>(null);
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
@@ -225,7 +225,7 @@ export function WorkflowPage() {
       <Button onClick={() => void loadPlan()}>执行计划</Button>
       <Button startIcon={<CalculateOutlinedIcon />} onClick={() => void loadEstimate()}>估算</Button>
       <Button startIcon={<ScienceOutlinedIcon />} onClick={() => void loadLearning()}>学习统计</Button>
-      <TextField select size="small" label="节点类型" value={newNodeType} onChange={(event) => setNewNodeType(event.target.value)} sx={{ minWidth: 170 }}>{schema.nodeTypes.map((type) => <MenuItem key={type} value={type}>{nodeTypeLabel(type)}</MenuItem>)}</TextField>
+      <TextField select size="small" label="节点类型" value={newNodeType} onChange={(event) => setNewNodeType(event.target.value as WorkflowNodeType)} sx={{ minWidth: 170 }}>{schema.nodeTypes.map((type) => <MenuItem key={type} value={type}>{nodeTypeLabel(type)}</MenuItem>)}</TextField>
       <Button startIcon={<AddIcon />} onClick={addNode}>添加节点</Button>
       <Button variant="contained" startIcon={<SaveIcon />} disabled={saving} onClick={() => void save()}>保存草稿</Button>
       <Button color="success" variant="contained" startIcon={<PublishIcon />} disabled={saving || version.status !== 'DRAFT'} onClick={() => void publish()}>发布</Button>
@@ -236,7 +236,7 @@ export function WorkflowPage() {
         <TextField label="工作流名称" value={definition.name} onChange={(event) => setDefinition({ ...definition, name: event.target.value })} />
         <TextField label="用途说明" value={definition.description} onChange={(event) => setDefinition({ ...definition, description: event.target.value })} />
         <TextField label="辩论轮次" type="number" value={version.defaultDebateRounds} onChange={(event) => setVersion({ ...version, defaultDebateRounds: Number(event.target.value) })} inputProps={{ min: 1, max: 8 }} />
-        <TextField select label="失败策略" value={version.failurePolicy} onChange={(event) => setVersion({ ...version, failurePolicy: event.target.value })}>{schema.failurePolicies.map((policy) => <MenuItem key={policy} value={policy}>{failurePolicyLabel(policy)}</MenuItem>)}</TextField>
+        <TextField select label="失败策略" value={version.failurePolicy} onChange={(event) => setVersion({ ...version, failurePolicy: event.target.value as WorkflowFailurePolicy })}>{schema.failurePolicies.map((policy) => <MenuItem key={policy} value={policy}>{failurePolicyLabel(policy)}</MenuItem>)}</TextField>
         <TextField label="最大步骤" type="number" value={version.maximumSteps} onChange={(event) => setVersion({ ...version, maximumSteps: Number(event.target.value) })} inputProps={{ min: 1, max: 1000 }} />
         <TextField label="最大时长（秒）" type="number" value={version.maximumDurationSeconds} onChange={(event) => setVersion({ ...version, maximumDurationSeconds: Number(event.target.value) })} inputProps={{ min: 10, max: 86400 }} />
         <TextField label="最大 Token" type="number" value={version.maximumTokens} onChange={(event) => setVersion({ ...version, maximumTokens: Number(event.target.value) })} inputProps={{ min: 1000, max: 10000000 }} />
@@ -260,7 +260,7 @@ export function WorkflowPage() {
 
 function NodeEditor({ node, schema, providers, models, roles, update, duplicateSeat, remove }: { node: WorkflowNode; schema: WorkflowSchema; providers: AiProvider[]; models: AiModel[]; roles: AgentRole[]; update: (patch: Partial<WorkflowNode>) => void; duplicateSeat: () => void; remove: () => void }) {
   const llmBacked = isLlmBacked(node.nodeType);
-  const changeNodeType = (nodeType: string) => {
+  const changeNodeType = (nodeType: WorkflowNodeType) => {
     if (!isLlmBacked(nodeType)) {
       update({ nodeType, roleName: null, primaryAiBinding: null, fallbackAiBinding: null, systemPrompt: null, userPromptTemplate: null, outputContract: null, operation: defaultOperation(nodeType) });
       return;
@@ -276,11 +276,11 @@ function NodeEditor({ node, schema, providers, models, roles, update, duplicateS
       operation: defaultOperation(nodeType),
     });
   };
-  return <Stack spacing={1.5}><SectionTitle title="节点配置" action={<Stack direction="row" spacing={.5}>{llmBacked && <Button size="small" startIcon={<ContentCopyIcon />} onClick={duplicateSeat}>新增异构席位</Button>}<Button color="error" size="small" startIcon={<DeleteOutlineIcon />} onClick={remove}>删除</Button></Stack>} /><TextField label="节点 ID" value={node.nodeId} disabled /><TextField label="标题" value={node.displayName} onChange={(event) => update({ displayName: event.target.value })} /><TextField select label="节点类型" value={node.nodeType} onChange={(event) => changeNodeType(event.target.value)}>{schema.nodeTypes.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField><FormControlLabel control={<Switch checked={node.enabled} onChange={(event) => update({ enabled: event.target.checked })} />} label="启用节点" />
+  return <Stack spacing={1.5}><SectionTitle title="节点配置" action={<Stack direction="row" spacing={.5}>{llmBacked && <Button size="small" startIcon={<ContentCopyIcon />} onClick={duplicateSeat}>新增异构席位</Button>}<Button color="error" size="small" startIcon={<DeleteOutlineIcon />} onClick={remove}>删除</Button></Stack>} /><TextField label="节点 ID" value={node.nodeId} disabled /><TextField label="标题" value={node.displayName} onChange={(event) => update({ displayName: event.target.value })} /><TextField select label="节点类型" value={node.nodeType} onChange={(event) => changeNodeType(event.target.value as WorkflowNodeType)}>{schema.nodeTypes.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField><FormControlLabel control={<Switch checked={node.enabled} onChange={(event) => update({ enabled: event.target.checked })} />} label="启用节点" />
     {node.nodeType === 'QUANT'
       ? <TextField select label="量化方案" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="每种策略都会附带 MACD、均线交叉、RSI、布林带、ATR、支撑与压力指标供后续 AI 参考">{QUANT_OPERATIONS.map((operation) => <MenuItem key={operation.id} value={operation.id}>{operation.label}</MenuItem>)}</TextField>
       : <TextField label="受控操作" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="填写后端登记的 operation ID，不执行任意脚本或 URL" />}
-    {llmBacked && node.primaryAiBinding && <><TextField select label="角色模板" value={node.roleTemplateId || ''} onChange={(event) => { const role = roles.find((item) => item.roleTemplateId === event.target.value); if (!role) { update({ roleTemplateId: null }); return; } update({ roleTemplateId: role.roleTemplateId, roleName: role.displayName, systemPrompt: role.systemPrompt, userPromptTemplate: role.userPromptTemplate, outputContract: role.outputContract, primaryAiBinding: { providerProfileId: role.defaultProviderProfileId, modelName: role.defaultModelName, reasoningEffort: role.defaultReasoningEffort } }); }}><MenuItem value="">不绑定模板</MenuItem>{roles.map((role) => <MenuItem key={role.roleTemplateId} value={role.roleTemplateId}>{role.displayName}</MenuItem>)}</TextField><TextField label="角色名称" value={node.roleName || ''} onChange={(event) => update({ roleName: event.target.value })} /><TextField select label="输出契约" value={node.outputContract || ''} onChange={(event) => update({ outputContract: event.target.value })}>{schema.outputContracts.map((contract) => <MenuItem key={contract} value={contract}>{contract}</MenuItem>)}</TextField><AiBindingEditor title="主模型" binding={node.primaryAiBinding} providers={providers} models={models} efforts={schema.reasoningEfforts} update={(primaryAiBinding) => update({ primaryAiBinding })} /><FormControlLabel control={<Switch checked={node.fallbackAiBinding !== null} onChange={(event) => {
+    {llmBacked && node.primaryAiBinding && <><TextField select label="角色模板" value={node.roleTemplateId || ''} onChange={(event) => { const role = roles.find((item) => item.roleTemplateId === event.target.value); if (!role) { update({ roleTemplateId: null }); return; } update({ roleTemplateId: role.roleTemplateId, roleName: role.displayName, systemPrompt: role.systemPrompt, userPromptTemplate: role.userPromptTemplate, outputContract: role.outputContract, primaryAiBinding: { providerProfileId: role.defaultProviderProfileId, modelName: role.defaultModelName, reasoningEffort: role.defaultReasoningEffort } }); }}><MenuItem value="">不绑定模板</MenuItem>{roles.map((role) => <MenuItem key={role.roleTemplateId} value={role.roleTemplateId}>{role.displayName}</MenuItem>)}</TextField><TextField label="角色名称" value={node.roleName || ''} onChange={(event) => update({ roleName: event.target.value })} /><TextField select label="输出契约" value={node.outputContract || ''} onChange={(event) => update({ outputContract: event.target.value as WorkflowOutputContract })}>{schema.outputContracts.map((contract) => <MenuItem key={contract} value={contract}>{contract}</MenuItem>)}</TextField><AiBindingEditor title="主模型" binding={node.primaryAiBinding} providers={providers} models={models} efforts={schema.reasoningEfforts} update={(primaryAiBinding) => update({ primaryAiBinding })} /><FormControlLabel control={<Switch checked={node.fallbackAiBinding !== null} onChange={(event) => {
       if (!event.target.checked) { update({ fallbackAiBinding: null }); return; }
       const fallbackModel = models.find((model) => model.enabled && model.providerProfileId !== providerId(node.primaryAiBinding!)) || models.find((model) => model.enabled) || models[0];
       if (fallbackModel) update({ fallbackAiBinding: { providerProfileId: fallbackModel.providerProfileId, modelName: fallbackModel.modelName, reasoningEffort: fallbackModel.defaultReasoningEffort } });
@@ -343,7 +343,7 @@ function AiBindingEditor({ title, binding, providers, models, efforts, update }:
 }
 
 function providerId(binding: AiModelBinding): string {
-  return typeof binding.providerProfileId === 'string' ? binding.providerProfileId : binding.providerProfileId.value;
+  return binding.providerProfileId;
 }
 
 function reasoningEffortsForModel(efforts: ReasoningEffort[], model: AiModel): ReasoningEffort[] {
@@ -381,8 +381,8 @@ function defaultOperation(nodeType: string): string | null {
   return ({ INPUT: 'research_input', ROUTER: 'route_candidate', DETERMINISTIC: 'transform_research_state', COLLECTOR: 'collect_enabled_sources', CLEANER: 'normalize_and_deduplicate', QUANT: 'multi_strategy_ensemble', GATE: 'evaluate_research_gate', RISK: 'evaluate_risk_gate', SUBFLOW: 'invoke_published_subflow', HUMAN_REVIEW: 'operator_review', EXECUTION_REVIEW: 'draft', OUTPUT: 'research_output' } as Record<string, string>)[nodeType] || null;
 }
 
-function defaultOutputContract(nodeType: string): string {
-  return ({ AI_CLEANER: 'RESEARCH_FINDINGS', COMPRESSOR: 'RESEARCH_FINDINGS', COMPRESSION_VALIDATOR: 'RESEARCH_FINDINGS', AGGREGATOR: 'RESEARCH_FINDINGS', CHAIR: 'CHAIR_VERDICT', EXECUTION_REVIEW: 'TRADE_DECISIONS' } as Record<string, string>)[nodeType] || 'DEBATE_ARGUMENT';
+function defaultOutputContract(nodeType: string): WorkflowOutputContract {
+  return ({ AI_CLEANER: 'RESEARCH_FINDINGS', COMPRESSOR: 'RESEARCH_FINDINGS', COMPRESSION_VALIDATOR: 'RESEARCH_FINDINGS', AGGREGATOR: 'RESEARCH_FINDINGS', CHAIR: 'CHAIR_VERDICT', EXECUTION_REVIEW: 'TRADE_DECISIONS' } as Partial<Record<WorkflowNodeType, WorkflowOutputContract>>)[nodeType as WorkflowNodeType] || 'DEBATE_ARGUMENT';
 }
 
 function defaultSystemPrompt(nodeType: string): string {

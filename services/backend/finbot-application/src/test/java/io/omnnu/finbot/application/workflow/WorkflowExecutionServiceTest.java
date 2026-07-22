@@ -11,6 +11,7 @@ import io.omnnu.finbot.application.ai.AiCompletionFinished;
 import io.omnnu.finbot.application.ai.AiCompletionFailed;
 import io.omnnu.finbot.application.ai.AiCompletionGateway;
 import io.omnnu.finbot.application.ai.AiCompletionRequest;
+import io.omnnu.finbot.application.ai.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.ai.AiInvocationAuditStore;
 import io.omnnu.finbot.application.ai.AiInvocationCompletion;
 import io.omnnu.finbot.application.ai.AiInvocationFailure;
@@ -105,7 +106,7 @@ class WorkflowExecutionServiceTest {
                     store,
                     events,
                     new WorkflowRunFailureService(store, events),
-                    invoker,
+                    new AiExecutionPolicyExecutor(invoker, CLOCK),
                     outputParser(),
                     CLOCK,
                     executor);
@@ -168,7 +169,7 @@ class WorkflowExecutionServiceTest {
                     store,
                     events,
                     new WorkflowRunFailureService(store, events),
-                    invoker,
+                    new AiExecutionPolicyExecutor(invoker, CLOCK),
                     outputParser(),
                     CLOCK,
                     executor);
@@ -221,7 +222,7 @@ class WorkflowExecutionServiceTest {
                     store,
                     events,
                     new WorkflowRunFailureService(store, events),
-                    invoker,
+                    new AiExecutionPolicyExecutor(invoker, CLOCK),
                     outputParser(),
                     CLOCK,
                     executor);
@@ -473,10 +474,6 @@ class WorkflowExecutionServiceTest {
                 long maximumWorkflowTokens,
                 BigDecimal maximumWorkflowCostUsd,
                 Instant reservedAt) {
-        }
-
-        @Override
-        public void release(AiInvocationId invocationId, Instant releasedAt) {
         }
     }
 

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.omnnu.finbot.application.ingestion.AiWebSearchAuditStore;
 import io.omnnu.finbot.application.ingestion.AiWebSearchRuntimeProfile;
 import io.omnnu.finbot.application.ingestion.SourceCollectionException;
@@ -121,7 +122,7 @@ class JdkAiWebSearchGatewayTest {
                 auditStore,
                 prefix -> prefix + "0000000000001_0123456789abcdef0123",
                 Clock.fixed(Instant.parse("2026-07-18T08:00:00Z"), ZoneOffset.UTC),
-                new ProviderConcurrencyLimiter());
+                new ProviderConcurrencyLimiter(new SimpleMeterRegistry()));
     }
 
     private static AiWebSearchBinding binding() {

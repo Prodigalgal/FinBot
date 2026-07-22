@@ -150,6 +150,14 @@ public final class JdkAiWebSearchGateway implements AiWebSearchGateway {
                     null);
             auditStore.fail(invocationId, failure.errorCode(), failure.getMessage(), clock.instant());
             throw failure;
+        } catch (ProviderConcurrencyLimiter.ProviderQueueFullException exception) {
+            var failure = failure(
+                    "AI_WEB_SEARCH_PROVIDER_QUEUE_FULL",
+                    "AI web search provider concurrency queue is full",
+                    true,
+                    null);
+            auditStore.fail(invocationId, failure.errorCode(), failure.getMessage(), clock.instant());
+            throw failure;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             var failure = failure("AI_WEB_SEARCH_INTERRUPTED", "AI web search was interrupted", true, null);

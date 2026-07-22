@@ -27,20 +27,19 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
-import java.util.concurrent.SubmissionPublisher;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 @Component
 public final class JdkAiCompletionGateway implements AiCompletionGateway {
-    private static final int STREAM_BUFFER_CAPACITY = 256;
-
     private final HttpClient httpClient;
-    private final JdbcAiRuntimeProfileResolver profileResolver;
+    private final AiRuntimeProfileResolver profileResolver;
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final Executor executor;
@@ -48,7 +47,7 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
 
     public JdkAiCompletionGateway(
             @Qualifier("aiHttpClient") HttpClient httpClient,
-            JdbcAiRuntimeProfileResolver profileResolver,
+            AiRuntimeProfileResolver profileResolver,
             ObjectMapper objectMapper,
             Clock clock,
             @Qualifier("workflowVirtualThreadExecutor") Executor executor,
@@ -71,17 +70,13 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
                 rejectSecondSubscriber(subscriber);
                 return;
             }
-            var publisher = new SubmissionPublisher<AiCompletionEvent>(
-                    executor,
-                    STREAM_BUFFER_CAPACITY);
-            publisher.subscribe(subscriber);
-            executor.execute(() -> execute(request, publisher));
+            subscriber.onSubscribe(new StreamSession(request, subscriber));
         };
     }
 
     private void execute(
             AiCompletionRequest request,
-            SubmissionPublisher<AiCompletionEvent> publisher) {
+            StreamSession publisher) {
         ProviderConcurrencyLimiter.Permit permit = null;
         try {
             var profile = profileResolver.resolve(request.providerProfileId());
@@ -91,17 +86,22 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
                     profile.configurationVersion(),
                     minimum(
                             Duration.ofSeconds(profile.acquireTimeoutSeconds()),
-                            request.capacityWaitTimeout()));
+                            request.capacityWaitTimeout(),
+                            remaining(request.deadline())));
             if (profile.protocol() != request.protocol()) {
                 throw new AiProviderConfigurationException("Workflow protocol does not match AI provider profile");
             }
-            publisher.submit(new AiStreamStarted(request.invocationId(), clock.instant()));
+            publisher.emit(new AiStreamStarted(request.invocationId(), clock.instant()));
             var httpRequest = request(request, profile);
             var response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
+            if (!publisher.attachBody(response.body())) {
+                return;
+            }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 close(response.body());
+                publisher.detachBody(response.body());
                 var retryable = response.statusCode() == 429 || response.statusCode() >= 500;
-                publisher.submit(new AiCompletionFailed(
+                publisher.emit(new AiCompletionFailed(
                         request.invocationId(),
                         "HTTP_" + response.statusCode(),
                         "AI provider returned HTTP " + response.statusCode(),
@@ -112,17 +112,31 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             parseStream(request, profile.protocol(), response.body(), publisher);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            publisher.submit(new AiCompletionFailed(
+            publisher.emit(new AiCompletionFailed(
                     request.invocationId(), "INTERRUPTED", "AI request was interrupted", true, clock.instant()));
         } catch (ProviderConcurrencyLimiter.ProviderCapacityTimeoutException exception) {
-            publisher.submit(new AiCompletionFailed(
+            publisher.emit(new AiCompletionFailed(
                     request.invocationId(),
                     "AI_PROVIDER_CAPACITY_TIMEOUT",
                     "AI provider concurrency queue exceeded its wait timeout",
                     true,
                     clock.instant()));
+        } catch (ProviderConcurrencyLimiter.ProviderQueueFullException exception) {
+            publisher.emit(new AiCompletionFailed(
+                    request.invocationId(),
+                    "AI_PROVIDER_QUEUE_FULL",
+                    "AI provider concurrency queue is full",
+                    true,
+                    clock.instant()));
+        } catch (AiInvocationDeadlineExceededException exception) {
+            publisher.emit(new AiCompletionFailed(
+                    request.invocationId(),
+                    "AI_INVOCATION_TIMEOUT",
+                    "AI invocation exceeded its workflow deadline",
+                    true,
+                    clock.instant()));
         } catch (RuntimeException | IOException exception) {
-            publisher.submit(new AiCompletionFailed(
+            publisher.emit(new AiCompletionFailed(
                     request.invocationId(),
                     exception.getClass().getSimpleName(),
                     safeMessage(exception),
@@ -132,13 +146,16 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             if (permit != null) {
                 permit.close();
             }
-            publisher.close();
+            publisher.complete();
         }
     }
 
     private HttpRequest request(AiCompletionRequest request, AiRuntimeProfile profile) {
         var endpoint = endpoint(profile.baseUri(), request.protocol());
-        var timeout = minimum(request.timeout(), Duration.ofSeconds(profile.requestTimeoutSeconds()));
+        var timeout = minimum(
+                request.timeout(),
+                Duration.ofSeconds(profile.requestTimeoutSeconds()),
+                remaining(request.deadline()));
         return HttpRequest.newBuilder(endpoint)
                 .timeout(timeout)
                 .header("Accept", "text/event-stream")
@@ -176,14 +193,14 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             AiCompletionRequest request,
             AiProtocol protocol,
             InputStream inputStream,
-            SubmissionPublisher<AiCompletionEvent> publisher) throws IOException {
+            StreamSession publisher) throws IOException {
         try (inputStream;
                 var reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
             String eventName = null;
             String line;
             long sequence = 0;
             var terminal = false;
-            while ((line = reader.readLine()) != null && publisher.hasSubscribers()) {
+            while (publisher.active() && (line = reader.readLine()) != null) {
                 if (line.startsWith("event:")) {
                     eventName = line.substring("event:".length()).strip();
                     continue;
@@ -196,7 +213,7 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
                     continue;
                 }
                 if ("[DONE]".equals(data)) {
-                    publisher.submit(new AiCompletionFinished(
+                    publisher.emit(new AiCompletionFinished(
                             request.invocationId(), "completed", clock.instant()));
                     terminal = true;
                     break;
@@ -212,21 +229,23 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
                 }
                 eventName = null;
             }
-            if (!terminal && publisher.hasSubscribers()) {
-                publisher.submit(new AiCompletionFailed(
+            if (!terminal && publisher.active()) {
+                publisher.emit(new AiCompletionFailed(
                         request.invocationId(),
                         "STREAM_TRUNCATED",
                         "AI provider stream ended without a terminal event",
                         true,
                         clock.instant()));
             }
+        } finally {
+            publisher.detachBody(inputStream);
         }
     }
 
     private StreamOutcome handleChat(
             AiCompletionRequest request,
             JsonNode root,
-            SubmissionPublisher<AiCompletionEvent> publisher,
+            StreamSession publisher,
             long sequence) {
         if (root.has("error")) {
             submitProviderFailure(request, root, publisher);
@@ -240,12 +259,12 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
         var choice = choices.get(0);
         var content = choice.path("delta").path("content");
         if (content.isTextual() && !content.textValue().isEmpty()) {
-            publisher.submit(new AiTextDelta(
+            publisher.emit(new AiTextDelta(
                     request.invocationId(), ++sequence, content.textValue(), clock.instant()));
         }
         var finishReason = choice.path("finish_reason");
         if (finishReason.isTextual() && !finishReason.textValue().isBlank()) {
-            publisher.submit(new AiCompletionFinished(
+            publisher.emit(new AiCompletionFinished(
                     request.invocationId(), finishReason.textValue(), clock.instant()));
             return new StreamOutcome(sequence, true);
         }
@@ -256,19 +275,19 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             AiCompletionRequest request,
             String eventName,
             JsonNode root,
-            SubmissionPublisher<AiCompletionEvent> publisher,
+            StreamSession publisher,
             long sequence) {
         var type = root.path("type").asText(Objects.requireNonNullElse(eventName, ""));
         if ("response.output_text.delta".equals(type)) {
             var delta = root.path("delta");
             if (delta.isTextual() && !delta.textValue().isEmpty()) {
-                publisher.submit(new AiTextDelta(
+                publisher.emit(new AiTextDelta(
                         request.invocationId(), ++sequence, delta.textValue(), clock.instant()));
             }
         } else if ("response.completed".equals(type)) {
             var response = root.path("response");
             reportResponsesUsage(request, response.path("usage"), publisher);
-            publisher.submit(new AiCompletionFinished(
+            publisher.emit(new AiCompletionFinished(
                     request.invocationId(), response.path("status").asText("completed"), clock.instant()));
             return new StreamOutcome(sequence, true);
         } else if ("response.failed".equals(type) || "error".equals(type)) {
@@ -281,9 +300,9 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
     private void submitProviderFailure(
             AiCompletionRequest request,
             JsonNode root,
-            SubmissionPublisher<AiCompletionEvent> publisher) {
+            StreamSession publisher) {
         var failure = ProviderErrorClassifier.classify(root);
-        publisher.submit(new AiCompletionFailed(
+        publisher.emit(new AiCompletionFailed(
                 request.invocationId(),
                 failure.errorCode(),
                 failure.safeMessage(),
@@ -294,9 +313,9 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
     private void reportUsage(
             AiCompletionRequest request,
             JsonNode usage,
-            SubmissionPublisher<AiCompletionEvent> publisher) {
+            StreamSession publisher) {
         if (usage.isObject()) {
-            publisher.submit(new AiUsageReported(
+            publisher.emit(new AiUsageReported(
                     request.invocationId(),
                     usage.path("prompt_tokens").asLong(0),
                     usage.path("completion_tokens").asLong(0),
@@ -307,9 +326,9 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
     private void reportResponsesUsage(
             AiCompletionRequest request,
             JsonNode usage,
-            SubmissionPublisher<AiCompletionEvent> publisher) {
+            StreamSession publisher) {
         if (usage.isObject()) {
-            publisher.submit(new AiUsageReported(
+            publisher.emit(new AiUsageReported(
                     request.invocationId(),
                     usage.path("input_tokens").asLong(0),
                     usage.path("output_tokens").asLong(0),
@@ -357,8 +376,22 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
         }
     }
 
-    private static Duration minimum(Duration first, Duration second) {
-        return first.compareTo(second) <= 0 ? first : second;
+    private static Duration minimum(Duration first, Duration... remaining) {
+        var minimum = first;
+        for (var candidate : remaining) {
+            if (candidate.compareTo(minimum) < 0) {
+                minimum = candidate;
+            }
+        }
+        return minimum;
+    }
+
+    private Duration remaining(Instant deadline) {
+        var remaining = Duration.between(clock.instant(), deadline);
+        if (remaining.isZero() || remaining.isNegative()) {
+            throw new AiInvocationDeadlineExceededException();
+        }
+        return remaining;
     }
 
     private static boolean retryable(Throwable error) {
@@ -392,6 +425,110 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             }
         });
         subscriber.onError(new IllegalStateException("AI completion publisher supports one subscriber"));
+    }
+
+    private final class StreamSession implements Flow.Subscription {
+        private final AiCompletionRequest request;
+        private final Flow.Subscriber<? super AiCompletionEvent> subscriber;
+        private final AtomicBoolean started = new AtomicBoolean();
+        private final AtomicBoolean cancelled = new AtomicBoolean();
+        private final AtomicBoolean completed = new AtomicBoolean();
+        private final AtomicReference<InputStream> responseBody = new AtomicReference<>();
+        private final AtomicReference<Thread> runner = new AtomicReference<>();
+
+        private StreamSession(
+                AiCompletionRequest request,
+                Flow.Subscriber<? super AiCompletionEvent> subscriber) {
+            this.request = request;
+            this.subscriber = subscriber;
+        }
+
+        @Override
+        public void request(long count) {
+            if (count <= 0) {
+                if (completed.compareAndSet(false, true)) {
+                    cancelled.set(true);
+                    subscriber.onError(new IllegalArgumentException("Flow demand must be positive"));
+                }
+                return;
+            }
+            if (!started.compareAndSet(false, true) || cancelled.get()) {
+                return;
+            }
+            try {
+                executor.execute(() -> {
+                    var current = Thread.currentThread();
+                    runner.set(current);
+                    if (cancelled.get()) {
+                        current.interrupt();
+                    }
+                    try {
+                        execute(request, this);
+                    } finally {
+                        runner.compareAndSet(current, null);
+                    }
+                });
+            } catch (RuntimeException exception) {
+                completed.set(true);
+                subscriber.onError(exception);
+            }
+        }
+
+        @Override
+        public void cancel() {
+            if (!cancelled.compareAndSet(false, true)) {
+                return;
+            }
+            var body = responseBody.getAndSet(null);
+            if (body != null) {
+                close(body);
+            }
+            var executingThread = runner.get();
+            if (executingThread != null && executingThread != Thread.currentThread()) {
+                executingThread.interrupt();
+            }
+        }
+
+        private boolean attachBody(InputStream body) {
+            Objects.requireNonNull(body, "body");
+            if (!responseBody.compareAndSet(null, body)) {
+                close(body);
+                throw new IllegalStateException("AI response body was attached more than once");
+            }
+            if (cancelled.get() && responseBody.compareAndSet(body, null)) {
+                close(body);
+                return false;
+            }
+            return true;
+        }
+
+        private void detachBody(InputStream body) {
+            responseBody.compareAndSet(body, null);
+        }
+
+        private boolean active() {
+            return !cancelled.get() && !completed.get();
+        }
+
+        private void emit(AiCompletionEvent event) {
+            if (active()) {
+                subscriber.onNext(event);
+            }
+        }
+
+        private void complete() {
+            if (!cancelled.get() && completed.compareAndSet(false, true)) {
+                subscriber.onComplete();
+            }
+        }
+    }
+
+    private static final class AiInvocationDeadlineExceededException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        private AiInvocationDeadlineExceededException() {
+            super("AI invocation deadline exceeded");
+        }
     }
 
     private record StreamOutcome(long sequence, boolean terminal) {

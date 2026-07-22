@@ -1,6 +1,232 @@
+export type ControlPlaneRequestPath = `/api/v2${string}`;
+
 export type WorkflowRunStatus = 'ACCEPTED' | 'RUNNING' | 'WAITING_HUMAN' | 'PARTIAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type BackgroundTaskStatus = 'PENDING' | 'CLAIMED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type ReasoningEffort = 'PROVIDER_DEFAULT' | 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH' | 'MAX';
+export type WorkflowFailurePolicy = 'STOP' | 'CONTINUE' | 'REPLAN';
+export type WorkflowOutputContract = 'TEXT' | 'RESEARCH_FINDINGS' | 'DEBATE_ARGUMENT' | 'RISK_ASSESSMENT' | 'CHAIR_VERDICT' | 'TRADE_DECISIONS' | 'EXECUTION_VERDICT';
+export type WorkflowNodeType = 'INPUT' | 'ROUTER' | 'DETERMINISTIC' | 'COLLECTOR' | 'CLEANER' | 'AI_CLEANER' | 'COMPRESSOR' | 'COMPRESSION_VALIDATOR' | 'AGENT' | 'GATE' | 'QUANT' | 'RISK' | 'SUBFLOW' | 'HUMAN_REVIEW' | 'AGGREGATOR' | 'CHAIR' | 'EXECUTION_REVIEW' | 'OUTPUT';
+
+export interface ExchangeAccountControl {
+  accountId: string;
+  exchange: 'GATE' | 'BYBIT';
+  environment: 'TESTNET' | 'DEMO';
+  displayName: string;
+  enabled: boolean;
+  version: number;
+  updatedAt: string;
+}
+
+export interface ExchangeAccountSyncResult {
+  accountId: { value: string };
+  factCount: number;
+  watermark: string;
+  complete: boolean;
+  warnings: string[];
+}
+
+export interface RuntimeSecretStatus {
+  scope: 'AI_PROVIDER' | 'EXCHANGE_ACCOUNT' | 'PROXY_ROUTE' | 'PROXY_GATEWAY' | 'INFORMATION_SOURCE';
+  targetId: string;
+  secretName: string;
+  source: 'DATABASE_OVERRIDE' | 'ENVIRONMENT_FALLBACK' | 'UNCONFIGURED';
+  configured: boolean;
+  fingerprint: string | null;
+  version: number;
+  updatedAt: string | null;
+}
+
+export interface ProxyGatewayProfile {
+  gatewayId: string;
+  displayName: string;
+  controlUrl: string;
+  subscriptionUrlEnvironment: string;
+  inlineNodesEnvironment: string;
+  engine: 'SING_BOX' | 'XRAY';
+  preferredNames: string[];
+  maximumNodes: number;
+  refreshSeconds: number;
+  allowInsecureTls: boolean;
+  enabled: boolean;
+  version: number;
+  updatedAt: string;
+}
+
+export interface ProxyGatewayReloadResult {
+  gatewayId: string;
+  status: string;
+  requestedAt: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+  challengeId: string;
+  proofOfWorkSolution: string;
+  mathAnswer: number;
+}
+
+export interface InstantResearchRequest {
+  question: string;
+  workflowVersionId: string | null;
+  demoWorkflowVersionId: string | null;
+}
+
+export interface CollectSourceRequest {
+  query: string;
+  workflowRunId: string | null;
+}
+
+export interface CreateWatchlistRequest {
+  name: string;
+  description: string;
+}
+
+export interface UpdateWatchlistRequest extends CreateWatchlistRequest {
+  expectedVersion: number;
+}
+
+export interface UpsertWatchlistItemRequest {
+  preferredInstrumentId: string | null;
+  researchMode: 'MONITOR' | 'RESEARCH' | 'PINNED';
+  note: string;
+}
+
+export interface UpdateSettingRequest {
+  value: string;
+  expectedVersion: number;
+}
+
+export interface UpdateScheduleRequest {
+  enabled: boolean;
+  intervalSeconds: number;
+  expectedVersion: number;
+}
+
+export interface ResearchFeedbackRequest {
+  rating: 'HELPFUL' | 'NEUTRAL' | 'NOT_HELPFUL';
+  effectiveness: 'UNKNOWN' | 'PENDING' | 'WIN' | 'LOSS' | 'NO_TRADE';
+  note: string;
+  expectedVersion?: number | null;
+}
+
+export interface UpdateExchangeAccountControlRequest {
+  enabled: boolean;
+  expectedVersion: number;
+}
+
+export interface WorkflowActivationRequest {
+  active: boolean;
+}
+
+export interface StartWorkflowRequest {
+  workflowType: 'SCHEDULED_RESEARCH' | 'INSTANT_RESEARCH' | 'ACCOUNT_RECONCILIATION' | 'EXCHANGE_LEDGER_SYNC';
+  trigger: 'MANUAL' | 'SCHEDULED' | 'API' | 'RECOVERY';
+  workflowVersionId: string | null;
+  requestSummary: string;
+}
+
+export interface AgentRoleMutation {
+  displayName: string;
+  objective: string;
+  systemPrompt: string;
+  userPromptTemplate: string;
+  outputContract: WorkflowOutputContract;
+  defaultProviderProfileId: string;
+  defaultModelName: string;
+  defaultReasoningEffort: ReasoningEffort;
+  expectedVersion?: number | null;
+}
+
+export interface AiExperimentMutation {
+  displayName: string;
+  status: 'DRAFT' | 'RUNNING' | 'PAUSED' | 'COMPLETED';
+  controlWorkflowVersionId: string;
+  candidateWorkflowVersionId: string;
+  candidateAllocationBasisPoints: number;
+  evaluationMetric: string;
+  minimumSampleSize: number;
+  expectedVersion?: number | null;
+}
+
+export interface UpdateExecutionAiStageRequest {
+  primaryAiBinding: { providerProfileId: string; modelName: string; reasoningEffort: ReasoningEffort };
+  fallbackAiBinding: { providerProfileId: string; modelName: string; reasoningEffort: ReasoningEffort } | null;
+  systemPrompt: string;
+  userPromptTemplate: string;
+  maximumOutputTokens: number;
+  timeoutSeconds: number;
+  retryMaximumAttempts: number;
+  retryBackoffSeconds: number;
+  enabled: boolean;
+  expectedVersion: number;
+}
+
+export interface ActivateRiskPolicyRequest {
+  policyVersion: string;
+  testEnvironmentOnly: boolean;
+  minimumConfidence: number;
+  riskBudgetUsdt: number;
+  maximumNotionalUsdt: number;
+  preferredLeverage: number;
+  maximumLeverage: number;
+  maximumOpenPositions: number;
+  maximumStopDistance: number;
+  takerFeeRate: number;
+  slippageRate: number;
+  liquidationBufferRate: number;
+}
+
+export interface WorkflowDraftRequest {
+  definitionId: string | null;
+  versionId: string | null;
+  name: string;
+  description: string;
+  defaultDebateRounds: number;
+  maximumSteps: number;
+  maximumDurationSeconds: number;
+  maximumTokens: number;
+  maximumCostUsd: number;
+  failurePolicy: WorkflowFailurePolicy;
+  expectedChecksum: string | null;
+  nodes: WorkflowDraftNodeRequest[];
+  edges: WorkflowDraftEdgeRequest[];
+}
+
+export interface WorkflowDraftNodeRequest {
+  nodeId: string;
+  nodeType: WorkflowNodeType;
+  displayName: string;
+  roleName: string | null;
+  roleTemplateId: string | null;
+  primaryAiBinding: { providerProfileId: string; modelName: string; reasoningEffort: ReasoningEffort } | null;
+  fallbackAiBinding: { providerProfileId: string; modelName: string; reasoningEffort: ReasoningEffort } | null;
+  systemPrompt: string | null;
+  userPromptTemplate: string | null;
+  outputContract: WorkflowOutputContract | null;
+  contextMode: string;
+  contextHistoryRounds: number;
+  contextMaximumMessages: number;
+  maximumOutputTokens: number;
+  timeoutSeconds: number;
+  retryMaximumAttempts: number;
+  retryBackoffSeconds: number;
+  operation: string | null;
+  positionX: number;
+  positionY: number;
+  enabled: boolean;
+}
+
+export interface WorkflowDraftEdgeRequest {
+  edgeId: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  activationMode: string;
+  contextMode: string;
+  condition: WorkflowCondition | null;
+  loopEdge: boolean;
+  maximumTraversals: number | null;
+}
 
 export interface AuthStatus {
   authenticated: boolean;
@@ -94,7 +320,7 @@ export interface ResearchLaunch {
 
 export interface ResearchCase {
   caseId: string;
-  status: string;
+  status: 'PENDING' | 'RUNNING' | 'PARTIAL' | 'COMPLETED' | 'FAILED';
   requestSummary: string;
   evidenceArtifactId: string | null;
   segments: Array<{
@@ -103,7 +329,7 @@ export interface ResearchCase {
     dataPlane: 'LIVE' | 'PAPER' | null;
     workflowRunId: string | null;
     evidenceArtifactId: string | null;
-    status: string;
+    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
     errorCode: string | null;
     errorMessage: string | null;
     startedAt: string | null;
@@ -263,7 +489,7 @@ export interface ExecutionAiStage {
 }
 
 export interface AiModelBinding {
-  providerProfileId: { value: string } | string;
+  providerProfileId: string;
   modelName: string;
   reasoningEffort: ReasoningEffort;
 }
@@ -374,10 +600,10 @@ export interface WorkflowDefinitionSummary {
   draftVersionId: string | null; draftVersionNumber: number | null; updatedAt: string;
 }
 export interface WorkflowNode {
-  nodeId: string; nodeType: string; displayName: string; roleName: string | null;
+  nodeId: string; nodeType: WorkflowNodeType; displayName: string; roleName: string | null;
   roleTemplateId: string | null; primaryAiBinding: AiModelBinding | null;
   fallbackAiBinding: AiModelBinding | null; systemPrompt: string | null; userPromptTemplate: string | null;
-  outputContract: string | null; contextMode: string; contextHistoryRounds: number;
+  outputContract: WorkflowOutputContract | null; contextMode: string; contextHistoryRounds: number;
   contextMaximumMessages: number; maximumOutputTokens: number; timeoutSeconds: number;
   retryMaximumAttempts: number; retryBackoffSeconds: number; operation: string | null;
   positionX: number; positionY: number; enabled: boolean;
@@ -402,17 +628,17 @@ export interface WorkflowCondition {
 export interface WorkflowVersion {
   versionId: string; definitionId: string; versionNumber: number; status: string;
   defaultDebateRounds: number; maximumSteps: number; maximumDurationSeconds: number;
-  maximumTokens: number; maximumCostUsd: number; failurePolicy: string; checksum: string;
+  maximumTokens: number; maximumCostUsd: number; failurePolicy: WorkflowFailurePolicy; checksum: string;
   publishedAt: string | null; createdAt: string; createdBy: string; nodes: WorkflowNode[]; edges: WorkflowEdge[];
 }
 export interface WorkflowSchema {
-  nodeTypes: string[]; reasoningEfforts: ReasoningEffort[]; contextModes: string[];
-  edgeContextModes: string[]; conditionOperators: string[]; outputContracts: string[]; failurePolicies: string[];
+  nodeTypes: WorkflowNodeType[]; reasoningEfforts: ReasoningEffort[]; contextModes: string[];
+  edgeContextModes: string[]; conditionOperators: string[]; outputContracts: WorkflowOutputContract[]; failurePolicies: WorkflowFailurePolicy[];
 }
 
 export interface SystemSetting { key: string; type: string; value: string; source: string; description: string; version: number; updatedAt: string }
 export interface AiProvider {
-  profileId: string; displayName: string; protocol: string; reasoningParameterStyle: string;
+  profileId: string; displayName: string; protocol: 'CHAT' | 'RESPONSES'; reasoningParameterStyle: 'NONE' | 'FLAT' | 'NESTED';
   baseUrl: string | null; baseUrlConfigured: boolean;
   apiKeyConfigured: boolean;
   credentialSource: 'DATABASE_OVERRIDE' | 'ENVIRONMENT_FALLBACK' | 'UNCONFIGURED';
@@ -445,7 +671,7 @@ export interface AdminApiToken {
 
 export interface CreatedAdminApiToken {
   token: AdminApiToken;
-  rawToken: string;
+  readonly rawToken: string;
 }
 
 export interface SourceRecord {
@@ -622,7 +848,7 @@ export interface IngestionWorkspace {
   }>;
   recentAiReviews: Array<{
     reviewId: string; workflowRunId: string; documentId: string; nodeId: string;
-    stage: string; status: string; summary: string | null; errorCode: string | null;
+    stage: 'CLEANING' | 'COMPRESSION' | 'VALIDATION'; status: string; summary: string | null; errorCode: string | null;
     citations: string[]; errorMessage: string | null; createdAt: string;
   }>;
   sourceCatalogVersion: string;
@@ -731,7 +957,7 @@ export interface ProviderModelCatalog {
 
 export interface AgentRole {
   roleTemplateId: string; displayName: string; objective: string; systemPrompt: string;
-  userPromptTemplate: string; outputContract: string; defaultProviderProfileId: string;
+  userPromptTemplate: string; outputContract: WorkflowOutputContract; defaultProviderProfileId: string;
   defaultModelName: string; defaultReasoningEffort: ReasoningEffort; builtIn: boolean;
   version: number; createdAt: string; updatedAt: string;
 }

@@ -120,9 +120,14 @@ public class JdbcAiInvocationAuditStore implements AiInvocationAuditStore {
                     .param("completedAt", timestamp(completion.completedAt()))
                     .update();
         }
+        JdbcAiBudgetReservationReleaser.release(
+                jdbcClient,
+                completion.invocationId().value(),
+                completion.completedAt());
     }
 
     @Override
+    @Transactional
     public void fail(AiInvocationFailure failure) {
         jdbcClient.sql("""
                 update ai_invocation
@@ -141,6 +146,10 @@ public class JdbcAiInvocationAuditStore implements AiInvocationAuditStore {
                 .param("errorMessage", safe(failure.safeMessage(), 2000))
                 .param("failedAt", timestamp(failure.failedAt()))
                 .update();
+        JdbcAiBudgetReservationReleaser.release(
+                jdbcClient,
+                failure.invocationId().value(),
+                failure.failedAt());
     }
 
     private static String safe(String value, int maximumLength) {

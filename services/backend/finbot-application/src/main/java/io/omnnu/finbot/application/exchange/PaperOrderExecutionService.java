@@ -1,5 +1,6 @@
 package io.omnnu.finbot.application.exchange;
 
+import io.omnnu.finbot.application.operations.TaskCancellationContext;
 import io.omnnu.finbot.domain.oms.OrderId;
 import java.time.Clock;
 import java.time.Duration;
@@ -44,6 +45,7 @@ public final class PaperOrderExecutionService implements PaperOrderExecutionUseC
     }
 
     private PaperOrderExecutionResult submit(OrderId orderId) {
+        TaskCancellationContext.throwIfCancelled();
         var claimedAt = clock.instant();
         var order = store.claim(orderId, workerId, claimedAt, SUBMISSION_LEASE)
                 .orElse(null);
@@ -55,9 +57,12 @@ public final class PaperOrderExecutionService implements PaperOrderExecutionUseC
                     "Order is not currently claimable");
         }
         ExchangeSubmissionResult result;
+        var cancellationRegistration = TaskCancellationContext.interruptCurrentThreadOnCancellation();
         try {
+            TaskCancellationContext.throwIfCancelled();
             result = gateway.findByClientOrderId(order).orElseGet(() -> gateway.submit(order));
         } catch (RuntimeException exception) {
+            TaskCancellationContext.throwIfCancelled();
             result = new ExchangeSubmissionResult(
                     ExchangeSubmissionStatus.UNKNOWN,
                     null,
@@ -65,7 +70,10 @@ public final class PaperOrderExecutionService implements PaperOrderExecutionUseC
                     null,
                     "EXCHANGE_TRANSPORT_FAILURE",
                     "Exchange request outcome is unknown: " + exception.getClass().getSimpleName());
+        } finally {
+            cancellationRegistration.close();
         }
+        TaskCancellationContext.throwIfCancelled();
         store.recordResult(order, result, clock.instant());
         return new PaperOrderExecutionResult(
                 orderId,

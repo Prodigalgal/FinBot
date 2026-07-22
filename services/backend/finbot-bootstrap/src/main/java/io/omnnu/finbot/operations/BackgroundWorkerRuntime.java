@@ -7,6 +7,7 @@ import io.omnnu.finbot.application.ai.AiInvocationRecoveryStore;
 import io.omnnu.finbot.application.operations.BackgroundTask;
 import io.omnnu.finbot.application.operations.BackgroundTaskCoordinator;
 import io.omnnu.finbot.application.operations.BackgroundTaskHandler;
+import io.omnnu.finbot.application.operations.TaskCancellationToken;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.configuration.WorkerProperties;
 import io.omnnu.finbot.domain.operations.BackgroundTaskId;
@@ -29,6 +30,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -131,7 +133,9 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
                 recoveredInvocations);
     }
 
-    @Scheduled(fixedDelayString = "${finbot.worker.poll-delay:PT2S}")
+    @Scheduled(
+            fixedDelayString = "${finbot.worker.poll-delay:PT2S}",
+            scheduler = "workerControlScheduler")
     public void claimAvailableTask() {
         if (!active.get() || !claiming.compareAndSet(false, true)) {
             return;
@@ -149,7 +153,9 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
         }
     }
 
-    @Scheduled(fixedDelayString = "${finbot.worker.scheduler-poll-delay:PT5S}")
+    @Scheduled(
+            fixedDelayString = "${finbot.worker.scheduler-poll-delay:PT5S}",
+            scheduler = "workerControlScheduler")
     public void materializeSchedules() {
         var count = coordinator.materializeDueSchedules(properties.maximumDueSchedules());
         if (count > 0) {
@@ -157,7 +163,9 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
         }
     }
 
-    @Scheduled(fixedDelayString = "${finbot.worker.heartbeat-interval:PT5S}")
+    @Scheduled(
+            fixedDelayString = "${finbot.worker.heartbeat-interval:PT5S}",
+            scheduler = "workerLeaseScheduler")
     public void heartbeat() {
         try {
             coordinator.heartbeatWorker(workerId);
@@ -170,7 +178,8 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
                 return;
             }
             try {
-                if (!coordinator.heartbeat(running.task(), workerId, properties.leaseDuration())) {
+                if (!coordinator.heartbeat(running.task(), workerId, properties.leaseDuration())
+                        && !running.committing()) {
                     lostLeaseCounter.increment();
                     running.cancelForLostLease();
                     LOGGER.error("Lost lease for task {}; local execution cancelled", running.task().taskId().value());
@@ -185,7 +194,9 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
         });
     }
 
-    @Scheduled(fixedDelayString = "${finbot.worker.lease-recovery-interval:PT10S}")
+    @Scheduled(
+            fixedDelayString = "${finbot.worker.lease-recovery-interval:PT10S}",
+            scheduler = "workerControlScheduler")
     public void recoverExpiredLeases() {
         if (!active.get()) {
             return;
@@ -225,23 +236,23 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
             if (handler == null) {
                 throw new MissingTaskHandlerException(task.taskType());
             }
-            var handlerFuture = handler.handle(task).toCompletableFuture();
+            var handlerFuture = handler.handle(task, running.cancellationToken()).toCompletableFuture();
             running.attachHandler(handlerFuture);
             handlerFuture.get();
-            if (running.canCommit(active.get())) {
+            if (running.beginCommit(active.get())) {
                 coordinator.complete(task, workerId);
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            if (running.canCommit(active.get())) {
+            if (running.canFail(active.get())) {
                 failClaimedTask(task, "TASK_INTERRUPTED", "Task execution was interrupted");
             }
         } catch (CancellationException exception) {
-            if (running.canCommit(active.get())) {
+            if (running.canFail(active.get())) {
                 failClaimedTask(task, "TASK_CANCELLED", "Task execution was cancelled");
             }
         } catch (ExecutionException | RuntimeException exception) {
-            if (running.canCommit(active.get())) {
+            if (running.canFail(active.get())) {
                 var cause = rootCause(exception);
                 failClaimedTask(task, cause.getClass().getSimpleName(), safeMessage(cause));
                 LOGGER.error("Task {} ({}) failed: {}", task.taskId().value(), task.taskType(), safeMessage(cause));
@@ -319,7 +330,9 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
 
     private static final class RunningTask {
         private final BackgroundTask task;
-        private final AtomicBoolean leaseActive = new AtomicBoolean(true);
+        private final TaskCancellationToken cancellationToken = new TaskCancellationToken();
+        private final AtomicReference<RunningTaskState> state =
+                new AtomicReference<>(RunningTaskState.RUNNING);
         private volatile FutureTask<Void> execution;
         private volatile CompletableFuture<Void> handler;
 
@@ -331,12 +344,28 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
             return task;
         }
 
-        private boolean leaseActive() {
-            return leaseActive.get();
+        private TaskCancellationToken cancellationToken() {
+            return cancellationToken;
         }
 
-        private boolean canCommit(boolean runtimeActive) {
-            return runtimeActive && leaseActive.get() && !Thread.currentThread().isInterrupted();
+        private boolean leaseActive() {
+            return state.get() != RunningTaskState.CANCELLED;
+        }
+
+        private boolean beginCommit(boolean runtimeActive) {
+            return runtimeActive
+                    && !Thread.currentThread().isInterrupted()
+                    && state.compareAndSet(RunningTaskState.RUNNING, RunningTaskState.COMMITTING);
+        }
+
+        private boolean committing() {
+            return state.get() == RunningTaskState.COMMITTING;
+        }
+
+        private boolean canFail(boolean runtimeActive) {
+            return runtimeActive
+                    && state.get() == RunningTaskState.RUNNING
+                    && !Thread.currentThread().isInterrupted();
         }
 
         private void attachExecution(FutureTask<Void> future) {
@@ -345,22 +374,23 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
 
         private void attachHandler(CompletableFuture<Void> future) {
             handler = future;
-            if (!leaseActive.get()) {
+            if (state.get() == RunningTaskState.CANCELLED) {
                 future.cancel(true);
             }
         }
 
         private void cancelForLostLease() {
-            leaseActive.set(false);
+            state.set(RunningTaskState.CANCELLED);
             cancel();
         }
 
         private void cancelForShutdown() {
-            leaseActive.set(false);
+            state.set(RunningTaskState.CANCELLED);
             cancel();
         }
 
         private void cancel() {
+            cancellationToken.cancel();
             var handlerFuture = handler;
             if (handlerFuture != null) {
                 handlerFuture.cancel(true);
@@ -370,6 +400,12 @@ public final class BackgroundWorkerRuntime implements InitializingBean, Disposab
                 executionFuture.cancel(true);
             }
         }
+    }
+
+    private enum RunningTaskState {
+        RUNNING,
+        COMMITTING,
+        CANCELLED
     }
 
     private static final class MissingTaskHandlerException extends RuntimeException {

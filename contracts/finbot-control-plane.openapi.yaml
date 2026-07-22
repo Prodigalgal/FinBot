@@ -14,18 +14,39 @@ paths:
       operationId: getAgentRoles
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AgentRole[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentRole"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AgentRole[]
+      x-finbot-java-response-type: List<RoleResponse>
     post:
       operationId: postAgentRoles
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AgentRole response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRole"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: AgentRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRoleMutation"
+      x-finbot-java-response-type: RoleResponse
+      x-finbot-java-request-type: SaveRoleRequest
   /agent-roles/{roleTemplateId}:
     delete:
       operationId: deleteAgentRolesRoleTemplateId
@@ -41,11 +62,17 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: void
+      x-finbot-java-response-type: void
     put:
       operationId: putAgentRolesRoleTemplateId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AgentRole response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRole"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -55,25 +82,63 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: AgentRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRoleMutation"
+      x-finbot-java-response-type: RoleResponse
+      x-finbot-java-request-type: SaveRoleRequest
   /ai-experiments:
     get:
       operationId: listAiExperiments
       responses:
         "200":
-          $ref: "#/components/responses/JsonArray"
+          description: Successful AiExperiment[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiExperiment"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AiExperiment[]
+      x-finbot-java-response-type: List<AiExperiment>
     post:
       operationId: createAiExperiment
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
         "201":
-          $ref: "#/components/responses/AiModel"
+          description: Successful AiExperiment response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiExperiment"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AiExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiExperimentMutation"
+      x-finbot-java-response-type: AiExperiment
+      x-finbot-java-request-type: SaveRequest
   /ai-experiments/{experimentId}:
     put:
       operationId: putAiExperimentsExperimentId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AiExperiment response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiExperiment"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -83,6 +148,15 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: AiExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiExperimentMutation"
+      x-finbot-java-response-type: AiExperiment
+      x-finbot-java-request-type: SaveRequest
   /analysis/forecasts:
     get:
       operationId: listResearchForecasts
@@ -96,7 +170,17 @@ paths:
             default: 50
       responses:
         "200":
-          $ref: "#/components/responses/JsonArray"
+          description: Successful ResearchForecast[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResearchForecast"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ResearchForecast[]
+      x-finbot-java-response-type: List<ForecastResponse>
   /analysis/market-runs:
     post:
       operationId: startMarketAnalysis
@@ -111,7 +195,16 @@ paths:
               $ref: "#/components/schemas/MarketAnalysisCommand"
       responses:
         "202":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchLaunch response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchLaunch"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ResearchLaunch
+      x-finbot-java-response-type: CompletionStage<ResponseEntity<InstantResearchResponse>>
+      x-finbot-java-request-type: MarketAnalysisRequest
   /analysis/market-runs/{runId}/forecast:
     get:
       operationId: getResearchForecast
@@ -119,15 +212,23 @@ paths:
         - $ref: "#/components/parameters/RunIdPath"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchForecast response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchForecast"
         "404":
           $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ResearchForecast
+      x-finbot-java-response-type: ForecastResponse
   /api-tokens:
     get:
       operationId: listAdminApiTokens
       responses:
         "200":
-          description: Persistent API token metadata without token plaintext.
+          description: Successful AdminApiToken[] response.
           content:
             application/json:
               schema:
@@ -136,6 +237,8 @@ paths:
                   $ref: "#/components/schemas/AdminApiToken"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AdminApiToken[]
+      x-finbot-java-response-type: List<AdminApiTokenResponse>
     post:
       operationId: createAdminApiToken
       parameters:
@@ -148,13 +251,16 @@ paths:
               $ref: "#/components/schemas/CreateAdminApiTokenRequest"
       responses:
         "201":
-          description: Created token; rawToken is returned only in this response.
+          description: Successful CreatedAdminApiToken response.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreatedAdminApiToken"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: CreatedAdminApiToken
+      x-finbot-java-response-type: ResponseEntity<CreatedAdminApiTokenResponse>
+      x-finbot-java-request-type: CreateAdminApiTokenRequest
   /api-tokens/{tokenId}:
     delete:
       operationId: revokeAdminApiToken
@@ -172,50 +278,91 @@ paths:
           description: Token revoked.
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: void
+      x-finbot-java-response-type: void
   /auth/challenge:
     get:
       operationId: getAuthChallenge
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AuthChallenge response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthChallenge"
         default:
           $ref: "#/components/responses/Problem"
       security: []
+      x-finbot-web-response-type: AuthChallenge
+      x-finbot-java-response-type: AuthChallengeResponse
   /auth/login:
     post:
       operationId: postAuthLogin
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AuthStatus response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       security: []
+      x-finbot-web-response-type: AuthStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      x-finbot-java-response-type: ResponseEntity<AuthStatusResponse>
+      x-finbot-java-request-type: LoginRequest
   /auth/logout:
     post:
       operationId: postAuthLogout
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AuthStatus response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: AuthStatus
+      x-finbot-java-response-type: ResponseEntity<AuthStatusResponse>
   /auth/status:
     get:
       operationId: getAuthStatus
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AuthStatus response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AuthStatus
+      x-finbot-java-response-type: AuthStatusResponse
   /autonomous:
     get:
       operationId: getAutonomousResearchStatus
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AutonomousStatus response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutonomousStatus"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AutonomousStatus
+      x-finbot-java-response-type: StatusResponse
   /autonomous/runs:
     post:
       operationId: triggerAutonomousResearch
@@ -237,17 +384,32 @@ paths:
                   maxLength: 1000
       responses:
         "202":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TaskRecord response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRecord"
         "409":
           $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: TaskRecord
+      x-finbot-java-response-type: ResponseEntity<TaskResponse>
+      x-finbot-java-request-type: TriggerRequest
   /configuration:
     get:
       operationId: getConfiguration
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ConfigurationSnapshot response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigurationSnapshot"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ConfigurationSnapshot
+      x-finbot-java-response-type: ConfigurationSnapshot
   /configuration/models:
     post:
       operationId: postConfigurationModels
@@ -259,11 +421,18 @@ paths:
               $ref: "#/components/schemas/CreateAiModelRequest"
       responses:
         "201":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AiModel response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiModel"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: AiModel
+      x-finbot-java-response-type: AiModelProfile
+      x-finbot-java-request-type: CreateModelRequest
   /configuration/models/{modelProfileId}:
     put:
       operationId: putConfigurationModelsModelProfileId
@@ -275,7 +444,11 @@ paths:
               $ref: "#/components/schemas/UpdateAiModelRequest"
       responses:
         "200":
-          $ref: "#/components/responses/AiModel"
+          description: Successful AiModel response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiModel"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -285,6 +458,9 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: AiModel
+      x-finbot-java-response-type: AiModelProfile
+      x-finbot-java-request-type: UpdateModelRequest
   /configuration/providers:
     post:
       operationId: postConfigurationProviders
@@ -296,11 +472,18 @@ paths:
               $ref: "#/components/schemas/CreateAiProviderRequest"
       responses:
         "201":
-          $ref: "#/components/responses/AiProvider"
+          description: Successful AiProvider response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProvider"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: AiProvider
+      x-finbot-java-response-type: AiProviderView
+      x-finbot-java-request-type: CreateProviderRequest
   /configuration/providers/{profileId}:
     delete:
       operationId: deleteConfigurationProvidersProfileId
@@ -323,6 +506,8 @@ paths:
             format: int64
             minimum: 0
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: void
+      x-finbot-java-response-type: void
     put:
       operationId: putConfigurationProvidersProfileId
       requestBody:
@@ -333,7 +518,11 @@ paths:
               $ref: "#/components/schemas/UpdateAiProviderRequest"
       responses:
         "200":
-          $ref: "#/components/responses/AiProvider"
+          description: Successful AiProvider response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProvider"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -343,12 +532,19 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: AiProvider
+      x-finbot-java-response-type: AiProviderView
+      x-finbot-java-request-type: UpdateProviderRequest
   /configuration/providers/{profileId}/probe:
     post:
       operationId: postConfigurationProvidersProfileIdProbe
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ProviderModelCatalog response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderModelCatalog"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -358,6 +554,8 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ProviderModelCatalog
+      x-finbot-java-response-type: ProviderModelCatalog
   /configuration/providers/probe:
     post:
       operationId: postConfigurationProvidersProbe
@@ -369,17 +567,28 @@ paths:
               $ref: "#/components/schemas/ProbeAiProviderRequest"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ProviderModelCatalog response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderModelCatalog"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ProviderModelCatalog
+      x-finbot-java-response-type: ProviderModelCatalog
+      x-finbot-java-request-type: ProbeProviderRequest
   /configuration/settings/{settingKey}:
     put:
       operationId: putConfigurationSettingsSettingKey
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful SystemSetting response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSetting"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -389,20 +598,31 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: SystemSetting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettingRequest"
+      x-finbot-java-response-type: SystemSetting
+      x-finbot-java-request-type: UpdateSettingRequest
   /crawler/header-profiles:
     get:
       operationId: getCrawlerHeaderProfiles
       responses:
         "200":
-          description: Reusable crawler request header profiles
+          description: Successful CrawlerHeaderProfile[] response.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/CrawlerHeaderProfileResponse"
+                  $ref: "#/components/schemas/CrawlerHeaderProfile"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: CrawlerHeaderProfile[]
+      x-finbot-java-response-type: List<CrawlerHeaderProfileResponse>
     post:
       operationId: createCrawlerHeaderProfile
       parameters:
@@ -415,13 +635,16 @@ paths:
               $ref: "#/components/schemas/CrawlerHeaderProfileMutationRequest"
       responses:
         "201":
-          description: Crawler header profile created
+          description: Successful CrawlerHeaderProfile response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CrawlerHeaderProfileResponse"
+                $ref: "#/components/schemas/CrawlerHeaderProfile"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: CrawlerHeaderProfile
+      x-finbot-java-response-type: CrawlerHeaderProfileResponse
+      x-finbot-java-request-type: CrawlerHeaderProfileMutationRequest
   /crawler/header-profiles/{profileId}:
     delete:
       operationId: deleteCrawlerHeaderProfile
@@ -439,6 +662,10 @@ paths:
           description: Crawler header profile archived
         "409":
           $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: void
+      x-finbot-java-response-type: void
     put:
       operationId: updateCrawlerHeaderProfile
       parameters:
@@ -458,21 +685,34 @@ paths:
               $ref: "#/components/schemas/CrawlerHeaderProfileMutationRequest"
       responses:
         "200":
-          description: Crawler header profile updated and hot-applied
+          description: Successful CrawlerHeaderProfile response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CrawlerHeaderProfileResponse"
+                $ref: "#/components/schemas/CrawlerHeaderProfile"
         "409":
           $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: CrawlerHeaderProfile
+      x-finbot-java-response-type: CrawlerHeaderProfileResponse
+      x-finbot-java-request-type: CrawlerHeaderProfileMutationRequest
   /evidence/documents:
     get:
       operationId: getEvidenceDocuments
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful EvidenceDocument[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EvidenceDocument"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: EvidenceDocument[]
+      x-finbot-java-response-type: List<DocumentResponse>
   /exchanges/capabilities:
     get:
       operationId: listExchangeCapabilities
@@ -486,32 +726,53 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ExchangeCapability"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-java-response-type: List<ExchangeCapability>
   /ingestion/workspace:
     get:
       operationId: getIngestionWorkspace
       responses:
         "200":
-          description: Ingestion evidence, source health, AI review, and immutable catalog status.
+          description: Successful IngestionWorkspace response.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/IngestionWorkspace"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: IngestionWorkspace
+      x-finbot-java-response-type: IngestionWorkspace
   /network:
     get:
       operationId: getNetwork
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful NetworkWorkspace response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkWorkspace"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: NetworkWorkspace
+      x-finbot-java-response-type: NetworkWorkspace
   /network/diagnostics:
     get:
       operationId: listNetworkDiagnostics
       responses:
         "200":
-          $ref: "#/components/responses/JsonArray"
+          description: Successful NetworkDiagnostic[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NetworkDiagnostic"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: NetworkDiagnostic[]
+      x-finbot-java-response-type: List<NetworkDiagnostic>
     post:
       operationId: startNetworkDiagnostics
       parameters:
@@ -538,13 +799,28 @@ paths:
                       - PUBLIC_DATA
       responses:
         "202":
-          $ref: "#/components/responses/JsonArray"
+          description: Successful NetworkDiagnostic[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NetworkDiagnostic"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: NetworkDiagnostic[]
+      x-finbot-java-response-type: ResponseEntity<List<NetworkDiagnostic>>
+      x-finbot-java-request-type: StartRequest
   /network/proxy-gateways/{gatewayId}:
     get:
       operationId: getNetworkProxyGatewayRuntimeStatus
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ProxyGatewayRuntimeStatus response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyGatewayRuntimeStatus"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -553,6 +829,8 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: ProxyGatewayRuntimeStatus
+      x-finbot-java-response-type: CompletionStage<ProxyGatewayRuntimeStatus>
     put:
       operationId: putNetworkProxyGatewaysGatewayId
       requestBody:
@@ -563,7 +841,11 @@ paths:
               $ref: "#/components/schemas/ProxyGatewayUpdateRequest"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ProxyGatewayProfile response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyGatewayProfile"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -573,12 +855,19 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ProxyGatewayProfile
+      x-finbot-java-response-type: ProxyGatewayProfile
+      x-finbot-java-request-type: UpdateRequest
   /network/proxy-gateways/{gatewayId}/reload:
     post:
       operationId: postNetworkProxyGatewaysGatewayIdReload
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ProxyGatewayReloadResult response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyGatewayReloadResult"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -588,14 +877,22 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ProxyGatewayReloadResult
+      x-finbot-java-response-type: CompletionStage<ProxyGatewayReloadResult>
   /operations:
     get:
       operationId: getOperations
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful OperationsOverview response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationsOverview"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: OperationsOverview
+      x-finbot-java-response-type: OperationsOverview
   /operations/events:
     get:
       operationId: streamOperationsSnapshots
@@ -612,12 +909,19 @@ paths:
             text/event-stream:
               schema:
                 type: string
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-java-response-type: SseEmitter
   /operations/schedules/{scheduleId}:
     put:
       operationId: putOperationsSchedulesScheduleId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ScheduleRecord response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleRecord"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -627,20 +931,41 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ScheduleRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateScheduleRequest"
+      x-finbot-java-response-type: OperationsOverview.Schedule
+      x-finbot-java-request-type: UpdateScheduleRequest
   /operations/tasks:
     get:
       operationId: getOperationsTasks
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TaskRecord[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskRecord"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: TaskRecord[]
+      x-finbot-java-response-type: List<TaskResponse>
   /operations/tasks/{taskId}:
     get:
       operationId: getOperationsTasksTaskId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TaskRecord response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRecord"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -649,20 +974,32 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: TaskRecord
+      x-finbot-java-response-type: TaskResponse
   /products:
     get:
       operationId: getProducts
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ProductPage response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPage"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ProductPage
+      x-finbot-java-response-type: ProductPageResponse
   /products/{productId}:
     get:
       operationId: getProductsProductId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ProductDetail response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -671,12 +1008,24 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: ProductDetail
+      x-finbot-java-response-type: ProductDetailResponse
   /products/catalog-sync-runs:
     get:
       operationId: listProductCatalogSyncRuns
       responses:
         "200":
-          $ref: "#/components/responses/JsonArray"
+          description: Successful CatalogSyncRun[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogSyncRun"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: CatalogSyncRun[]
+      x-finbot-java-response-type: List<CatalogSyncRunResponse>
   /products/catalog-sync/{exchange}/{marketType}:
     post:
       operationId: synchronizeProductCatalog
@@ -701,7 +1050,15 @@ paths:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
         "202":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TaskRecord response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: TaskRecord
+      x-finbot-java-response-type: org.springframework.http.ResponseEntity<TaskResponse>
   /quant/previews:
     post:
       operationId: previewTradeRisk
@@ -716,21 +1073,44 @@ paths:
               $ref: "#/components/schemas/TradeRiskPreviewCommand"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TradeRiskPreview response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeRiskPreview"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: TradeRiskPreview
+      x-finbot-java-response-type: TradeRiskPreview
+      x-finbot-java-request-type: TradeRiskPreviewRequest
   /quant/runs:
     get:
       operationId: getQuantRuns
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful QuantWorkspace response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuantWorkspace"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: QuantWorkspace
+      x-finbot-java-response-type: QuantWorkspace
   /readiness:
     get:
       operationId: getPlatformReadiness
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful PlatformReadiness response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformReadiness"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: PlatformReadiness
+      x-finbot-java-response-type: PlatformReadiness
   /reports:
     get:
       operationId: getOperationsReport
@@ -747,7 +1127,15 @@ paths:
             format: date-time
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful OperationsReport response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationsReport"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: OperationsReport
+      x-finbot-java-response-type: OperationsReport
   /research/cases/by-run/{runId}:
     get:
       operationId: getResearchCaseByRunId
@@ -755,27 +1143,43 @@ paths:
         - $ref: "#/components/parameters/RunIdPath"
       responses:
         "200":
-          description: Shared evidence and live/paper branch state.
+          description: Successful ResearchCase response.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResearchCase"
         "404":
           $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ResearchCase
+      x-finbot-java-response-type: ResponseEntity<ResearchCaseView>
   /research/history:
     get:
       operationId: getResearchHistory
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchSummary[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResearchSummary"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ResearchSummary[]
+      x-finbot-java-response-type: List<ResearchHistoryDetail.Summary>
   /research/history/{runId}:
     get:
       operationId: getResearchHistoryRunId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchHistoryDetail response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchHistoryDetail"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -784,12 +1188,18 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: ResearchHistoryDetail
+      x-finbot-java-response-type: ResearchHistoryDetail
   /research/history/{runId}/replay:
     post:
       operationId: postResearchHistoryRunIdReplay
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchLaunch response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchLaunch"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -799,12 +1209,18 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ResearchLaunch
+      x-finbot-java-response-type: CompletionStage<ResponseEntity<InstantResearchResponse>>
   /research/history/{runId}/resume:
     post:
       operationId: postResearchHistoryRunIdResume
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchLaunch response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchLaunch"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -814,22 +1230,41 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ResearchLaunch
+      x-finbot-java-response-type: CompletionStage<ResponseEntity<InstantResearchResponse>>
   /research/instant:
     post:
       operationId: postResearchInstant
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchLaunch response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchLaunch"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ResearchLaunch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstantResearchRequest"
+      x-finbot-java-response-type: CompletionStage<ResponseEntity<InstantResearchResponse>>
+      x-finbot-java-request-type: InstantResearchRequest
   /research/review/{runId}/feedback:
     put:
       operationId: putResearchReviewRunIdFeedback
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchFeedback response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchFeedback"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -839,22 +1274,45 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ResearchFeedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchFeedbackRequest"
+      x-finbot-java-response-type: ResearchFeedback
+      x-finbot-java-request-type: FeedbackRequest
   /research/review/compare:
     get:
       operationId: getResearchReviewCompare
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchComparison response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchComparison"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ResearchComparison
+      x-finbot-java-response-type: ResearchComparison
   /research/review/feedback:
     get:
       operationId: getResearchReviewFeedback
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ResearchFeedback[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResearchFeedback"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ResearchFeedback[]
+      x-finbot-java-response-type: List<ResearchFeedback>
   /runtime-secrets/{scope}/{targetId}/{secretName}:
     delete:
       operationId: deleteRuntimeSecretsScopeTargetIdSecretName
@@ -866,7 +1324,7 @@ paths:
               $ref: "#/components/schemas/RuntimeSecretClearRequest"
       responses:
         "200":
-          description: Effective secret status after clearing the database override.
+          description: Successful RuntimeSecretStatus response.
           content:
             application/json:
               schema:
@@ -890,6 +1348,9 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: RuntimeSecretStatus
+      x-finbot-java-response-type: RuntimeSecretStatus
+      x-finbot-java-request-type: ClearRequest
     put:
       operationId: putRuntimeSecretsScopeTargetIdSecretName
       requestBody:
@@ -900,7 +1361,7 @@ paths:
               $ref: "#/components/schemas/RuntimeSecretPutRequest"
       responses:
         "200":
-          description: Effective secret status after storing the encrypted override.
+          description: Successful RuntimeSecretStatus response.
           content:
             application/json:
               schema:
@@ -924,14 +1385,25 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: RuntimeSecretStatus
+      x-finbot-java-response-type: RuntimeSecretStatus
+      x-finbot-java-request-type: PutRequest
   /setup-profiles:
     get:
       operationId: getSetupProfiles
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful SetupProfileDefinition[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SetupProfileDefinition"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: SetupProfileDefinition[]
+      x-finbot-java-response-type: List<SetupProfileDefinition>
   /setup-profiles/{profileId}/apply:
     post:
       operationId: applySetupProfile
@@ -949,13 +1421,25 @@ paths:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful SetupProfileApplication response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupProfileApplication"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: SetupProfileApplication
+      x-finbot-java-response-type: SetupProfileApplication
   /setup-profiles/{profileId}/preview:
     get:
       operationId: getSetupProfilesProfileIdPreview
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful SetupProfilePreview response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupProfilePreview"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -964,14 +1448,24 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: SetupProfilePreview
+      x-finbot-java-response-type: SetupProfilePreview
   /setup-profiles/history:
     get:
       operationId: getSetupProfilesHistory
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful SetupProfileApplication[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SetupProfileApplication"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: SetupProfileApplication[]
+      x-finbot-java-response-type: List<SetupProfileApplication>
   /sources:
     get:
       operationId: getSources
@@ -983,15 +1477,17 @@ paths:
             default: false
       responses:
         "200":
-          description: Active information sources
+          description: Successful SourceRecord[] response.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/SourceResponse"
+                  $ref: "#/components/schemas/SourceRecord"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: SourceRecord[]
+      x-finbot-java-response-type: List<SourceResponse>
     post:
       operationId: createInformationSource
       parameters:
@@ -1004,13 +1500,16 @@ paths:
               $ref: "#/components/schemas/SourceMutationRequest"
       responses:
         "201":
-          description: Source created
+          description: Successful SourceRecord response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SourceResponse"
+                $ref: "#/components/schemas/SourceRecord"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: SourceRecord
+      x-finbot-java-response-type: SourceResponse
+      x-finbot-java-request-type: SourceMutationRequest
   /sources/{sourceId}:
     delete:
       operationId: deleteInformationSource
@@ -1023,6 +1522,10 @@ paths:
           description: Source archived while preserving history
         "409":
           $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: void
+      x-finbot-java-response-type: ResponseEntity<Void>
     put:
       operationId: updateInformationSource
       parameters:
@@ -1037,19 +1540,28 @@ paths:
               $ref: "#/components/schemas/SourceMutationRequest"
       responses:
         "200":
-          description: Source updated
+          description: Successful SourceRecord response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SourceResponse"
+                $ref: "#/components/schemas/SourceRecord"
         "409":
           $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: SourceRecord
+      x-finbot-java-response-type: SourceResponse
+      x-finbot-java-request-type: SourceMutationRequest
   /sources/{sourceId}/collect:
     post:
       operationId: postSourcesSourceIdCollect
       responses:
         "202":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TaskRecord response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRecord"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1060,6 +1572,15 @@ paths:
             type: string
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: TaskRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectSourceRequest"
+      x-finbot-java-response-type: ResponseEntity<TaskResponse>
+      x-finbot-java-request-type: CollectSourceRequest
   /sources/{sourceId}/health:
     get:
       operationId: getInformationSourceHealth
@@ -1068,13 +1589,15 @@ paths:
         - $ref: "#/components/parameters/SourceId"
       responses:
         "200":
-          description: Current source runtime health and latest persisted attempt summary.
+          description: Successful SourceHealth response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SourceHealthResponse"
+                $ref: "#/components/schemas/SourceHealth"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: SourceHealth
+      x-finbot-java-response-type: SourceHealthResponse
   /sources/{sourceId}/status:
     put:
       operationId: setInformationSourceStatus
@@ -1094,9 +1617,18 @@ paths:
               $ref: "#/components/schemas/VersionedEnabledCommand"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful SourceRecord response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceRecord"
         "409":
           $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: SourceRecord
+      x-finbot-java-response-type: SourceResponse
+      x-finbot-java-request-type: UpdateSourceStatusRequest
   /sources/{sourceId}/test:
     post:
       operationId: testInformationSource
@@ -1119,23 +1651,40 @@ paths:
                   maxLength: 1000
       responses:
         "202":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TaskRecord response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRecord"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: TaskRecord
+      x-finbot-java-response-type: ResponseEntity<TaskResponse>
+      x-finbot-java-request-type: TestSourceRequest
   /trading/accounts:
     get:
       operationId: getTradingAccounts
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful AccountsOverview response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountsOverview"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AccountsOverview
+      x-finbot-java-response-type: AccountsOverviewResponse
   /trading/accounts/{accountId}/configuration:
     put:
       operationId: putTradingAccountsAccountIdConfiguration
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ExchangeAccountControl response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeAccountControl"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1145,12 +1694,27 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ExchangeAccountControl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExchangeAccountControlRequest"
+      x-finbot-java-response-type: AccountControlResponse
+      x-finbot-java-request-type: UpdateAccountControlRequest
   /trading/accounts/{accountId}/positions:
     get:
       operationId: getTradingAccountsAccountIdPositions
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful PositionRecord[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PositionRecord"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1159,12 +1723,18 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: PositionRecord[]
+      x-finbot-java-response-type: List<PositionResponse>
   /trading/accounts/{accountId}/test:
     post:
       operationId: postTradingAccountsAccountIdTest
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ExchangeAccountSyncResult response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeAccountSyncResult"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1174,6 +1744,8 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ExchangeAccountSyncResult
+      x-finbot-java-response-type: CompletionStage<ExchangeAccountSyncResult>
   /trading/activity:
     get:
       operationId: getTradingActivity
@@ -1229,21 +1801,39 @@ paths:
             default: 50
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ActivityPage response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: ActivityPage
+      x-finbot-java-response-type: ActivityPageResponse
   /trading/automation-configuration:
     get:
       operationId: getTradingAutomationConfiguration
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TradeAutomationConfiguration response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeAutomationConfiguration"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: TradeAutomationConfiguration
+      x-finbot-java-response-type: TradeAutomationConfigurationSnapshot
   /trading/automation-configuration/ai-stages/{stage}:
     put:
       operationId: putTradingAutomationConfigurationAiStagesStage
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful ExecutionAiStage response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionAiStage"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1253,30 +1843,64 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ExecutionAiStage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExecutionAiStageRequest"
+      x-finbot-java-response-type: TradeExecutionAiStageConfig
+      x-finbot-java-request-type: UpdateExecutionAiStageRequest
   /trading/automation-configuration/risk-policies:
     post:
       operationId: postTradingAutomationConfigurationRiskPolicies
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful RiskPolicy response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskPolicy"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: RiskPolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateRiskPolicyRequest"
+      x-finbot-java-response-type: RiskPolicy
+      x-finbot-java-request-type: ActivateRiskPolicyRequest
   /trading/automations:
     get:
       operationId: getTradingAutomations
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TradeAutomationSummary[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TradeAutomationSummary"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: TradeAutomationSummary[]
+      x-finbot-java-response-type: List<TradeAutomationDetail.Summary>
   /trading/automations/{workflowRunId}:
     get:
       operationId: getTradingAutomationsWorkflowRunId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful TradeAutomationDetail response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeAutomationDetail"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1285,23 +1909,46 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: TradeAutomationDetail
+      x-finbot-java-response-type: TradeAutomationDetail
   /watchlists:
     get:
       operationId: getWatchlists
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WatchlistSummary[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WatchlistSummary"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: WatchlistSummary[]
+      x-finbot-java-response-type: List<WatchlistSummaryResponse>
     post:
       operationId: postWatchlists
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WatchlistDetail response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistDetail"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: WatchlistDetail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWatchlistRequest"
+      x-finbot-java-response-type: WatchlistDetailResponse
+      x-finbot-java-request-type: CreateWatchlistRequest
   /watchlists/{watchlistId}:
     delete:
       operationId: deleteWatchlistsWatchlistId
@@ -1317,11 +1964,17 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: void
+      x-finbot-java-response-type: void
     get:
       operationId: getWatchlistsWatchlistId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WatchlistDetail response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistDetail"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1330,11 +1983,17 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: WatchlistDetail
+      x-finbot-java-response-type: WatchlistDetailResponse
     put:
       operationId: putWatchlistsWatchlistId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WatchlistDetail response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistDetail"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1344,12 +2003,25 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: WatchlistDetail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWatchlistRequest"
+      x-finbot-java-response-type: WatchlistDetailResponse
+      x-finbot-java-request-type: UpdateWatchlistRequest
   /watchlists/{watchlistId}/items/{productId}:
     delete:
       operationId: deleteWatchlistsWatchlistIdItemsProductId
       responses:
         "204":
-          description: Operation completed without a response body.
+          description: Successful WatchlistDetail response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistDetail"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1364,11 +2036,17 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: WatchlistDetail
+      x-finbot-java-response-type: WatchlistDetailResponse
     put:
       operationId: putWatchlistsWatchlistIdItemsProductId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WatchlistDetail response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistDetail"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1383,20 +2061,41 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: WatchlistDetail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertWatchlistItemRequest"
+      x-finbot-java-response-type: WatchlistDetailResponse
+      x-finbot-java-request-type: UpsertWatchlistItemRequest
   /workflow-definitions:
     get:
       operationId: getWorkflowDefinitions
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowDefinitionSummary[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkflowDefinitionSummary"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: WorkflowDefinitionSummary[]
+      x-finbot-java-response-type: List<DefinitionSummaryResponse>
   /workflow-definitions/{definitionId}/activation:
     put:
       operationId: putWorkflowDefinitionsDefinitionIdActivation
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowDefinitionSummary response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDefinitionSummary"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1406,6 +2105,15 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: WorkflowDefinitionSummary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowActivationRequest"
+      x-finbot-java-response-type: DefinitionSummaryResponse
+      x-finbot-java-request-type: ActivationRequest
   /workflow-definitions/{definitionId}/rollback/{targetVersionId}:
     post:
       operationId: rollbackWorkflow
@@ -1423,7 +2131,15 @@ paths:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowVersion response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: WorkflowVersion
+      x-finbot-java-response-type: VersionResponse
   /workflow-definitions/{definitionId}/versions:
     get:
       operationId: listWorkflowVersions
@@ -1435,31 +2151,64 @@ paths:
             type: string
       responses:
         "200":
-          $ref: "#/components/responses/JsonArray"
+          description: Successful WorkflowVersion[] response.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkflowVersion"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: WorkflowVersion[]
+      x-finbot-java-response-type: List<VersionResponse>
   /workflow-drafts:
     put:
       operationId: putWorkflowDrafts
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowVersion response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: WorkflowVersion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowDraftRequest"
+      x-finbot-java-response-type: VersionResponse
+      x-finbot-java-request-type: SaveDraftRequest
   /workflow-schema:
     get:
       operationId: getWorkflowSchema
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowSchema response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowSchema"
         default:
           $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: WorkflowSchema
+      x-finbot-java-response-type: SchemaResponse
   /workflow-versions/{versionId}:
     get:
       operationId: getWorkflowVersionsVersionId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowVersion response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1468,6 +2217,8 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: WorkflowVersion
+      x-finbot-java-response-type: VersionResponse
   /workflow-versions/{versionId}/estimate:
     get:
       operationId: estimateWorkflow
@@ -1475,13 +2226,25 @@ paths:
         - $ref: "#/components/parameters/WorkflowVersionPath"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowEstimate response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowEstimate"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: WorkflowEstimate
+      x-finbot-java-response-type: WorkflowEstimate
   /workflow-versions/{versionId}/learning:
     get:
       operationId: getWorkflowVersionsVersionIdLearning
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowLearning response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowLearning"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1490,6 +2253,8 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: WorkflowLearning
+      x-finbot-java-response-type: WorkflowLearning
   /workflow-versions/{versionId}/nodes/{nodeId}/test:
     post:
       operationId: testWorkflowNode
@@ -1518,7 +2283,16 @@ paths:
                   maxLength: 20000
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowNodeTestResult response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowNodeTestResult"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: WorkflowNodeTestResult
+      x-finbot-java-response-type: CompletionStage<WorkflowNodeTestResult>
+      x-finbot-java-request-type: NodeTestRequest
   /workflow-versions/{versionId}/plan:
     get:
       operationId: planWorkflowExecution
@@ -1526,13 +2300,25 @@ paths:
         - $ref: "#/components/parameters/WorkflowVersionPath"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowExecutionPlan response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowExecutionPlan"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: WorkflowExecutionPlan
+      x-finbot-java-response-type: WorkflowExecutionPlan
   /workflow-versions/{versionId}/publish:
     post:
       operationId: postWorkflowVersionsVersionIdPublish
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowVersion response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1542,22 +2328,41 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: WorkflowVersion
+      x-finbot-java-response-type: VersionResponse
   /workflows:
     post:
       operationId: postWorkflows
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Accepted workflow run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchLaunch"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+      x-finbot-web-response-type: ResearchLaunch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartWorkflowRequest"
+      x-finbot-java-response-type: CompletionStage<ResponseEntity<StartWorkflowResponse>>
+      x-finbot-java-request-type: StartWorkflowRequest
   /workflows/{runId}:
     get:
       operationId: getWorkflowsRunId
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Successful WorkflowRun response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowRun"
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1566,12 +2371,18 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-web-response-type: WorkflowRun
+      x-finbot-java-response-type: ResponseEntity<WorkflowRunResponse>
   /workflows/{runId}/events:
     get:
       operationId: getWorkflowsRunIdEvents
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Replayable workflow event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
         default:
           $ref: "#/components/responses/Problem"
       parameters:
@@ -1580,6 +2391,7 @@ paths:
           required: true
           schema:
             type: string
+      x-finbot-java-response-type: SseEmitter
 components:
   securitySchemes:
     adminSession:
@@ -1647,22 +2459,6 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/AiModel"
-    JsonObject:
-      description: Successful structured response.
-      content:
-        application/json:
-          schema:
-            type: object
-            additionalProperties: true
-    JsonArray:
-      description: Successful structured collection.
-      content:
-        application/json:
-          schema:
-            type: array
-            items:
-              type: object
-              additionalProperties: true
     Problem:
       description: RFC 9457 problem with a stable FinBot business code.
       content:
@@ -2743,6 +3539,43 @@ components:
         - HIGH
         - XHIGH
         - MAX
+    WorkflowFailurePolicy:
+      type: string
+      enum:
+        - STOP
+        - CONTINUE
+        - REPLAN
+    WorkflowOutputContract:
+      type: string
+      enum:
+        - TEXT
+        - RESEARCH_FINDINGS
+        - DEBATE_ARGUMENT
+        - RISK_ASSESSMENT
+        - CHAIR_VERDICT
+        - TRADE_DECISIONS
+        - EXECUTION_VERDICT
+    WorkflowNodeType:
+      type: string
+      enum:
+        - INPUT
+        - ROUTER
+        - DETERMINISTIC
+        - COLLECTOR
+        - CLEANER
+        - AI_CLEANER
+        - COMPRESSOR
+        - COMPRESSION_VALIDATOR
+        - AGENT
+        - GATE
+        - QUANT
+        - RISK
+        - SUBFLOW
+        - HUMAN_REVIEW
+        - AGGREGATOR
+        - CHAIR
+        - EXECUTION_REVIEW
+        - OUTPUT
     RuntimeSecretPutRequest:
       type: object
       additionalProperties: false
@@ -2778,7 +3611,9 @@ components:
         - secretName
         - source
         - configured
+        - fingerprint
         - version
+        - updatedAt
       properties:
         scope:
           type: string
@@ -3201,3 +4036,4763 @@ components:
         code:
           type: string
           pattern: ^[A-Z0-9_]+$
+    AccountOverview:
+      additionalProperties: false
+      properties:
+        accountId:
+          type: string
+        apiKeyFingerprint:
+          type:
+            - string
+            - "null"
+        apiKeySource:
+          enum:
+            - DATABASE_OVERRIDE
+            - ENVIRONMENT_FALLBACK
+            - UNCONFIGURED
+          type: string
+        apiKeyVersion:
+          type: number
+        apiSecretFingerprint:
+          type:
+            - string
+            - "null"
+        apiSecretSource:
+          enum:
+            - DATABASE_OVERRIDE
+            - ENVIRONMENT_FALLBACK
+            - UNCONFIGURED
+          type: string
+        apiSecretVersion:
+          type: number
+        availableBalance:
+          type: number
+        credentialConfigured:
+          type: boolean
+        currency:
+          type: string
+        dataStatus:
+          type: string
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        environment:
+          type: string
+        equity:
+          type: number
+        exchange:
+          type: string
+        marginBalance:
+          type: number
+        openPositionCount:
+          type: number
+        proxyRoute:
+          type: string
+        realizedPnl:
+          type: number
+        snapshotAt:
+          type:
+            - string
+            - "null"
+        unrealizedPnl:
+          type: number
+        version:
+          type: number
+      required:
+        - accountId
+        - exchange
+        - environment
+        - displayName
+        - proxyRoute
+        - enabled
+        - version
+        - credentialConfigured
+        - apiKeySource
+        - apiKeyFingerprint
+        - apiKeyVersion
+        - apiSecretSource
+        - apiSecretFingerprint
+        - apiSecretVersion
+        - dataStatus
+        - currency
+        - equity
+        - availableBalance
+        - marginBalance
+        - unrealizedPnl
+        - realizedPnl
+        - openPositionCount
+        - snapshotAt
+      type: object
+    AccountsOverview:
+      additionalProperties: false
+      properties:
+        accounts:
+          items:
+            $ref: "#/components/schemas/AccountOverview"
+          type: array
+        currency:
+          type: string
+        generatedAt:
+          type: string
+        range:
+          additionalProperties: false
+          properties:
+            fromInclusive:
+              type: string
+            toExclusive:
+              type: string
+          required:
+            - fromInclusive
+            - toExclusive
+          type: object
+        totalAvailableBalance:
+          type: number
+        totalEquity:
+          type: number
+        totalMarginBalance:
+          type: number
+        totalRealizedPnl:
+          type: number
+        totalUnrealizedPnl:
+          type: number
+      required:
+        - range
+        - currency
+        - totalEquity
+        - totalAvailableBalance
+        - totalMarginBalance
+        - totalUnrealizedPnl
+        - totalRealizedPnl
+        - accounts
+        - generatedAt
+      type: object
+    ActivityPage:
+      additionalProperties: false
+      properties:
+        activities:
+          items:
+            $ref: "#/components/schemas/ActivityRecord"
+          type: array
+        counts:
+          items:
+            additionalProperties: false
+            properties:
+              activityType:
+                type: string
+              count:
+                type: number
+            required:
+              - activityType
+              - count
+            type: object
+          type: array
+        matchedCount:
+          type: number
+        nextCursor:
+          anyOf:
+            - additionalProperties: false
+              properties:
+                activityId:
+                  type: string
+                occurredAt:
+                  type: string
+              required:
+                - occurredAt
+                - activityId
+              type: object
+            - type: "null"
+        sources:
+          items:
+            additionalProperties: false
+            properties:
+              accountId:
+                type:
+                  - string
+                  - "null"
+              complete:
+                type: boolean
+              exchange:
+                type:
+                  - string
+                  - "null"
+              latestAt:
+                type:
+                  - string
+                  - "null"
+              message:
+                type: string
+              source:
+                type: string
+              status:
+                type: string
+            required:
+              - source
+              - accountId
+              - exchange
+              - status
+              - complete
+              - message
+              - latestAt
+            type: object
+          type: array
+      required:
+        - activities
+        - nextCursor
+        - matchedCount
+        - counts
+        - sources
+      type: object
+    ActivityRecord:
+      additionalProperties: false
+      properties:
+        accountId:
+          type:
+            - string
+            - "null"
+        activityId:
+          type: string
+        activityType:
+          type: string
+        amount:
+          type:
+            - number
+            - "null"
+        clientOrderId:
+          type:
+            - string
+            - "null"
+        currency:
+          type:
+            - string
+            - "null"
+        detail:
+          type: string
+        detailsJson:
+          type: string
+        exchange:
+          type:
+            - string
+            - "null"
+        exchangeOrderId:
+          type:
+            - string
+            - "null"
+        occurredAt:
+          type: string
+        price:
+          type:
+            - number
+            - "null"
+        quantity:
+          type:
+            - number
+            - "null"
+        receivedAt:
+          type: string
+        side:
+          type:
+            - string
+            - "null"
+        source:
+          type: string
+        sourceEventId:
+          type: string
+        status:
+          type:
+            - string
+            - "null"
+        symbol:
+          type:
+            - string
+            - "null"
+        title:
+          type: string
+      required:
+        - activityId
+        - sourceEventId
+        - activityType
+        - source
+        - accountId
+        - exchange
+        - symbol
+        - status
+        - side
+        - quantity
+        - price
+        - amount
+        - currency
+        - exchangeOrderId
+        - clientOrderId
+        - title
+        - detail
+        - detailsJson
+        - occurredAt
+        - receivedAt
+      type: object
+    AgentRole:
+      additionalProperties: false
+      properties:
+        builtIn:
+          type: boolean
+        createdAt:
+          type: string
+        defaultModelName:
+          type: string
+        defaultProviderProfileId:
+          type: string
+        defaultReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        displayName:
+          type: string
+        objective:
+          type: string
+        outputContract:
+          $ref: "#/components/schemas/WorkflowOutputContract"
+        roleTemplateId:
+          type: string
+        systemPrompt:
+          type: string
+        updatedAt:
+          type: string
+        userPromptTemplate:
+          type: string
+        version:
+          type: number
+      required:
+        - roleTemplateId
+        - displayName
+        - objective
+        - systemPrompt
+        - userPromptTemplate
+        - outputContract
+        - defaultProviderProfileId
+        - defaultModelName
+        - defaultReasoningEffort
+        - builtIn
+        - version
+        - createdAt
+        - updatedAt
+      type: object
+    AiExperiment:
+      additionalProperties: false
+      properties:
+        candidateAllocationBasisPoints:
+          type: number
+        candidateSampleCount:
+          type: number
+        candidateWorkflowVersionId:
+          type: string
+        controlSampleCount:
+          type: number
+        controlWorkflowVersionId:
+          type: string
+        createdAt:
+          type: string
+        displayName:
+          type: string
+        evaluationMetric:
+          type: string
+        experimentId:
+          type: string
+        minimumSampleSize:
+          type: number
+        status:
+          enum:
+            - DRAFT
+            - RUNNING
+            - PAUSED
+            - COMPLETED
+          type: string
+        updatedAt:
+          type: string
+        version:
+          type: number
+      required:
+        - experimentId
+        - displayName
+        - status
+        - controlWorkflowVersionId
+        - candidateWorkflowVersionId
+        - candidateAllocationBasisPoints
+        - evaluationMetric
+        - minimumSampleSize
+        - controlSampleCount
+        - candidateSampleCount
+        - version
+        - createdAt
+        - updatedAt
+      type: object
+    AiModelBinding:
+      additionalProperties: false
+      properties:
+        modelName:
+          type: string
+        providerProfileId:
+          type: string
+        reasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+      required:
+        - providerProfileId
+        - modelName
+        - reasoningEffort
+      type: object
+    AuthChallenge:
+      additionalProperties: false
+      properties:
+        challengeId:
+          type: string
+        expiresAt:
+          type: string
+        mathExpression:
+          type: string
+        nonce:
+          type: string
+        proofOfWorkAlgorithm:
+          type: string
+        proofOfWorkDifficulty:
+          type: number
+      required:
+        - challengeId
+        - nonce
+        - proofOfWorkAlgorithm
+        - proofOfWorkDifficulty
+        - mathExpression
+        - expiresAt
+      type: object
+    AuthStatus:
+      additionalProperties: false
+      properties:
+        authenticated:
+          type: boolean
+        csrfToken:
+          type: string
+        expiresAt:
+          type:
+            - string
+            - "null"
+        username:
+          type:
+            - string
+            - "null"
+      required:
+        - authenticated
+        - username
+        - expiresAt
+        - csrfToken
+      type: object
+    AutonomousStatus:
+      additionalProperties: false
+      properties:
+        activeTask:
+          anyOf:
+            - $ref: "#/components/schemas/TaskRecord"
+            - type: "null"
+        enabled:
+          type: boolean
+        generatedAt:
+          type: string
+        latestConclusion:
+          type:
+            - string
+            - "null"
+        latestRun:
+          anyOf:
+            - $ref: "#/components/schemas/ResearchSummary"
+            - type: "null"
+        schedule:
+          anyOf:
+            - $ref: "#/components/schemas/ScheduleRecord"
+            - type: "null"
+        workerOnline:
+          type: boolean
+      required:
+        - enabled
+        - workerOnline
+        - schedule
+        - activeTask
+        - latestRun
+        - latestConclusion
+        - generatedAt
+      type: object
+    BackgroundTaskStatus:
+      enum:
+        - PENDING
+        - CLAIMED
+        - COMPLETED
+        - FAILED
+        - CANCELLED
+      type: string
+    CatalogSyncRun:
+      additionalProperties: false
+      properties:
+        activeCount:
+          type: number
+        completedAt:
+          type:
+            - string
+            - "null"
+        discoveredCount:
+          type: number
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        exchange:
+          type: string
+        inactiveCount:
+          type: number
+        marketType:
+          type: string
+        startedAt:
+          type: string
+        status:
+          type: string
+        syncRunId:
+          type: string
+      required:
+        - syncRunId
+        - exchange
+        - marketType
+        - status
+        - discoveredCount
+        - activeCount
+        - inactiveCount
+        - errorCode
+        - errorMessage
+        - startedAt
+        - completedAt
+      type: object
+    ConfigurationSnapshot:
+      additionalProperties: false
+      properties:
+        models:
+          items:
+            $ref: "#/components/schemas/AiModel"
+          type: array
+        providers:
+          items:
+            $ref: "#/components/schemas/AiProvider"
+          type: array
+        settings:
+          items:
+            $ref: "#/components/schemas/SystemSetting"
+          type: array
+      required:
+        - settings
+        - providers
+        - models
+      type: object
+    CrawlerBrowserTemplate:
+      enum:
+        - NONE
+        - CHROME_WINDOWS
+        - CHROME_MAC
+        - FIREFOX_WINDOWS
+        - EDGE_WINDOWS
+        - CUSTOM
+      type: string
+    CrawlerCaptchaBypassProvider:
+      enum:
+        - NONE
+        - CAPSOLVER
+        - TWOCAPTCHA
+        - FIRECRAWL_BROWSER
+        - BROWSER_WORKER
+      type: string
+    CrawlerHeaderProfile:
+      additionalProperties: false
+      properties:
+        accept:
+          type:
+            - string
+            - "null"
+        acceptLanguage:
+          type:
+            - string
+            - "null"
+        additionalHeaders:
+          additionalProperties:
+            type: string
+          type: object
+        browserTemplate:
+          $ref: "#/components/schemas/CrawlerBrowserTemplate"
+        captchaBypassEnabled:
+          type: boolean
+        captchaBypassProvider:
+          $ref: "#/components/schemas/CrawlerCaptchaBypassProvider"
+        crossOriginRetainHeaders:
+          items:
+            type: string
+          type: array
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        profileId:
+          type: string
+        retainSensitiveHeadersOnCrossOriginRedirect:
+          type: boolean
+        updatedAt:
+          type: string
+        usageCount:
+          type: number
+        userAgent:
+          type: string
+        version:
+          type: number
+      required:
+        - profileId
+        - displayName
+        - userAgent
+        - accept
+        - acceptLanguage
+        - additionalHeaders
+        - browserTemplate
+        - retainSensitiveHeadersOnCrossOriginRedirect
+        - crossOriginRetainHeaders
+        - captchaBypassEnabled
+        - captchaBypassProvider
+        - enabled
+        - usageCount
+        - version
+        - updatedAt
+      type: object
+    CrawlerHeaderProfileMutation:
+      additionalProperties: false
+      properties:
+        accept:
+          type:
+            - string
+            - "null"
+        acceptLanguage:
+          type:
+            - string
+            - "null"
+        additionalHeaders:
+          additionalProperties:
+            type: string
+          type: object
+        browserTemplate:
+          $ref: "#/components/schemas/CrawlerBrowserTemplate"
+        captchaBypassEnabled:
+          type: boolean
+        captchaBypassProvider:
+          $ref: "#/components/schemas/CrawlerCaptchaBypassProvider"
+        crossOriginRetainHeaders:
+          items:
+            type: string
+          type: array
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        retainSensitiveHeadersOnCrossOriginRedirect:
+          type: boolean
+        userAgent:
+          type: string
+      required:
+        - displayName
+        - userAgent
+        - accept
+        - acceptLanguage
+        - additionalHeaders
+        - browserTemplate
+        - retainSensitiveHeadersOnCrossOriginRedirect
+        - crossOriginRetainHeaders
+        - captchaBypassEnabled
+        - captchaBypassProvider
+        - enabled
+      type: object
+    EvidenceDocument:
+      additionalProperties: false
+      properties:
+        assetScope:
+          items:
+            type: string
+          type: array
+        canonicalUrl:
+          type:
+            - string
+            - "null"
+        category:
+          type: string
+        documentId:
+          type: string
+        evidenceId:
+          type: string
+        excerpt:
+          type: string
+        fetchedAt:
+          type: string
+        language:
+          type: string
+        publishedAt:
+          type:
+            - string
+            - "null"
+        sourceId:
+          type: string
+        sourceTier:
+          type: string
+        title:
+          type: string
+        trustWeight:
+          type: number
+      required:
+        - documentId
+        - evidenceId
+        - sourceId
+        - sourceTier
+        - category
+        - trustWeight
+        - canonicalUrl
+        - title
+        - language
+        - excerpt
+        - assetScope
+        - publishedAt
+        - fetchedAt
+      type: object
+    ExchangeAccountControl:
+      additionalProperties: false
+      properties:
+        accountId:
+          type: string
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        environment:
+          enum:
+            - TESTNET
+            - DEMO
+          type: string
+        exchange:
+          enum:
+            - GATE
+            - BYBIT
+          type: string
+        updatedAt:
+          type: string
+        version:
+          type: number
+      required:
+        - accountId
+        - exchange
+        - environment
+        - displayName
+        - enabled
+        - version
+        - updatedAt
+      type: object
+    ExchangeAccountSyncResult:
+      additionalProperties: false
+      properties:
+        accountId:
+          additionalProperties: false
+          properties:
+            value:
+              type: string
+          required:
+            - value
+          type: object
+        complete:
+          type: boolean
+        factCount:
+          type: number
+        warnings:
+          items:
+            type: string
+          type: array
+        watermark:
+          type: string
+      required:
+        - accountId
+        - factCount
+        - watermark
+        - complete
+        - warnings
+      type: object
+    ExecutionAiStage:
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        fallbackAiBinding:
+          anyOf:
+            - $ref: "#/components/schemas/AiModelBinding"
+            - type: "null"
+        maximumOutputTokens:
+          type: number
+        primaryAiBinding:
+          $ref: "#/components/schemas/AiModelBinding"
+        retryPolicy:
+          additionalProperties: false
+          properties:
+            backoff:
+              type:
+                - number
+                - string
+            maximumAttempts:
+              type: number
+          required:
+            - maximumAttempts
+            - backoff
+          type: object
+        stage:
+          enum:
+            - DRAFT
+            - REFLECTION
+          type: string
+        systemPrompt:
+          type: string
+        timeoutSeconds:
+          type: number
+        userPromptTemplate:
+          type: string
+        version:
+          type: number
+      required:
+        - stage
+        - primaryAiBinding
+        - fallbackAiBinding
+        - systemPrompt
+        - userPromptTemplate
+        - maximumOutputTokens
+        - timeoutSeconds
+        - retryPolicy
+        - enabled
+        - version
+      type: object
+    InstrumentRecord:
+      additionalProperties: false
+      properties:
+        contractSize:
+          type: number
+        exchange:
+          type: string
+        executionEnabled:
+          type: boolean
+        instrumentId:
+          type: string
+        latestPrice:
+          type:
+            - number
+            - "null"
+        latestPriceAt:
+          type:
+            - string
+            - "null"
+        marketType:
+          type: string
+        maximumLeverage:
+          type: number
+        metadataUpdatedAt:
+          type: string
+        minimumQuantity:
+          type: number
+        priceTick:
+          type: number
+        quantityStep:
+          type: number
+        settlementAsset:
+          type: string
+        status:
+          type: string
+        symbol:
+          type: string
+      required:
+        - instrumentId
+        - exchange
+        - marketType
+        - symbol
+        - settlementAsset
+        - contractSize
+        - priceTick
+        - quantityStep
+        - minimumQuantity
+        - maximumLeverage
+        - executionEnabled
+        - status
+        - metadataUpdatedAt
+        - latestPrice
+        - latestPriceAt
+      type: object
+    NetworkDiagnostic:
+      additionalProperties: false
+      properties:
+        completedAt:
+          type:
+            - string
+            - "null"
+        diagnosticId:
+          type: string
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        httpStatus:
+          type:
+            - number
+            - "null"
+        latencyMilliseconds:
+          type:
+            - number
+            - "null"
+        proxied:
+          type: boolean
+        proxyConfigured:
+          type: boolean
+        route:
+          type: string
+        safeEndpoint:
+          type: string
+        startedAt:
+          type: string
+        status:
+          type: string
+      required:
+        - diagnosticId
+        - route
+        - status
+        - proxyConfigured
+        - proxied
+        - safeEndpoint
+        - httpStatus
+        - latencyMilliseconds
+        - errorCode
+        - errorMessage
+        - startedAt
+        - completedAt
+      type: object
+    NetworkWorkspace:
+      additionalProperties: false
+      properties:
+        generatedAt:
+          type: string
+        proxyGateways:
+          items:
+            additionalProperties: false
+            properties:
+              allowInsecureTls:
+                type: boolean
+              displayName:
+                type: string
+              enabled:
+                type: boolean
+              engine:
+                $ref: "#/components/schemas/ProxyEngine"
+              gatewayId:
+                type: string
+              inlineNodesFingerprint:
+                type:
+                  - string
+                  - "null"
+              inlineNodesSource:
+                type: string
+              inlineNodesSupported:
+                type: boolean
+              inlineNodesVersion:
+                type: number
+              maximumNodes:
+                type: number
+              preferredNames:
+                type: string
+              refreshSeconds:
+                type: number
+              status:
+                type: string
+              subscriptionFingerprint:
+                type:
+                  - string
+                  - "null"
+              subscriptionSource:
+                type: string
+              subscriptionSupported:
+                type: boolean
+              subscriptionVersion:
+                type: number
+              updatedAt:
+                type: string
+              version:
+                type: number
+            required:
+              - gatewayId
+              - displayName
+              - enabled
+              - engine
+              - preferredNames
+              - maximumNodes
+              - refreshSeconds
+              - allowInsecureTls
+              - subscriptionSupported
+              - subscriptionSource
+              - subscriptionFingerprint
+              - subscriptionVersion
+              - inlineNodesSupported
+              - inlineNodesSource
+              - inlineNodesFingerprint
+              - inlineNodesVersion
+              - status
+              - version
+              - updatedAt
+            type: object
+          type: array
+        routes:
+          items:
+            additionalProperties: false
+            properties:
+              allowDirect:
+                type: boolean
+              displayName:
+                type: string
+              enabled:
+                type: boolean
+              expectedIpFamily:
+                type: string
+              latestActivityAt:
+                type:
+                  - string
+                  - "null"
+              latestDependencyStatus:
+                type: string
+              latestError:
+                type:
+                  - string
+                  - "null"
+              proxyConfigured:
+                type: boolean
+              proxyCredentialFingerprint:
+                type:
+                  - string
+                  - "null"
+              proxyCredentialSource:
+                enum:
+                  - DATABASE_OVERRIDE
+                  - ENVIRONMENT_FALLBACK
+                  - UNCONFIGURED
+                type: string
+              proxyCredentialVersion:
+                type: number
+              requireProxy:
+                type: boolean
+              resolvedEndpoint:
+                type: string
+              routeId:
+                type: string
+              routeType:
+                type: string
+              status:
+                type: string
+              updatedAt:
+                type: string
+            required:
+              - routeId
+              - routeType
+              - displayName
+              - enabled
+              - requireProxy
+              - allowDirect
+              - proxyConfigured
+              - proxyCredentialSource
+              - proxyCredentialFingerprint
+              - proxyCredentialVersion
+              - expectedIpFamily
+              - resolvedEndpoint
+              - status
+              - latestDependencyStatus
+              - latestError
+              - latestActivityAt
+              - updatedAt
+            type: object
+          type: array
+      required:
+        - routes
+        - proxyGateways
+        - generatedAt
+      type: object
+    OperationsOverview:
+      additionalProperties: false
+      properties:
+        generatedAt:
+          type: string
+        legacyImports:
+          items:
+            additionalProperties: false
+            properties:
+              archivedRowCount:
+                type: number
+              completedAt:
+                type:
+                  - string
+                  - "null"
+              errorSummary:
+                type:
+                  - string
+                  - "null"
+              importId:
+                type: string
+              sourceName:
+                type: string
+              sourceRowCount:
+                type: number
+              sourceSha256:
+                type: string
+              sourceTableCount:
+                type: number
+              startedAt:
+                type: string
+              status:
+                type: string
+              transformedRowCount:
+                type: number
+            required:
+              - importId
+              - sourceName
+              - sourceSha256
+              - status
+              - sourceTableCount
+              - sourceRowCount
+              - archivedRowCount
+              - transformedRowCount
+              - startedAt
+              - completedAt
+              - errorSummary
+            type: object
+          type: array
+        schedules:
+          items:
+            $ref: "#/components/schemas/ScheduleRecord"
+          type: array
+        taskCounts:
+          additionalProperties: false
+          properties:
+            CANCELLED:
+              type: number
+            CLAIMED:
+              type: number
+            COMPLETED:
+              type: number
+            FAILED:
+              type: number
+            PENDING:
+              type: number
+          type: object
+        workers:
+          items:
+            $ref: "#/components/schemas/WorkerRecord"
+          type: array
+      required:
+        - taskCounts
+        - schedules
+        - workers
+        - legacyImports
+        - generatedAt
+      type: object
+    OperationsReport:
+      additionalProperties: false
+      properties:
+        fromInclusive:
+          type: string
+        generatedAt:
+          type: string
+        sections:
+          items:
+            additionalProperties: false
+            properties:
+              code:
+                type: string
+              entries:
+                items:
+                  additionalProperties: false
+                  properties:
+                    occurredAt:
+                      type: string
+                    referenceId:
+                      type: string
+                    status:
+                      type: string
+                    summary:
+                      type: string
+                    title:
+                      type: string
+                  required:
+                    - referenceId
+                    - title
+                    - summary
+                    - status
+                    - occurredAt
+                  type: object
+                type: array
+              metrics:
+                items:
+                  additionalProperties: false
+                  properties:
+                    label:
+                      type: string
+                    status:
+                      type: string
+                    unit:
+                      type: string
+                    value:
+                      type: string
+                  required:
+                    - label
+                    - value
+                    - unit
+                    - status
+                  type: object
+                type: array
+              title:
+                type: string
+            required:
+              - code
+              - title
+              - metrics
+              - entries
+            type: object
+          type: array
+        toExclusive:
+          type: string
+      required:
+        - fromInclusive
+        - toExclusive
+        - sections
+        - generatedAt
+      type: object
+    PlatformReadiness:
+      additionalProperties: false
+      properties:
+        accountSummary:
+          additionalProperties: false
+          properties:
+            currency:
+              type: string
+            enabledAccounts:
+              type: number
+            equity:
+              type: number
+            realizedPnl:
+              type: number
+            snapshotAt:
+              type:
+                - string
+                - "null"
+            synchronizedAccounts:
+              type: number
+            unrealizedPnl:
+              type: number
+          required:
+            - enabledAccounts
+            - synchronizedAccounts
+            - currency
+            - equity
+            - unrealizedPnl
+            - realizedPnl
+            - snapshotAt
+          type: object
+        checks:
+          items:
+            additionalProperties: false
+            properties:
+              actionPage:
+                type: string
+              code:
+                type: string
+              detail:
+                type: string
+              observedAt:
+                type: string
+              status:
+                type: string
+              title:
+                type: string
+            required:
+              - code
+              - title
+              - status
+              - detail
+              - actionPage
+              - observedAt
+            type: object
+          type: array
+        failedTaskCount:
+          type: number
+        generatedAt:
+          type: string
+        latestResearch:
+          anyOf:
+            - type: "null"
+            - additionalProperties: false
+              properties:
+                completedAt:
+                  type:
+                    - string
+                    - "null"
+                conclusion:
+                  type: string
+                requestSummary:
+                  type: string
+                runId:
+                  type: string
+                status:
+                  type: string
+              required:
+                - runId
+                - status
+                - requestSummary
+                - conclusion
+                - completedAt
+              type: object
+        pendingTaskCount:
+          type: number
+        ready:
+          type: boolean
+        score:
+          type: number
+      required:
+        - ready
+        - score
+        - checks
+        - latestResearch
+        - accountSummary
+        - pendingTaskCount
+        - failedTaskCount
+        - generatedAt
+      type: object
+    PositionRecord:
+      additionalProperties: false
+      properties:
+        accountId:
+          type: string
+        entryPrice:
+          type: number
+        leverage:
+          type: number
+        liquidationPrice:
+          type:
+            - number
+            - "null"
+        margin:
+          type: number
+        markPrice:
+          type: number
+        occurredAt:
+          type: string
+        quantity:
+          type: number
+        side:
+          type: string
+        symbol:
+          type: string
+        unrealizedPnl:
+          type: number
+      required:
+        - accountId
+        - symbol
+        - side
+        - quantity
+        - entryPrice
+        - markPrice
+        - liquidationPrice
+        - leverage
+        - unrealizedPnl
+        - margin
+        - occurredAt
+      type: object
+    ProductDetail:
+      additionalProperties: false
+      properties:
+        baseAsset:
+          type: string
+        category:
+          type: string
+        displayName:
+          type: string
+        highestWatchlistMode:
+          type:
+            - string
+            - "null"
+        instrumentCount:
+          type: number
+        instruments:
+          items:
+            $ref: "#/components/schemas/InstrumentRecord"
+          type: array
+        productId:
+          type: string
+        quoteAsset:
+          type: string
+        status:
+          type: string
+        watchlists:
+          items:
+            additionalProperties: false
+            properties:
+              note:
+                type: string
+              preferredInstrumentId:
+                type:
+                  - string
+                  - "null"
+              researchMode:
+                type: string
+              watchlistId:
+                type: string
+              watchlistName:
+                type: string
+            required:
+              - watchlistId
+              - watchlistName
+              - researchMode
+              - preferredInstrumentId
+              - note
+            type: object
+          type: array
+      required:
+        - baseAsset
+        - category
+        - displayName
+        - highestWatchlistMode
+        - instrumentCount
+        - instruments
+        - productId
+        - quoteAsset
+        - status
+        - watchlists
+      type: object
+    ProductPage:
+      additionalProperties: false
+      properties:
+        nextCursor:
+          type:
+            - string
+            - "null"
+        products:
+          items:
+            $ref: "#/components/schemas/ProductSummary"
+          type: array
+        totalCount:
+          type: number
+      required:
+        - products
+        - nextCursor
+        - totalCount
+      type: object
+    ProductSummary:
+      additionalProperties: false
+      properties:
+        baseAsset:
+          type: string
+        category:
+          type: string
+        displayName:
+          type: string
+        highestWatchlistMode:
+          type:
+            - string
+            - "null"
+        instrumentCount:
+          type: number
+        productId:
+          type: string
+        quoteAsset:
+          type: string
+        status:
+          type: string
+      required:
+        - productId
+        - baseAsset
+        - quoteAsset
+        - displayName
+        - category
+        - status
+        - instrumentCount
+        - highestWatchlistMode
+      type: object
+    ProviderModelCatalog:
+      additionalProperties: false
+      properties:
+        checkedAt:
+          type: string
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        httpStatus:
+          type:
+            - number
+            - "null"
+        latencyMilliseconds:
+          type:
+            - number
+            - "null"
+        models:
+          items:
+            type: string
+          type: array
+        providerProfileId:
+          type: string
+        status:
+          type: string
+      required:
+        - providerProfileId
+        - status
+        - models
+        - httpStatus
+        - latencyMilliseconds
+        - errorCode
+        - errorMessage
+        - checkedAt
+      type: object
+    ProxyEngine:
+      enum:
+        - SING_BOX
+        - XRAY
+      type: string
+    ProxyGatewayProfile:
+      additionalProperties: false
+      properties:
+        allowInsecureTls:
+          type: boolean
+        controlUrl:
+          type: string
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        engine:
+          enum:
+            - SING_BOX
+            - XRAY
+          type: string
+        gatewayId:
+          type: string
+        inlineNodesEnvironment:
+          type: string
+        maximumNodes:
+          type: number
+        preferredNames:
+          items:
+            type: string
+          type: array
+        refreshSeconds:
+          type: number
+        subscriptionUrlEnvironment:
+          type: string
+        updatedAt:
+          type: string
+        version:
+          type: number
+      required:
+        - gatewayId
+        - displayName
+        - controlUrl
+        - subscriptionUrlEnvironment
+        - inlineNodesEnvironment
+        - engine
+        - preferredNames
+        - maximumNodes
+        - refreshSeconds
+        - allowInsecureTls
+        - enabled
+        - version
+        - updatedAt
+      type: object
+    ProxyGatewayReloadResult:
+      additionalProperties: false
+      properties:
+        gatewayId:
+          type: string
+        requestedAt:
+          type: string
+        status:
+          type: string
+      required:
+        - gatewayId
+        - status
+        - requestedAt
+      type: object
+    ProxyGatewayRuntimeStatus:
+      additionalProperties: false
+      properties:
+        egressReady:
+          type: boolean
+        engine:
+          $ref: "#/components/schemas/ProxyEngine"
+        error:
+          type:
+            - string
+            - "null"
+        gatewayId:
+          type: string
+        generation:
+          type: number
+        healthyNodeCount:
+          type: number
+        healthyNodeIndices:
+          items:
+            type: number
+          type: array
+        lastRefreshAt:
+          type:
+            - string
+            - "null"
+        nodeCount:
+          type: number
+        probeFailureCounts:
+          additionalProperties:
+            type: number
+          type: object
+        refreshAttempt:
+          type: number
+        serviceReady:
+          type: boolean
+        unhealthyNodeCount:
+          type: number
+        validationEnabled:
+          type: boolean
+        validationTarget:
+          type:
+            - string
+            - "null"
+      required:
+        - gatewayId
+        - engine
+        - serviceReady
+        - egressReady
+        - nodeCount
+        - healthyNodeCount
+        - unhealthyNodeCount
+        - healthyNodeIndices
+        - probeFailureCounts
+        - validationEnabled
+        - validationTarget
+        - generation
+        - refreshAttempt
+        - lastRefreshAt
+        - error
+      type: object
+    QuantWorkspace:
+      additionalProperties: false
+      properties:
+        generatedAt:
+          type: string
+        runs:
+          items:
+            additionalProperties: false
+            properties:
+              completedAt:
+                type:
+                  - string
+                  - "null"
+              errorCode:
+                type:
+                  - string
+                  - "null"
+              errorMessage:
+                type:
+                  - string
+                  - "null"
+              metricsJson:
+                type: string
+              observationCount:
+                type: number
+              requestSummary:
+                type: string
+              requestedAt:
+                type: string
+              researchKind:
+                type: string
+              researchRunId:
+                type: string
+              resultFingerprint:
+                type:
+                  - string
+                  - "null"
+              startedAt:
+                type:
+                  - string
+                  - "null"
+              status:
+                type: string
+              strategyId:
+                type: string
+              strategyVersion:
+                type: string
+              workflowRunId:
+                type: string
+            required:
+              - researchRunId
+              - workflowRunId
+              - requestSummary
+              - researchKind
+              - strategyId
+              - strategyVersion
+              - status
+              - observationCount
+              - resultFingerprint
+              - metricsJson
+              - errorCode
+              - errorMessage
+              - requestedAt
+              - startedAt
+              - completedAt
+            type: object
+          type: array
+      required:
+        - runs
+        - generatedAt
+      type: object
+    ResearchComparison:
+      additionalProperties: false
+      properties:
+        costDeltaUsd:
+          type: number
+        durationDeltaSeconds:
+          type:
+            - number
+            - "null"
+        inputTokenDelta:
+          type: number
+        left:
+          $ref: "#/components/schemas/ResearchSummary"
+        leftConclusion:
+          type: string
+        nodes:
+          items:
+            additionalProperties: false
+            properties:
+              changed:
+                type: boolean
+              leftStatus:
+                type: string
+              leftSummary:
+                type:
+                  - string
+                  - "null"
+              nodeId:
+                type: string
+              rightStatus:
+                type: string
+              rightSummary:
+                type:
+                  - string
+                  - "null"
+              round:
+                type: number
+            required:
+              - nodeId
+              - round
+              - leftStatus
+              - rightStatus
+              - leftSummary
+              - rightSummary
+              - changed
+            type: object
+          type: array
+        outputTokenDelta:
+          type: number
+        right:
+          $ref: "#/components/schemas/ResearchSummary"
+        rightConclusion:
+          type: string
+      required:
+        - left
+        - right
+        - inputTokenDelta
+        - outputTokenDelta
+        - costDeltaUsd
+        - durationDeltaSeconds
+        - leftConclusion
+        - rightConclusion
+        - nodes
+      type: object
+    ResearchFeedback:
+      additionalProperties: false
+      properties:
+        createdAt:
+          type: string
+        effectiveness:
+          enum:
+            - UNKNOWN
+            - PENDING
+            - WIN
+            - LOSS
+            - NO_TRADE
+          type: string
+        feedbackId:
+          type: string
+        note:
+          type: string
+        rating:
+          enum:
+            - HELPFUL
+            - NEUTRAL
+            - NOT_HELPFUL
+          type: string
+        updatedAt:
+          type: string
+        version:
+          type: number
+        workflowRunId:
+          type: string
+      required:
+        - feedbackId
+        - workflowRunId
+        - rating
+        - effectiveness
+        - note
+        - version
+        - createdAt
+        - updatedAt
+      type: object
+    ResearchForecast:
+      additionalProperties: false
+      properties:
+        actualPrice:
+          type:
+            - number
+            - "null"
+        actualReturn:
+          type:
+            - number
+            - "null"
+        confidence:
+          type: number
+        direction:
+          type: string
+        directionCorrect:
+          type:
+            - boolean
+            - "null"
+        environment:
+          enum:
+            - LIVE
+            - TESTNET
+            - DEMO
+          type: string
+        evaluatedAt:
+          type:
+            - string
+            - "null"
+        evidenceReferences:
+          items:
+            type: string
+          type: array
+        exchange:
+          type: string
+        expectedHigh:
+          type:
+            - number
+            - "null"
+        expectedLow:
+          type:
+            - number
+            - "null"
+        forecastId:
+          type: string
+        horizonSeconds:
+          type: number
+        instrumentId:
+          type: string
+        intervalSeconds:
+          type: number
+        invalidationPrice:
+          type:
+            - number
+            - "null"
+        issuedAt:
+          type: string
+        marketReferencePrice:
+          type: number
+        rangeHit:
+          type:
+            - boolean
+            - "null"
+        shadowNotionalUsdt:
+          type: number
+        shadowPnlUsdt:
+          type:
+            - number
+            - "null"
+        status:
+          type: string
+        symbol:
+          type: string
+        targetAt:
+          type: string
+        thesis:
+          type: string
+        workflowRunId:
+          type: string
+      required:
+        - forecastId
+        - workflowRunId
+        - instrumentId
+        - exchange
+        - environment
+        - symbol
+        - intervalSeconds
+        - horizonSeconds
+        - marketReferencePrice
+        - direction
+        - expectedLow
+        - expectedHigh
+        - invalidationPrice
+        - confidence
+        - thesis
+        - evidenceReferences
+        - status
+        - issuedAt
+        - targetAt
+        - actualPrice
+        - actualReturn
+        - shadowNotionalUsdt
+        - shadowPnlUsdt
+        - directionCorrect
+        - rangeHit
+        - evaluatedAt
+      type: object
+    ResearchHistoryDetail:
+      additionalProperties: false
+      properties:
+        agentTurns:
+          items:
+            additionalProperties: false
+            properties:
+              argument:
+                type: string
+              challengesJson:
+                type: string
+              claimsJson:
+                type: string
+              confidence:
+                type:
+                  - number
+                  - "null"
+              createdAt:
+                type: string
+              evidenceReferencesJson:
+                type: string
+              messageId:
+                type: string
+              messageType:
+                type: string
+              nodeId:
+                type: string
+              revisionNotesJson:
+                type: string
+              roleName:
+                type: string
+              round:
+                type: number
+              status:
+                type: string
+              summary:
+                type: string
+              turnIndex:
+                type: number
+            required:
+              - messageId
+              - nodeId
+              - roleName
+              - round
+              - turnIndex
+              - messageType
+              - status
+              - summary
+              - argument
+              - confidence
+              - claimsJson
+              - evidenceReferencesJson
+              - challengesJson
+              - revisionNotesJson
+              - createdAt
+            type: object
+          type: array
+        aiInvocations:
+          items:
+            additionalProperties: false
+            properties:
+              completedAt:
+                type:
+                  - string
+                  - "null"
+              errorCode:
+                type:
+                  - string
+                  - "null"
+              errorMessage:
+                type:
+                  - string
+                  - "null"
+              estimatedCostUsd:
+                type: number
+              finishReason:
+                type:
+                  - string
+                  - "null"
+              inputTokens:
+                type: number
+              invocationId:
+                type: string
+              latencyMilliseconds:
+                type:
+                  - number
+                  - "null"
+              modelName:
+                type: string
+              nodeId:
+                type: string
+              outputTokens:
+                type: number
+              providerProfileId:
+                type: string
+              reasoningEffort:
+                $ref: "#/components/schemas/ReasoningEffort"
+              startedAt:
+                type: string
+              status:
+                type: string
+            required:
+              - invocationId
+              - nodeId
+              - providerProfileId
+              - modelName
+              - reasoningEffort
+              - status
+              - inputTokens
+              - outputTokens
+              - estimatedCostUsd
+              - latencyMilliseconds
+              - finishReason
+              - errorCode
+              - errorMessage
+              - startedAt
+              - completedAt
+            type: object
+          type: array
+        artifacts:
+          items:
+            additionalProperties: false
+            properties:
+              artifactId:
+                type: string
+              artifactType:
+                type: string
+              contentHash:
+                type: string
+              createdAt:
+                type: string
+              schemaVersion:
+                type: number
+            required:
+              - artifactId
+              - artifactType
+              - schemaVersion
+              - contentHash
+              - createdAt
+            type: object
+          type: array
+        checkpoints:
+          items:
+            additionalProperties: false
+            properties:
+              attempt:
+                type: number
+              completedAt:
+                type:
+                  - string
+                  - "null"
+              displayName:
+                type: string
+              errorCode:
+                type:
+                  - string
+                  - "null"
+              errorMessage:
+                type:
+                  - string
+                  - "null"
+              nodeId:
+                type: string
+              resultSummary:
+                type:
+                  - string
+                  - "null"
+              round:
+                type: number
+              startedAt:
+                type:
+                  - string
+                  - "null"
+              status:
+                type: string
+              updatedAt:
+                type: string
+            required:
+              - nodeId
+              - displayName
+              - round
+              - attempt
+              - status
+              - resultSummary
+              - errorCode
+              - errorMessage
+              - startedAt
+              - completedAt
+              - updatedAt
+            type: object
+          type: array
+        events:
+          items:
+            additionalProperties: false
+            properties:
+              eventType:
+                type: string
+              occurredAt:
+                type: string
+              payloadJson:
+                type: string
+              sequence:
+                type: number
+            required:
+              - sequence
+              - eventType
+              - payloadJson
+              - occurredAt
+            type: object
+          type: array
+        quantRuns:
+          items:
+            additionalProperties: false
+            properties:
+              completedAt:
+                type:
+                  - string
+                  - "null"
+              errorCode:
+                type:
+                  - string
+                  - "null"
+              errorMessage:
+                type:
+                  - string
+                  - "null"
+              metricsJson:
+                type: string
+              observationCount:
+                type: number
+              requestedAt:
+                type: string
+              researchKind:
+                type: string
+              researchRunId:
+                type: string
+              resultFingerprint:
+                type:
+                  - string
+                  - "null"
+              status:
+                type: string
+              strategyId:
+                type: string
+              strategyVersion:
+                type: string
+            required:
+              - researchRunId
+              - researchKind
+              - strategyId
+              - strategyVersion
+              - status
+              - observationCount
+              - resultFingerprint
+              - metricsJson
+              - errorCode
+              - errorMessage
+              - requestedAt
+              - completedAt
+            type: object
+          type: array
+        summary:
+          $ref: "#/components/schemas/ResearchSummary"
+      required:
+        - summary
+        - events
+        - checkpoints
+        - agentTurns
+        - aiInvocations
+        - artifacts
+        - quantRuns
+      type: object
+    ResearchLaunch:
+      additionalProperties: false
+      properties:
+        acceptedAt:
+          type: string
+        eventsUrl:
+          type: string
+        runId:
+          type: string
+        statusUrl:
+          type: string
+        taskId:
+          type: string
+        taskStatus:
+          $ref: "#/components/schemas/BackgroundTaskStatus"
+        taskUrl:
+          type: string
+        workflowStatus:
+          $ref: "#/components/schemas/WorkflowRunStatus"
+      required:
+        - runId
+        - workflowStatus
+        - taskId
+        - taskStatus
+        - acceptedAt
+        - statusUrl
+        - eventsUrl
+        - taskUrl
+      type: object
+    ResearchSummary:
+      additionalProperties: false
+      properties:
+        acceptedAt:
+          type: string
+        completedAt:
+          type:
+            - string
+            - "null"
+        costUsd:
+          type: number
+        inputTokens:
+          type: number
+        outputTokens:
+          type: number
+        requestSummary:
+          type: string
+        runId:
+          type: string
+        startedAt:
+          type:
+            - string
+            - "null"
+        status:
+          $ref: "#/components/schemas/WorkflowRunStatus"
+        trigger:
+          type: string
+        updatedAt:
+          type: string
+        workflowType:
+          type: string
+        workflowVersionId:
+          type: string
+      required:
+        - runId
+        - workflowType
+        - status
+        - trigger
+        - requestSummary
+        - workflowVersionId
+        - inputTokens
+        - outputTokens
+        - costUsd
+        - acceptedAt
+        - startedAt
+        - completedAt
+        - updatedAt
+      type: object
+    RiskPolicy:
+      additionalProperties: false
+      properties:
+        liquidationBufferRate:
+          type: number
+        maximumLeverage:
+          type: number
+        maximumNotionalUsdt:
+          type: number
+        maximumOpenPositions:
+          type: number
+        maximumStopDistance:
+          type: number
+        minimumConfidence:
+          type: number
+        preferredLeverage:
+          type: number
+        riskBudgetUsdt:
+          type: number
+        slippageRate:
+          type: number
+        takerFeeRate:
+          type: number
+        testEnvironmentOnly:
+          type: boolean
+        version:
+          type: string
+      required:
+        - version
+        - testEnvironmentOnly
+        - minimumConfidence
+        - riskBudgetUsdt
+        - maximumNotionalUsdt
+        - preferredLeverage
+        - maximumLeverage
+        - maximumOpenPositions
+        - maximumStopDistance
+        - takerFeeRate
+        - slippageRate
+        - liquidationBufferRate
+      type: object
+    ScheduleRecord:
+      additionalProperties: false
+      properties:
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        intervalSeconds:
+          type: number
+        lastScheduledAt:
+          type:
+            - string
+            - "null"
+        maximumAttempts:
+          type: number
+        nextRunAt:
+          type: string
+        priority:
+          type: number
+        scheduleId:
+          type: string
+        taskType:
+          type: string
+        updatedAt:
+          type: string
+        version:
+          type: number
+      required:
+        - scheduleId
+        - displayName
+        - taskType
+        - enabled
+        - intervalSeconds
+        - priority
+        - maximumAttempts
+        - nextRunAt
+        - lastScheduledAt
+        - version
+        - updatedAt
+      type: object
+    SetupProfileApplication:
+      additionalProperties: false
+      properties:
+        applicationId:
+          type: string
+        appliedAt:
+          type: string
+        appliedKeys:
+          items:
+            type: string
+          type: array
+        preservedKeys:
+          items:
+            type: string
+          type: array
+        profileId:
+          enum:
+            - RECOMMENDED
+            - ECONOMY
+            - DEEP_RESEARCH
+          type: string
+        skippedKeys:
+          items:
+            type: string
+          type: array
+      required:
+        - applicationId
+        - profileId
+        - appliedKeys
+        - preservedKeys
+        - skippedKeys
+        - appliedAt
+      type: object
+    SetupProfileDefinition:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        displayName:
+          type: string
+        profileId:
+          enum:
+            - RECOMMENDED
+            - ECONOMY
+            - DEEP_RESEARCH
+          type: string
+        values:
+          additionalProperties:
+            type: string
+          type: object
+      required:
+        - profileId
+        - displayName
+        - description
+        - values
+      type: object
+    SetupProfilePreview:
+      additionalProperties: false
+      properties:
+        changes:
+          items:
+            additionalProperties: false
+            properties:
+              currentValue:
+                type: string
+              key:
+                type: string
+              proposedValue:
+                type: string
+            required:
+              - key
+              - currentValue
+              - proposedValue
+            type: object
+          type: array
+        missingKeys:
+          items:
+            type: string
+          type: array
+        preservedKeys:
+          items:
+            type: string
+          type: array
+        profile:
+          $ref: "#/components/schemas/SetupProfileDefinition"
+      required:
+        - profile
+        - changes
+        - preservedKeys
+        - missingKeys
+      type: object
+    SourceHealth:
+      additionalProperties: false
+      properties:
+        channelStatus:
+          type: string
+        egressReady:
+          type: boolean
+        firecrawlChannelStatus:
+          type: string
+        lastAttemptAt:
+          type:
+            - string
+            - "null"
+        lastBlockedAt:
+          type:
+            - string
+            - "null"
+        lastSuccessAt:
+          type:
+            - string
+            - "null"
+        latestErrorCode:
+          type:
+            - string
+            - "null"
+        latestOutcome:
+          type:
+            - string
+            - "null"
+        latestStatusCode:
+          type:
+            - number
+            - "null"
+        rateLimitStatus:
+          type: string
+        routeEndpoint:
+          type: string
+        routeType:
+          type: string
+        safeMessage:
+          type:
+            - string
+            - "null"
+        serviceReady:
+          type: boolean
+        sourceId:
+          type: string
+      required:
+        - sourceId
+        - serviceReady
+        - egressReady
+        - routeType
+        - routeEndpoint
+        - channelStatus
+        - firecrawlChannelStatus
+        - rateLimitStatus
+        - lastSuccessAt
+        - lastBlockedAt
+        - lastAttemptAt
+        - latestOutcome
+        - latestStatusCode
+        - latestErrorCode
+        - safeMessage
+      type: object
+    SourceMutation:
+      additionalProperties: false
+      properties:
+        aiWebSearchBinding:
+          anyOf:
+            - additionalProperties: false
+              properties:
+                modelName:
+                  type: string
+                providerProfileId:
+                  type: string
+                reasoningEffort:
+                  $ref: "#/components/schemas/ReasoningEffort"
+                tool:
+                  enum:
+                    - WEB_SEARCH
+                    - GOOGLE_SEARCH
+                  type: string
+              required:
+                - providerProfileId
+                - modelName
+                - reasoningEffort
+                - tool
+              type: object
+            - type: "null"
+        assetScope:
+          items:
+            type: string
+          type: array
+        category:
+          type: string
+        crawlerHeaderProfileId:
+          type: string
+        credentialSupported:
+          type: boolean
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        endpointBaseUrl:
+          type:
+            - string
+            - "null"
+        feedUrls:
+          items:
+            type: string
+          type: array
+        maximumResults:
+          type: number
+        maximumScrapeTargets:
+          type: number
+        mode:
+          type: string
+        outboundRoute:
+          type:
+            - string
+            - "null"
+        pollIntervalSeconds:
+          type: number
+        priority:
+          type: string
+        provider:
+          type:
+            - string
+            - "null"
+        searchQueries:
+          items:
+            type: string
+          type: array
+        seedUrls:
+          items:
+            type: string
+          type: array
+        tier:
+          type: string
+        trustWeight:
+          type: number
+      required:
+        - displayName
+        - mode
+        - tier
+        - category
+        - provider
+        - trustWeight
+        - pollIntervalSeconds
+        - priority
+        - assetScope
+        - feedUrls
+        - seedUrls
+        - searchQueries
+        - endpointBaseUrl
+        - credentialSupported
+        - outboundRoute
+        - crawlerHeaderProfileId
+        - maximumResults
+        - maximumScrapeTargets
+        - enabled
+        - aiWebSearchBinding
+      type: object
+    SourceRecord:
+      additionalProperties: false
+      properties:
+        aiWebSearchBinding:
+          anyOf:
+            - additionalProperties: false
+              properties:
+                modelName:
+                  type: string
+                providerProfileId:
+                  type: string
+                reasoningEffort:
+                  $ref: "#/components/schemas/ReasoningEffort"
+                tool:
+                  enum:
+                    - WEB_SEARCH
+                    - GOOGLE_SEARCH
+                  type: string
+              required:
+                - providerProfileId
+                - modelName
+                - reasoningEffort
+                - tool
+              type: object
+            - type: "null"
+        assetScope:
+          items:
+            type: string
+          type: array
+        category:
+          type: string
+        crawlerHeaderProfileId:
+          type: string
+        credentialSupported:
+          type: boolean
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        endpointBaseUrl:
+          type:
+            - string
+            - "null"
+        feedUrls:
+          items:
+            type: string
+          type: array
+        maximumResults:
+          type: number
+        maximumScrapeTargets:
+          type: number
+        mode:
+          type: string
+        outboundRoute:
+          type:
+            - string
+            - "null"
+        pollIntervalSeconds:
+          type: number
+        priority:
+          type: string
+        provider:
+          type:
+            - string
+            - "null"
+        searchQueries:
+          items:
+            type: string
+          type: array
+        seedUrls:
+          items:
+            type: string
+          type: array
+        sourceId:
+          type: string
+        tier:
+          type: string
+        trustWeight:
+          type: number
+        version:
+          type: number
+      required:
+        - sourceId
+        - displayName
+        - mode
+        - tier
+        - category
+        - provider
+        - trustWeight
+        - pollIntervalSeconds
+        - priority
+        - assetScope
+        - feedUrls
+        - seedUrls
+        - searchQueries
+        - endpointBaseUrl
+        - credentialSupported
+        - outboundRoute
+        - crawlerHeaderProfileId
+        - maximumResults
+        - maximumScrapeTargets
+        - enabled
+        - version
+        - aiWebSearchBinding
+      type: object
+    SystemSetting:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        key:
+          type: string
+        source:
+          type: string
+        type:
+          type: string
+        updatedAt:
+          type: string
+        value:
+          type: string
+        version:
+          type: number
+      required:
+        - key
+        - type
+        - value
+        - source
+        - description
+        - version
+        - updatedAt
+      type: object
+    TaskRecord:
+      additionalProperties: false
+      properties:
+        attemptCount:
+          type: number
+        availableAt:
+          type: string
+        claimOwner:
+          type:
+            - string
+            - "null"
+        claimedAt:
+          type:
+            - string
+            - "null"
+        completedAt:
+          type:
+            - string
+            - "null"
+        createdAt:
+          type: string
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        heartbeatAt:
+          type:
+            - string
+            - "null"
+        leaseExpiresAt:
+          type:
+            - string
+            - "null"
+        maximumAttempts:
+          type: number
+        payloadSummary:
+          type: string
+        priority:
+          type: number
+        status:
+          $ref: "#/components/schemas/BackgroundTaskStatus"
+        taskId:
+          type: string
+        taskType:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - taskId
+        - taskType
+        - status
+        - priority
+        - payloadSummary
+        - attemptCount
+        - maximumAttempts
+        - availableAt
+        - claimedAt
+        - leaseExpiresAt
+        - claimOwner
+        - heartbeatAt
+        - completedAt
+        - errorCode
+        - errorMessage
+        - createdAt
+        - updatedAt
+      type: object
+    TradeAutomationConfiguration:
+      additionalProperties: false
+      properties:
+        activeRiskPolicy:
+          $ref: "#/components/schemas/RiskPolicy"
+        aiStages:
+          items:
+            $ref: "#/components/schemas/ExecutionAiStage"
+          type: array
+      required:
+        - aiStages
+        - activeRiskPolicy
+      type: object
+    TradeAutomationDetail:
+      additionalProperties: false
+      properties:
+        aiReviews:
+          items:
+            additionalProperties: false
+            properties:
+              createdAt:
+                type: string
+              errorCode:
+                type:
+                  - string
+                  - "null"
+              errorMessage:
+                type:
+                  - string
+                  - "null"
+              invocationId:
+                type:
+                  - string
+                  - "null"
+              modelName:
+                type:
+                  - string
+                  - "null"
+              outputHash:
+                type:
+                  - string
+                  - "null"
+              outputJson:
+                type:
+                  - string
+                  - "null"
+              providerProfileId:
+                type:
+                  - string
+                  - "null"
+              reasoningEffort:
+                anyOf:
+                  - $ref: "#/components/schemas/ReasoningEffort"
+                  - type: "null"
+              reviewId:
+                type: string
+              stage:
+                type: string
+              status:
+                type: string
+            required:
+              - reviewId
+              - stage
+              - status
+              - invocationId
+              - providerProfileId
+              - modelName
+              - reasoningEffort
+              - outputJson
+              - outputHash
+              - errorCode
+              - errorMessage
+              - createdAt
+            type: object
+          type: array
+        decision:
+          anyOf:
+            - type: "null"
+            - additionalProperties: false
+              properties:
+                action:
+                  type: string
+                confidence:
+                  type: number
+                createdAt:
+                  type: string
+                decisionId:
+                  type: string
+                decisionKind:
+                  type: string
+                entryReference:
+                  type:
+                    - number
+                    - "null"
+                invalidationPrice:
+                  type:
+                    - number
+                    - "null"
+                proposalId:
+                  type:
+                    - string
+                    - "null"
+                proposalStatus:
+                  type:
+                    - string
+                    - "null"
+                rationaleJson:
+                  type: string
+                symbol:
+                  type: string
+                targetPrice:
+                  type:
+                    - number
+                    - "null"
+              required:
+                - decisionId
+                - decisionKind
+                - symbol
+                - action
+                - confidence
+                - entryReference
+                - targetPrice
+                - invalidationPrice
+                - rationaleJson
+                - proposalId
+                - proposalStatus
+                - createdAt
+              type: object
+        estimatedTrades:
+          items:
+            additionalProperties: false
+            properties:
+              calculatedAt:
+                type: string
+              contractSize:
+                type: number
+              entryReference:
+                type: number
+              estimatedEntryCostUsdt:
+                type: number
+              estimatedLossUsdt:
+                type: number
+              estimatedProfitUsdt:
+                type: number
+              estimatedStopExitCostUsdt:
+                type: number
+              estimatedTargetExitCostUsdt:
+                type: number
+              exchange:
+                type: string
+              initialMarginUsdt:
+                type: number
+              instrumentId:
+                type: string
+              leverage:
+                type: number
+              marketPrice:
+                type: number
+              notionalUsdt:
+                type: number
+              policyVersion:
+                type: string
+              projectionId:
+                type: string
+              proposalId:
+                type: string
+              quantity:
+                type: number
+              riskRewardRatio:
+                type: number
+              side:
+                type: string
+              stopPrice:
+                type: number
+              symbol:
+                type: string
+              targetPrice:
+                type: number
+            required:
+              - projectionId
+              - proposalId
+              - instrumentId
+              - exchange
+              - symbol
+              - side
+              - policyVersion
+              - entryReference
+              - marketPrice
+              - targetPrice
+              - stopPrice
+              - quantity
+              - contractSize
+              - notionalUsdt
+              - leverage
+              - initialMarginUsdt
+              - estimatedEntryCostUsdt
+              - estimatedTargetExitCostUsdt
+              - estimatedStopExitCostUsdt
+              - estimatedProfitUsdt
+              - estimatedLossUsdt
+              - riskRewardRatio
+              - calculatedAt
+            type: object
+          type: array
+        orders:
+          items:
+            additionalProperties: false
+            properties:
+              accountId:
+                type: string
+              averageFillPrice:
+                type:
+                  - number
+                  - "null"
+              clientOrderId:
+                type:
+                  - string
+                  - "null"
+              createdAt:
+                type: string
+              environment:
+                type: string
+              events:
+                items:
+                  additionalProperties: false
+                  properties:
+                    eventId:
+                      type: string
+                    eventType:
+                      type: string
+                    fromStatus:
+                      type:
+                        - string
+                        - "null"
+                    occurredAt:
+                      type: string
+                    payloadJson:
+                      type: string
+                    sequence:
+                      type: number
+                    toStatus:
+                      type: string
+                  required:
+                    - eventId
+                    - sequence
+                    - eventType
+                    - fromStatus
+                    - toStatus
+                    - payloadJson
+                    - occurredAt
+                  type: object
+                type: array
+              exchange:
+                type: string
+              exchangeOrderId:
+                type:
+                  - string
+                  - "null"
+              filledQuantity:
+                type: number
+              intentId:
+                type: string
+              leverage:
+                type: number
+              orderId:
+                type: string
+              requestedQuantity:
+                type: number
+              side:
+                type: string
+              status:
+                type: string
+              submissionAttempts:
+                items:
+                  additionalProperties: false
+                  properties:
+                    attemptId:
+                      type: string
+                    attemptNumber:
+                      type: number
+                    completedAt:
+                      type:
+                        - string
+                        - "null"
+                    errorCode:
+                      type:
+                        - string
+                        - "null"
+                    errorMessage:
+                      type:
+                        - string
+                        - "null"
+                    exchangeOrderId:
+                      type:
+                        - string
+                        - "null"
+                    httpStatus:
+                      type:
+                        - number
+                        - "null"
+                    requestHash:
+                      type: string
+                    responseJson:
+                      type:
+                        - string
+                        - "null"
+                    startedAt:
+                      type: string
+                    status:
+                      type: string
+                  required:
+                    - attemptId
+                    - attemptNumber
+                    - requestHash
+                    - status
+                    - exchangeOrderId
+                    - httpStatus
+                    - responseJson
+                    - errorCode
+                    - errorMessage
+                    - startedAt
+                    - completedAt
+                  type: object
+                type: array
+              submittedAt:
+                type:
+                  - string
+                  - "null"
+              symbol:
+                type: string
+              terminalAt:
+                type:
+                  - string
+                  - "null"
+              updatedAt:
+                type: string
+            required:
+              - orderId
+              - intentId
+              - exchange
+              - environment
+              - accountId
+              - symbol
+              - side
+              - status
+              - requestedQuantity
+              - filledQuantity
+              - averageFillPrice
+              - leverage
+              - clientOrderId
+              - exchangeOrderId
+              - submittedAt
+              - terminalAt
+              - createdAt
+              - updatedAt
+              - events
+              - submissionAttempts
+            type: object
+          type: array
+        riskAssessments:
+          items:
+            additionalProperties: false
+            properties:
+              accountId:
+                type: string
+              approximateLiquidationPrice:
+                type:
+                  - number
+                  - "null"
+              assessedAt:
+                type: string
+              assessmentId:
+                type: string
+              estimatedMaximumLossUsdt:
+                type:
+                  - number
+                  - "null"
+              initialMarginUsdt:
+                type:
+                  - number
+                  - "null"
+              leverage:
+                type:
+                  - number
+                  - "null"
+              notionalUsdt:
+                type:
+                  - number
+                  - "null"
+              policyVersion:
+                type: string
+              proposalId:
+                type: string
+              quantity:
+                type:
+                  - number
+                  - "null"
+              reasonsJson:
+                type: string
+              status:
+                type: string
+            required:
+              - assessmentId
+              - proposalId
+              - accountId
+              - policyVersion
+              - status
+              - reasonsJson
+              - quantity
+              - notionalUsdt
+              - leverage
+              - initialMarginUsdt
+              - estimatedMaximumLossUsdt
+              - approximateLiquidationPrice
+              - assessedAt
+            type: object
+          type: array
+        summary:
+          $ref: "#/components/schemas/TradeAutomationSummary"
+      required:
+        - summary
+        - decision
+        - aiReviews
+        - riskAssessments
+        - estimatedTrades
+        - orders
+      type: object
+    TradeAutomationSummary:
+      additionalProperties: false
+      properties:
+        action:
+          type:
+            - string
+            - "null"
+        automationRunId:
+          type: string
+        completedAt:
+          type:
+            - string
+            - "null"
+        confidence:
+          type:
+            - number
+            - "null"
+        errorCode:
+          type:
+            - string
+            - "null"
+        estimatedTradeCount:
+          type: number
+        orderCount:
+          type: number
+        startedAt:
+          type: string
+        status:
+          type: string
+        statusMessage:
+          type:
+            - string
+            - "null"
+        symbol:
+          type:
+            - string
+            - "null"
+        workflowRunId:
+          type: string
+      required:
+        - automationRunId
+        - workflowRunId
+        - status
+        - symbol
+        - action
+        - confidence
+        - orderCount
+        - estimatedTradeCount
+        - errorCode
+        - statusMessage
+        - startedAt
+        - completedAt
+      type: object
+    TradeRiskPreview:
+      additionalProperties: false
+      properties:
+        approximateLiquidationPrice:
+          type:
+            - number
+            - "null"
+        calculatedAt:
+          type: string
+        estimatedMaximumLossUsdt:
+          type:
+            - number
+            - "null"
+        estimatedProfitUsdt:
+          type:
+            - number
+            - "null"
+        initialMarginUsdt:
+          type:
+            - number
+            - "null"
+        leverage:
+          type:
+            - number
+            - "null"
+        mode:
+          enum:
+            - EXECUTION
+            - ESTIMATE
+          type: string
+        notionalUsdt:
+          type:
+            - number
+            - "null"
+        policy:
+          $ref: "#/components/schemas/RiskPolicy"
+        quantity:
+          type:
+            - number
+            - "null"
+        reasons:
+          items:
+            type: string
+          type: array
+        riskRewardRatio:
+          type:
+            - number
+            - "null"
+        status:
+          type: string
+      required:
+        - mode
+        - status
+        - reasons
+        - quantity
+        - notionalUsdt
+        - leverage
+        - initialMarginUsdt
+        - estimatedMaximumLossUsdt
+        - approximateLiquidationPrice
+        - estimatedProfitUsdt
+        - riskRewardRatio
+        - policy
+        - calculatedAt
+      type: object
+    WatchlistDetail:
+      additionalProperties: false
+      properties:
+        defaultWatchlist:
+          type: boolean
+        description:
+          type: string
+        itemCount:
+          type: number
+        items:
+          items:
+            additionalProperties: false
+            properties:
+              baseAsset:
+                type: string
+              displayName:
+                type: string
+              note:
+                type: string
+              preferredInstrumentId:
+                type:
+                  - string
+                  - "null"
+              productId:
+                type: string
+              quoteAsset:
+                type: string
+              researchMode:
+                type: string
+              updatedAt:
+                type: string
+            required:
+              - productId
+              - displayName
+              - baseAsset
+              - quoteAsset
+              - researchMode
+              - preferredInstrumentId
+              - note
+              - updatedAt
+            type: object
+          type: array
+        name:
+          type: string
+        updatedAt:
+          type: string
+        version:
+          type: number
+        watchlistId:
+          type: string
+      required:
+        - defaultWatchlist
+        - description
+        - itemCount
+        - items
+        - name
+        - updatedAt
+        - version
+        - watchlistId
+      type: object
+    WatchlistSummary:
+      additionalProperties: false
+      properties:
+        defaultWatchlist:
+          type: boolean
+        description:
+          type: string
+        itemCount:
+          type: number
+        name:
+          type: string
+        updatedAt:
+          type: string
+        version:
+          type: number
+        watchlistId:
+          type: string
+      required:
+        - watchlistId
+        - name
+        - description
+        - defaultWatchlist
+        - itemCount
+        - version
+        - updatedAt
+      type: object
+    WorkerRecord:
+      additionalProperties: false
+      properties:
+        heartbeatAt:
+          type: string
+        instanceName:
+          type: string
+        startedAt:
+          type: string
+        status:
+          type: string
+        stoppedAt:
+          type:
+            - string
+            - "null"
+        workerId:
+          type: string
+      required:
+        - workerId
+        - instanceName
+        - status
+        - startedAt
+        - heartbeatAt
+        - stoppedAt
+      type: object
+    WorkflowCondition:
+      additionalProperties: false
+      properties:
+        field:
+          type: string
+        operand:
+          anyOf:
+            - $ref: "#/components/schemas/WorkflowConditionOperand"
+            - type: "null"
+        operator:
+          type: string
+      required:
+        - field
+        - operator
+        - operand
+      type: object
+    WorkflowConditionOperand:
+      additionalProperties: false
+      properties:
+        booleanValue:
+          type:
+            - boolean
+            - "null"
+        decimalValue:
+          type:
+            - number
+            - "null"
+        textValue:
+          type:
+            - string
+            - "null"
+        textValues:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: "null"
+        type:
+          $ref: "#/components/schemas/WorkflowConditionOperandType"
+      required:
+        - type
+        - textValue
+        - decimalValue
+        - booleanValue
+        - textValues
+      type: object
+    WorkflowConditionOperandType:
+      enum:
+        - TEXT
+        - DECIMAL
+        - BOOLEAN
+        - TEXT_LIST
+      type: string
+    WorkflowDefinitionSummary:
+      additionalProperties: false
+      properties:
+        active:
+          type: boolean
+        builtIn:
+          type: boolean
+        definitionId:
+          type: string
+        description:
+          type: string
+        draftVersionId:
+          type:
+            - string
+            - "null"
+        draftVersionNumber:
+          type:
+            - number
+            - "null"
+        name:
+          type: string
+        publishedVersionId:
+          type:
+            - string
+            - "null"
+        publishedVersionNumber:
+          type:
+            - number
+            - "null"
+        updatedAt:
+          type: string
+      required:
+        - definitionId
+        - name
+        - description
+        - builtIn
+        - active
+        - publishedVersionId
+        - publishedVersionNumber
+        - draftVersionId
+        - draftVersionNumber
+        - updatedAt
+      type: object
+    WorkflowEdge:
+      additionalProperties: false
+      properties:
+        activationMode:
+          type: string
+        condition:
+          anyOf:
+            - $ref: "#/components/schemas/WorkflowCondition"
+            - type: "null"
+        contextMode:
+          type: string
+        edgeId:
+          type: string
+        loopEdge:
+          type: boolean
+        maximumTraversals:
+          type:
+            - number
+            - "null"
+        sourceNodeId:
+          type: string
+        targetNodeId:
+          type: string
+      required:
+        - edgeId
+        - sourceNodeId
+        - targetNodeId
+        - activationMode
+        - contextMode
+        - condition
+        - loopEdge
+        - maximumTraversals
+      type: object
+    WorkflowEstimate:
+      additionalProperties: false
+      properties:
+        configuredCostLimitUsd:
+          type: number
+        configuredTokenLimit:
+          type: number
+        debateRounds:
+          type: number
+        estimatedCalls:
+          type: number
+        estimatedInputTokens:
+          type: number
+        fallbackWorstCaseCostUsd:
+          type: number
+        maximumOutputTokens:
+          type: number
+        nodes:
+          items:
+            additionalProperties: false
+            properties:
+              displayName:
+                type: string
+              estimatedCalls:
+                type: number
+              estimatedInputTokens:
+                type: number
+              fallbackCostUsd:
+                type: number
+              fallbackModel:
+                type:
+                  - string
+                  - "null"
+              fallbackProvider:
+                type:
+                  - string
+                  - "null"
+              maximumOutputTokens:
+                type: number
+              nodeId:
+                type: string
+              primaryCostUsd:
+                type: number
+              primaryModel:
+                type: string
+              primaryProvider:
+                type: string
+              rateComplete:
+                type: boolean
+            required:
+              - nodeId
+              - displayName
+              - estimatedCalls
+              - estimatedInputTokens
+              - maximumOutputTokens
+              - primaryProvider
+              - primaryModel
+              - primaryCostUsd
+              - fallbackProvider
+              - fallbackModel
+              - fallbackCostUsd
+              - rateComplete
+            type: object
+          type: array
+        primaryCostUsd:
+          type: number
+        versionId:
+          type: string
+        warnings:
+          items:
+            type: string
+          type: array
+      required:
+        - versionId
+        - debateRounds
+        - estimatedCalls
+        - estimatedInputTokens
+        - maximumOutputTokens
+        - primaryCostUsd
+        - fallbackWorstCaseCostUsd
+        - configuredCostLimitUsd
+        - configuredTokenLimit
+        - nodes
+        - warnings
+      type: object
+    WorkflowEvent:
+      additionalProperties: {}
+      properties:
+        eventId:
+          anyOf:
+            - additionalProperties: false
+              properties:
+                value:
+                  type: string
+              required:
+                - value
+              type: object
+            - type: string
+        occurredAt:
+          type: string
+        runId:
+          anyOf:
+            - additionalProperties: false
+              properties:
+                value:
+                  type: string
+              required:
+                - value
+              type: object
+            - type: string
+        sequence:
+          type: number
+      required:
+        - eventId
+        - runId
+        - sequence
+        - occurredAt
+      type: object
+    WorkflowExecutionPlan:
+      additionalProperties: false
+      properties:
+        defaultDebateRounds:
+          type: number
+        maximumCostUsd:
+          type: string
+        maximumDebateRounds:
+          type: number
+        maximumSteps:
+          type: number
+        maximumTokens:
+          type: number
+        nodes:
+          items:
+            additionalProperties: false
+            properties:
+              displayName:
+                type: string
+              enabled:
+                type: boolean
+              fallbackModelName:
+                type:
+                  - string
+                  - "null"
+              fallbackProviderProfileId:
+                type:
+                  - string
+                  - "null"
+              invocationPolicy:
+                type: string
+              modelName:
+                type:
+                  - string
+                  - "null"
+              nodeId:
+                type: string
+              nodeType:
+                type: string
+              providerProfileId:
+                type:
+                  - string
+                  - "null"
+              reasoningEffort:
+                type:
+                  - string
+                  - "null"
+              runtimeHandler:
+                type: string
+              sequence:
+                type: number
+              upstreamNodeIds:
+                items:
+                  type: string
+                type: array
+            required:
+              - sequence
+              - nodeId
+              - displayName
+              - nodeType
+              - runtimeHandler
+              - invocationPolicy
+              - upstreamNodeIds
+              - providerProfileId
+              - modelName
+              - reasoningEffort
+              - fallbackProviderProfileId
+              - fallbackModelName
+              - enabled
+            type: object
+          type: array
+        warnings:
+          items:
+            type: string
+          type: array
+        workflowVersionId:
+          type: string
+      required:
+        - workflowVersionId
+        - defaultDebateRounds
+        - maximumDebateRounds
+        - maximumSteps
+        - maximumTokens
+        - maximumCostUsd
+        - nodes
+        - warnings
+      type: object
+    WorkflowLearning:
+      additionalProperties: false
+      properties:
+        completedRunCount:
+          type: number
+        definitionId:
+          type: string
+        failedRunCount:
+          type: number
+        generatedAt:
+          type: string
+        nodes:
+          items:
+            additionalProperties: false
+            properties:
+              averageLatencyMilliseconds:
+                type:
+                  - number
+                  - "null"
+              costUsd:
+                type: number
+              displayName:
+                type: string
+              failedInvocationCount:
+                type: number
+              inputTokens:
+                type: number
+              invocationCount:
+                type: number
+              nodeId:
+                type: string
+              outputTokens:
+                type: number
+              successfulInvocationCount:
+                type: number
+            required:
+              - nodeId
+              - displayName
+              - invocationCount
+              - successfulInvocationCount
+              - failedInvocationCount
+              - inputTokens
+              - outputTokens
+              - costUsd
+              - averageLatencyMilliseconds
+            type: object
+          type: array
+        recentFailures:
+          items:
+            additionalProperties: false
+            properties:
+              errorCode:
+                type:
+                  - string
+                  - "null"
+              errorMessage:
+                type:
+                  - string
+                  - "null"
+              nodeId:
+                type: string
+              occurredAt:
+                type: string
+              runId:
+                type: string
+            required:
+              - runId
+              - nodeId
+              - errorCode
+              - errorMessage
+              - occurredAt
+            type: object
+          type: array
+        runCount:
+          type: number
+        totalCostUsd:
+          type: number
+        versionId:
+          type: string
+      required:
+        - definitionId
+        - versionId
+        - runCount
+        - completedRunCount
+        - failedRunCount
+        - totalCostUsd
+        - nodes
+        - recentFailures
+        - generatedAt
+      type: object
+    WorkflowNode:
+      additionalProperties: false
+      properties:
+        contextHistoryRounds:
+          type: number
+        contextMaximumMessages:
+          type: number
+        contextMode:
+          type: string
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        fallbackAiBinding:
+          anyOf:
+            - $ref: "#/components/schemas/AiModelBinding"
+            - type: "null"
+        maximumOutputTokens:
+          type: number
+        nodeId:
+          type: string
+        nodeType:
+          $ref: "#/components/schemas/WorkflowNodeType"
+        operation:
+          type:
+            - string
+            - "null"
+        outputContract:
+          anyOf:
+            - $ref: "#/components/schemas/WorkflowOutputContract"
+            - type: "null"
+        positionX:
+          type: number
+        positionY:
+          type: number
+        primaryAiBinding:
+          anyOf:
+            - $ref: "#/components/schemas/AiModelBinding"
+            - type: "null"
+        retryBackoffSeconds:
+          type: number
+        retryMaximumAttempts:
+          type: number
+        roleName:
+          type:
+            - string
+            - "null"
+        roleTemplateId:
+          type:
+            - string
+            - "null"
+        systemPrompt:
+          type:
+            - string
+            - "null"
+        timeoutSeconds:
+          type: number
+        userPromptTemplate:
+          type:
+            - string
+            - "null"
+      required:
+        - nodeId
+        - nodeType
+        - displayName
+        - roleName
+        - roleTemplateId
+        - primaryAiBinding
+        - fallbackAiBinding
+        - systemPrompt
+        - userPromptTemplate
+        - outputContract
+        - contextMode
+        - contextHistoryRounds
+        - contextMaximumMessages
+        - maximumOutputTokens
+        - timeoutSeconds
+        - retryMaximumAttempts
+        - retryBackoffSeconds
+        - operation
+        - positionX
+        - positionY
+        - enabled
+      type: object
+    WorkflowNodeTestResult:
+      additionalProperties: false
+      properties:
+        completedAt:
+          type: string
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        invocationId:
+          type:
+            - string
+            - "null"
+        nodeId:
+          type: string
+        output:
+          type:
+            - string
+            - "null"
+        runId:
+          type: string
+        startedAt:
+          type: string
+        status:
+          type: string
+        versionId:
+          type: string
+      required:
+        - runId
+        - versionId
+        - nodeId
+        - status
+        - invocationId
+        - output
+        - errorCode
+        - errorMessage
+        - startedAt
+        - completedAt
+      type: object
+    WorkflowRun:
+      additionalProperties: false
+      properties:
+        acceptedAt:
+          type: string
+        requestSummary:
+          type: string
+        runId:
+          type: string
+        status:
+          $ref: "#/components/schemas/WorkflowRunStatus"
+        trigger:
+          type: string
+        updatedAt:
+          type: string
+        workflowType:
+          type: string
+      required:
+        - runId
+        - workflowType
+        - status
+        - trigger
+        - requestSummary
+        - acceptedAt
+        - updatedAt
+      type: object
+    WorkflowRunStatus:
+      enum:
+        - ACCEPTED
+        - RUNNING
+        - WAITING_HUMAN
+        - PARTIAL
+        - COMPLETED
+        - FAILED
+        - CANCELLED
+      type: string
+    WorkflowSchema:
+      additionalProperties: false
+      properties:
+        conditionOperators:
+          items:
+            type: string
+          type: array
+        contextModes:
+          items:
+            type: string
+          type: array
+        edgeContextModes:
+          items:
+            type: string
+          type: array
+        failurePolicies:
+          items:
+            $ref: "#/components/schemas/WorkflowFailurePolicy"
+          type: array
+        nodeTypes:
+          items:
+            $ref: "#/components/schemas/WorkflowNodeType"
+          type: array
+        outputContracts:
+          items:
+            $ref: "#/components/schemas/WorkflowOutputContract"
+          type: array
+        reasoningEfforts:
+          items:
+            $ref: "#/components/schemas/ReasoningEffort"
+          type: array
+      required:
+        - nodeTypes
+        - reasoningEfforts
+        - contextModes
+        - edgeContextModes
+        - conditionOperators
+        - outputContracts
+        - failurePolicies
+      type: object
+    WorkflowVersion:
+      additionalProperties: false
+      properties:
+        checksum:
+          type: string
+        createdAt:
+          type: string
+        createdBy:
+          type: string
+        defaultDebateRounds:
+          type: number
+        definitionId:
+          type: string
+        edges:
+          items:
+            $ref: "#/components/schemas/WorkflowEdge"
+          type: array
+        failurePolicy:
+          $ref: "#/components/schemas/WorkflowFailurePolicy"
+        maximumCostUsd:
+          type: number
+        maximumDurationSeconds:
+          type: number
+        maximumSteps:
+          type: number
+        maximumTokens:
+          type: number
+        nodes:
+          items:
+            $ref: "#/components/schemas/WorkflowNode"
+          type: array
+        publishedAt:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+        versionId:
+          type: string
+        versionNumber:
+          type: number
+      required:
+        - versionId
+        - definitionId
+        - versionNumber
+        - status
+        - defaultDebateRounds
+        - maximumSteps
+        - maximumDurationSeconds
+        - maximumTokens
+        - maximumCostUsd
+        - failurePolicy
+        - checksum
+        - publishedAt
+        - createdAt
+        - createdBy
+        - nodes
+        - edges
+      type: object
+    ActivateRiskPolicyRequest:
+      additionalProperties: false
+      properties:
+        liquidationBufferRate:
+          type: number
+        maximumLeverage:
+          type: number
+        maximumNotionalUsdt:
+          type: number
+        maximumOpenPositions:
+          type: number
+        maximumStopDistance:
+          type: number
+        minimumConfidence:
+          type: number
+        policyVersion:
+          type: string
+        preferredLeverage:
+          type: number
+        riskBudgetUsdt:
+          type: number
+        slippageRate:
+          type: number
+        takerFeeRate:
+          type: number
+        testEnvironmentOnly:
+          type: boolean
+      required:
+        - policyVersion
+        - testEnvironmentOnly
+        - minimumConfidence
+        - riskBudgetUsdt
+        - maximumNotionalUsdt
+        - preferredLeverage
+        - maximumLeverage
+        - maximumOpenPositions
+        - maximumStopDistance
+        - takerFeeRate
+        - slippageRate
+        - liquidationBufferRate
+      type: object
+    AgentRoleMutation:
+      additionalProperties: false
+      properties:
+        defaultModelName:
+          type: string
+        defaultProviderProfileId:
+          type: string
+        defaultReasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+        displayName:
+          type: string
+        expectedVersion:
+          type:
+            - number
+            - "null"
+        objective:
+          type: string
+        outputContract:
+          enum:
+            - TEXT
+            - RESEARCH_FINDINGS
+            - DEBATE_ARGUMENT
+            - RISK_ASSESSMENT
+            - CHAIR_VERDICT
+            - TRADE_DECISIONS
+            - EXECUTION_VERDICT
+          type: string
+        systemPrompt:
+          type: string
+        userPromptTemplate:
+          type: string
+      required:
+        - displayName
+        - objective
+        - systemPrompt
+        - userPromptTemplate
+        - outputContract
+        - defaultProviderProfileId
+        - defaultModelName
+        - defaultReasoningEffort
+      type: object
+    AiExperimentMutation:
+      additionalProperties: false
+      properties:
+        candidateAllocationBasisPoints:
+          type: number
+        candidateWorkflowVersionId:
+          type: string
+        controlWorkflowVersionId:
+          type: string
+        displayName:
+          type: string
+        evaluationMetric:
+          type: string
+        expectedVersion:
+          type:
+            - number
+            - "null"
+        minimumSampleSize:
+          type: number
+        status:
+          enum:
+            - DRAFT
+            - RUNNING
+            - PAUSED
+            - COMPLETED
+          type: string
+      required:
+        - displayName
+        - status
+        - controlWorkflowVersionId
+        - candidateWorkflowVersionId
+        - candidateAllocationBasisPoints
+        - evaluationMetric
+        - minimumSampleSize
+      type: object
+    CollectSourceRequest:
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+        workflowRunId:
+          type:
+            - string
+            - "null"
+      required:
+        - query
+        - workflowRunId
+      type: object
+    CreateWatchlistRequest:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+      required:
+        - name
+        - description
+      type: object
+    InstantResearchRequest:
+      additionalProperties: false
+      properties:
+        demoWorkflowVersionId:
+          type:
+            - string
+            - "null"
+        question:
+          type: string
+        workflowVersionId:
+          type:
+            - string
+            - "null"
+      required:
+        - question
+        - workflowVersionId
+        - demoWorkflowVersionId
+      type: object
+    LoginRequest:
+      additionalProperties: false
+      properties:
+        challengeId:
+          type: string
+        mathAnswer:
+          type: number
+        password:
+          type: string
+        proofOfWorkSolution:
+          type: string
+        username:
+          type: string
+      required:
+        - username
+        - password
+        - challengeId
+        - proofOfWorkSolution
+        - mathAnswer
+      type: object
+    ResearchFeedbackRequest:
+      additionalProperties: false
+      properties:
+        effectiveness:
+          enum:
+            - UNKNOWN
+            - PENDING
+            - WIN
+            - LOSS
+            - NO_TRADE
+          type: string
+        expectedVersion:
+          type:
+            - number
+            - "null"
+        note:
+          type: string
+        rating:
+          enum:
+            - HELPFUL
+            - NEUTRAL
+            - NOT_HELPFUL
+          type: string
+      required:
+        - rating
+        - effectiveness
+        - note
+      type: object
+    StartWorkflowRequest:
+      additionalProperties: false
+      properties:
+        requestSummary:
+          type: string
+        trigger:
+          enum:
+            - MANUAL
+            - SCHEDULED
+            - API
+            - RECOVERY
+          type: string
+        workflowType:
+          enum:
+            - SCHEDULED_RESEARCH
+            - INSTANT_RESEARCH
+            - ACCOUNT_RECONCILIATION
+            - EXCHANGE_LEDGER_SYNC
+          type: string
+        workflowVersionId:
+          type:
+            - string
+            - "null"
+      required:
+        - workflowType
+        - trigger
+        - workflowVersionId
+        - requestSummary
+      type: object
+    UpdateExchangeAccountControlRequest:
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        expectedVersion:
+          type: number
+      required:
+        - enabled
+        - expectedVersion
+      type: object
+    UpdateExecutionAiStageRequest:
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        expectedVersion:
+          type: number
+        fallbackAiBinding:
+          anyOf:
+            - additionalProperties: false
+              properties:
+                modelName:
+                  type: string
+                providerProfileId:
+                  type: string
+                reasoningEffort:
+                  $ref: "#/components/schemas/ReasoningEffort"
+              required:
+                - providerProfileId
+                - modelName
+                - reasoningEffort
+              type: object
+            - type: "null"
+        maximumOutputTokens:
+          type: number
+        primaryAiBinding:
+          additionalProperties: false
+          properties:
+            modelName:
+              type: string
+            providerProfileId:
+              type: string
+            reasoningEffort:
+              $ref: "#/components/schemas/ReasoningEffort"
+          required:
+            - providerProfileId
+            - modelName
+            - reasoningEffort
+          type: object
+        retryBackoffSeconds:
+          type: number
+        retryMaximumAttempts:
+          type: number
+        systemPrompt:
+          type: string
+        timeoutSeconds:
+          type: number
+        userPromptTemplate:
+          type: string
+      required:
+        - primaryAiBinding
+        - fallbackAiBinding
+        - systemPrompt
+        - userPromptTemplate
+        - maximumOutputTokens
+        - timeoutSeconds
+        - retryMaximumAttempts
+        - retryBackoffSeconds
+        - enabled
+        - expectedVersion
+      type: object
+    UpdateScheduleRequest:
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        expectedVersion:
+          type: number
+        intervalSeconds:
+          type: number
+      required:
+        - enabled
+        - intervalSeconds
+        - expectedVersion
+      type: object
+    UpdateSettingRequest:
+      additionalProperties: false
+      properties:
+        expectedVersion:
+          type: number
+        value:
+          type: string
+      required:
+        - value
+        - expectedVersion
+      type: object
+    UpdateWatchlistRequest:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        expectedVersion:
+          type: number
+        name:
+          type: string
+      required:
+        - description
+        - expectedVersion
+        - name
+      type: object
+    UpsertWatchlistItemRequest:
+      additionalProperties: false
+      properties:
+        note:
+          type: string
+        preferredInstrumentId:
+          type:
+            - string
+            - "null"
+        researchMode:
+          enum:
+            - MONITOR
+            - RESEARCH
+            - PINNED
+          type: string
+      required:
+        - preferredInstrumentId
+        - researchMode
+        - note
+      type: object
+    WorkflowActivationRequest:
+      additionalProperties: false
+      properties:
+        active:
+          type: boolean
+      required:
+        - active
+      type: object
+    WorkflowDraftEdgeRequest:
+      additionalProperties: false
+      properties:
+        activationMode:
+          type: string
+        condition:
+          anyOf:
+            - $ref: "#/components/schemas/WorkflowCondition"
+            - type: "null"
+        contextMode:
+          type: string
+        edgeId:
+          type: string
+        loopEdge:
+          type: boolean
+        maximumTraversals:
+          type:
+            - number
+            - "null"
+        sourceNodeId:
+          type: string
+        targetNodeId:
+          type: string
+      required:
+        - edgeId
+        - sourceNodeId
+        - targetNodeId
+        - activationMode
+        - contextMode
+        - condition
+        - loopEdge
+        - maximumTraversals
+      type: object
+    WorkflowDraftNodeRequest:
+      additionalProperties: false
+      properties:
+        contextHistoryRounds:
+          type: number
+        contextMaximumMessages:
+          type: number
+        contextMode:
+          type: string
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        fallbackAiBinding:
+          anyOf:
+            - additionalProperties: false
+              properties:
+                modelName:
+                  type: string
+                providerProfileId:
+                  type: string
+                reasoningEffort:
+                  $ref: "#/components/schemas/ReasoningEffort"
+              required:
+                - providerProfileId
+                - modelName
+                - reasoningEffort
+              type: object
+            - type: "null"
+        maximumOutputTokens:
+          type: number
+        nodeId:
+          type: string
+        nodeType:
+          enum:
+            - INPUT
+            - ROUTER
+            - DETERMINISTIC
+            - COLLECTOR
+            - CLEANER
+            - AI_CLEANER
+            - COMPRESSOR
+            - COMPRESSION_VALIDATOR
+            - AGENT
+            - GATE
+            - QUANT
+            - RISK
+            - SUBFLOW
+            - HUMAN_REVIEW
+            - AGGREGATOR
+            - CHAIR
+            - EXECUTION_REVIEW
+            - OUTPUT
+          type: string
+        operation:
+          type:
+            - string
+            - "null"
+        outputContract:
+          enum:
+            - TEXT
+            - RESEARCH_FINDINGS
+            - DEBATE_ARGUMENT
+            - RISK_ASSESSMENT
+            - CHAIR_VERDICT
+            - TRADE_DECISIONS
+            - EXECUTION_VERDICT
+            - null
+          type:
+            - string
+            - "null"
+        positionX:
+          type: number
+        positionY:
+          type: number
+        primaryAiBinding:
+          anyOf:
+            - additionalProperties: false
+              properties:
+                modelName:
+                  type: string
+                providerProfileId:
+                  type: string
+                reasoningEffort:
+                  $ref: "#/components/schemas/ReasoningEffort"
+              required:
+                - providerProfileId
+                - modelName
+                - reasoningEffort
+              type: object
+            - type: "null"
+        retryBackoffSeconds:
+          type: number
+        retryMaximumAttempts:
+          type: number
+        roleName:
+          type:
+            - string
+            - "null"
+        roleTemplateId:
+          type:
+            - string
+            - "null"
+        systemPrompt:
+          type:
+            - string
+            - "null"
+        timeoutSeconds:
+          type: number
+        userPromptTemplate:
+          type:
+            - string
+            - "null"
+      required:
+        - nodeId
+        - nodeType
+        - displayName
+        - roleName
+        - roleTemplateId
+        - primaryAiBinding
+        - fallbackAiBinding
+        - systemPrompt
+        - userPromptTemplate
+        - outputContract
+        - contextMode
+        - contextHistoryRounds
+        - contextMaximumMessages
+        - maximumOutputTokens
+        - timeoutSeconds
+        - retryMaximumAttempts
+        - retryBackoffSeconds
+        - operation
+        - positionX
+        - positionY
+        - enabled
+      type: object
+    WorkflowDraftRequest:
+      additionalProperties: false
+      properties:
+        defaultDebateRounds:
+          type: number
+        definitionId:
+          type:
+            - string
+            - "null"
+        description:
+          type: string
+        edges:
+          items:
+            $ref: "#/components/schemas/WorkflowDraftEdgeRequest"
+          type: array
+        expectedChecksum:
+          type:
+            - string
+            - "null"
+        failurePolicy:
+          enum:
+            - STOP
+            - CONTINUE
+            - REPLAN
+          type: string
+        maximumCostUsd:
+          type: number
+        maximumDurationSeconds:
+          type: number
+        maximumSteps:
+          type: number
+        maximumTokens:
+          type: number
+        name:
+          type: string
+        nodes:
+          items:
+            $ref: "#/components/schemas/WorkflowDraftNodeRequest"
+          type: array
+        versionId:
+          type:
+            - string
+            - "null"
+      required:
+        - definitionId
+        - versionId
+        - name
+        - description
+        - defaultDebateRounds
+        - maximumSteps
+        - maximumDurationSeconds
+        - maximumTokens
+        - maximumCostUsd
+        - failurePolicy
+        - expectedChecksum
+        - nodes
+        - edges
+      type: object

@@ -1,8 +1,8 @@
 package io.omnnu.finbot.application.research;
 
-import io.omnnu.finbot.application.ai.AiInvocationResult;
-import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
-import io.omnnu.finbot.application.ai.WorkflowAiInvoker.AiInvocationRejectedException;
+import io.omnnu.finbot.application.ai.AiExecutionFailure;
+import io.omnnu.finbot.application.ai.AiExecutionPolicyExecutor;
+import io.omnnu.finbot.application.operations.TaskCancellationContext;
 import io.omnnu.finbot.application.ingestion.NormalizedDocument;
 import io.omnnu.finbot.application.shared.SortableIdGenerator;
 import io.omnnu.finbot.application.workflow.WorkflowExecutionStore;
@@ -41,7 +41,7 @@ public final class CompressionApplicationService implements CompressionUseCase {
 
     private final CompressionRepository repository;
     private final WorkflowExecutionStore workflowStore;
-    private final WorkflowAiInvoker aiInvoker;
+    private final AiExecutionPolicyExecutor aiExecution;
     private final CompressionOutputParser outputParser;
     private final SortableIdGenerator idGenerator;
     private final Clock clock;
@@ -50,14 +50,14 @@ public final class CompressionApplicationService implements CompressionUseCase {
     public CompressionApplicationService(
             CompressionRepository repository,
             WorkflowExecutionStore workflowStore,
-            WorkflowAiInvoker aiInvoker,
+            AiExecutionPolicyExecutor aiExecution,
             CompressionOutputParser outputParser,
             SortableIdGenerator idGenerator,
             Clock clock,
             Executor executor) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.workflowStore = Objects.requireNonNull(workflowStore, "workflowStore");
-        this.aiInvoker = Objects.requireNonNull(aiInvoker, "aiInvoker");
+        this.aiExecution = Objects.requireNonNull(aiExecution, "aiExecution");
         this.outputParser = Objects.requireNonNull(outputParser, "outputParser");
         this.idGenerator = Objects.requireNonNull(idGenerator, "idGenerator");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -79,6 +79,7 @@ public final class CompressionApplicationService implements CompressionUseCase {
                 Duration.ofHours(2)));
         var items = new ArrayList<CompressionItem>();
         for (var document : repository.listWorkflowDocuments(workflowRunId, DOCUMENT_LIMIT)) {
+            TaskCancellationContext.throwIfCancelled();
             items.add(processDocument(
                     workflowRunId,
                     execution.definitionVersion(),
@@ -94,6 +95,7 @@ public final class CompressionApplicationService implements CompressionUseCase {
                 POLICY,
                 items,
                 clock.instant());
+        TaskCancellationContext.throwIfCancelled();
         repository.saveCompressionPackage(compressionPackage, packageHash(compressionPackage));
         return new CompressionBatchResult(
                 artifactId,
@@ -196,68 +198,45 @@ public final class CompressionApplicationService implements CompressionUseCase {
             String prompt,
             Instant deadline) {
         var promptHash = hash(node.systemPrompt() + '\u001f' + prompt);
-        AiInvocationId invocationId = null;
-        String errorCode = null;
-        String errorMessage = null;
-        var bindings = node.fallbackAiBinding() == null
-                ? List.of(node.primaryAiBinding())
-                : List.of(node.primaryAiBinding(), node.fallbackAiBinding());
-        var attemptsPerBinding = node.retryPolicy().maximumAttempts();
-        var totalAttempts = Math.multiplyExact(bindings.size(), attemptsPerBinding);
-        var retryable = true;
-        for (var attempt = 1; attempt <= totalAttempts; attempt++) {
-            var bindingIndex = (attempt - 1) / attemptsPerBinding;
-            var bindingAttempt = (attempt - 1) % attemptsPerBinding + 1;
-            try {
-                AiInvocationResult invocation = aiInvoker.invokeDetailed(
-                        workflowRunId,
-                        version,
-                        node,
-                        bindings.get(bindingIndex),
-                        prompt,
-                        deadline);
-                invocationId = invocation.invocationId();
-                var content = withMandatoryCitations(outputParser.parse(invocation.output()), document);
-                var completed = new ReviewResult(
-                        node,
-                        stage,
-                        invocationId,
-                        CompressionStatus.COMPLETED,
-                        content,
-                        promptHash,
-                        null,
-                        null);
-                saveReview(workflowRunId, version.versionId(), document, completed);
-                return completed;
-            } catch (AiInvocationRejectedException exception) {
-                errorCode = exception.errorCode();
-                errorMessage = exception.getMessage();
-                retryable = exception.retryable();
-            } catch (IllegalArgumentException exception) {
-                errorCode = "EVIDENCE_AI_OUTPUT_INVALID";
-                errorMessage = "AI evidence review output did not match the required contract";
-                retryable = true;
-            }
-            var bindingExhausted = bindingAttempt == attemptsPerBinding || !retryable;
-            if (bindingExhausted && bindingIndex + 1 < bindings.size()) {
-                continue;
-            }
-            if (bindingExhausted) {
-                break;
-            }
-            pause(node.retryPolicy().backoff().multipliedBy(bindingAttempt));
+        try {
+            var result = aiExecution.execute(
+                    workflowRunId,
+                    version,
+                    node,
+                    prompt,
+                    deadline,
+                    1,
+                    output -> withMandatoryCitations(outputParser.parse(output), document),
+                    AiExecutionPolicyExecutor.AiAttemptListener.noOp());
+            var completed = new ReviewResult(
+                    node,
+                    stage,
+                    result.invocation().invocationId(),
+                    CompressionStatus.COMPLETED,
+                    result.parsed(),
+                    promptHash,
+                    null,
+                    null);
+            saveReview(workflowRunId, version.versionId(), document, completed);
+            return completed;
+        } catch (AiExecutionFailure failure) {
+            var invalidOutput = "AI_OUTPUT_SCHEMA_INVALID".equals(failure.errorCode());
+            var errorCode = invalidOutput ? "EVIDENCE_AI_OUTPUT_INVALID" : failure.errorCode();
+            var errorMessage = invalidOutput
+                    ? "AI evidence review output did not match the required contract"
+                    : failure.getMessage();
+            var failed = new ReviewResult(
+                    node,
+                    stage,
+                    failure.invocationId(),
+                    CompressionStatus.FAILED,
+                    fallback(document, errorMessage),
+                    promptHash,
+                    errorCode,
+                    errorMessage);
+            saveReview(workflowRunId, version.versionId(), document, failed);
+            return failed;
         }
-        var failed = new ReviewResult(
-                node,
-                stage,
-                invocationId,
-                CompressionStatus.FAILED,
-                fallback(document, errorMessage),
-                promptHash,
-                Objects.requireNonNullElse(errorCode, "EVIDENCE_AI_REVIEW_FAILED"),
-                Objects.requireNonNullElse(errorMessage, "AI evidence review failed"));
-        saveReview(workflowRunId, version.versionId(), document, failed);
-        return failed;
     }
 
     private ReviewResult saveFailedReview(
@@ -292,6 +271,7 @@ public final class CompressionApplicationService implements CompressionUseCase {
                 document.documentId().value(),
                 result.node().nodeId().value(),
                 result.promptHash())).substring(0, 40);
+        TaskCancellationContext.throwIfCancelled();
         repository.saveEvidenceReview(new EvidenceAiReview(
                 reviewId,
                 workflowRunId,
@@ -328,6 +308,7 @@ public final class CompressionApplicationService implements CompressionUseCase {
                 finalResult.errorCode(),
                 finalResult.errorMessage(),
                 clock.instant());
+        TaskCancellationContext.throwIfCancelled();
         repository.saveCompression(record);
         return item(record, document);
     }
@@ -531,18 +512,6 @@ public final class CompressionApplicationService implements CompressionUseCase {
 
     private static Duration minimum(Duration first, Duration second) {
         return first.compareTo(second) <= 0 ? first : second;
-    }
-
-    private static void pause(Duration duration) {
-        if (duration.isZero()) {
-            return;
-        }
-        try {
-            Thread.sleep(duration);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Evidence review retry was interrupted", exception);
-        }
     }
 
     private record ReviewResult(

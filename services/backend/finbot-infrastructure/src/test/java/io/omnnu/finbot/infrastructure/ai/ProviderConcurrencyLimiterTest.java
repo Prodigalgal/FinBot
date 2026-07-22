@@ -5,9 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
 class ProviderConcurrencyLimiterTest {
@@ -16,7 +19,7 @@ class ProviderConcurrencyLimiterTest {
 
     @Test
     void queuesFairlyUntilProviderCapacityIsReleased() throws Exception {
-        var limiter = new ProviderConcurrencyLimiter();
+        var limiter = limiter();
         var first = limiter.acquire(PROVIDER, 1, 0, Duration.ofSeconds(5));
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var waiting = CompletableFuture.supplyAsync(() -> acquire(limiter, 1, 0), executor);
@@ -41,7 +44,7 @@ class ProviderConcurrencyLimiterTest {
 
     @Test
     void appliesNewerCapacityImmediatelyAndRejectsStaleConfiguration() throws Exception {
-        var limiter = new ProviderConcurrencyLimiter();
+        var limiter = limiter();
         var first = limiter.acquire(PROVIDER, 1, 0, Duration.ofSeconds(5));
         try {
             var second = limiter.acquire(PROVIDER, 2, 1, Duration.ofSeconds(5));
@@ -62,7 +65,7 @@ class ProviderConcurrencyLimiterTest {
 
     @Test
     void failsWhenQueueWaitExceedsConfiguredTimeout() throws Exception {
-        var limiter = new ProviderConcurrencyLimiter();
+        var limiter = limiter();
         var permit = limiter.acquire(PROVIDER, 1, 0, Duration.ofSeconds(5));
         try {
             assertThrows(
@@ -70,6 +73,32 @@ class ProviderConcurrencyLimiterTest {
                     () -> limiter.acquire(PROVIDER, 1, 0, Duration.ofMillis(50)));
         } finally {
             permit.close();
+        }
+    }
+
+    @Test
+    void rejectsAdmissionWhenTheBoundedProviderQueueIsFull() throws Exception {
+        var limiter = limiter();
+        var activePermit = limiter.acquire(PROVIDER, 1, 0, Duration.ofSeconds(5));
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var waiters = IntStream.range(0, 5)
+                    .mapToObj(ignored -> executor.submit(() ->
+                            limiter.acquire(PROVIDER, 1, 0, Duration.ofSeconds(30))))
+                    .toList();
+            while (limiter.queueDepth(PROVIDER) < 5) {
+                Thread.onSpinWait();
+            }
+
+            assertThrows(
+                    ProviderConcurrencyLimiter.ProviderQueueFullException.class,
+                    () -> limiter.acquire(PROVIDER, 1, 0, Duration.ofSeconds(5)));
+
+            waiters.forEach(waiter -> waiter.cancel(true));
+            for (Future<ProviderConcurrencyLimiter.Permit> waiter : waiters) {
+                assertFalse(waiter.isDone() && !waiter.isCancelled());
+            }
+        } finally {
+            activePermit.close();
         }
     }
 
@@ -83,5 +112,9 @@ class ProviderConcurrencyLimiterTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);
         }
+    }
+
+    private static ProviderConcurrencyLimiter limiter() {
+        return new ProviderConcurrencyLimiter(new SimpleMeterRegistry());
     }
 }

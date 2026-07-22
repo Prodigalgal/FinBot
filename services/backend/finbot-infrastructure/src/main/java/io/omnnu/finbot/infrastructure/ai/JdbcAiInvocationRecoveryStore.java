@@ -4,9 +4,11 @@ import static io.omnnu.finbot.infrastructure.jdbc.PostgresJdbcParameters.timesta
 
 import io.omnnu.finbot.application.ai.AiInvocationRecoveryStore;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public final class JdbcAiInvocationRecoveryStore implements AiInvocationRecoveryStore {
@@ -21,22 +23,39 @@ public final class JdbcAiInvocationRecoveryStore implements AiInvocationRecovery
     }
 
     @Override
+    @Transactional
     public int failOrphanedInvocations(Instant recoveredAt) {
         Objects.requireNonNull(recoveredAt, "recoveredAt");
-        return jdbcClient.sql("""
-                update ai_invocation
-                set status = 'FAILED',
-                    latency_milliseconds = greatest(
-                      0, extract(epoch from (:recoveredAt - started_at)) * 1000
-                    )::bigint,
-                    error_code = :errorCode,
-                    error_message = :errorMessage,
-                    completed_at = :recoveredAt
+        List<String> invocationIds = jdbcClient.sql("""
+                select invocation_id
+                from ai_invocation
                 where status in ('STARTED', 'STREAMING')
+                order by id
+                for update
                 """)
-                .param("recoveredAt", timestamp(recoveredAt))
-                .param("errorCode", RECOVERY_CODE)
-                .param("errorMessage", RECOVERY_MESSAGE)
-                .update();
+                .query(String.class)
+                .list();
+        var recovered = 0;
+        for (var invocationId : invocationIds) {
+            recovered += jdbcClient.sql("""
+                    update ai_invocation
+                    set status = 'FAILED',
+                        latency_milliseconds = greatest(
+                          0, extract(epoch from (:recoveredAt - started_at)) * 1000
+                        )::bigint,
+                        error_code = :errorCode,
+                        error_message = :errorMessage,
+                        completed_at = :recoveredAt
+                    where invocation_id = :invocationId
+                      and status in ('STARTED', 'STREAMING')
+                    """)
+                    .param("invocationId", invocationId)
+                    .param("recoveredAt", timestamp(recoveredAt))
+                    .param("errorCode", RECOVERY_CODE)
+                    .param("errorMessage", RECOVERY_MESSAGE)
+                    .update();
+            JdbcAiBudgetReservationReleaser.release(jdbcClient, invocationId, recoveredAt);
+        }
+        return recovered;
     }
 }

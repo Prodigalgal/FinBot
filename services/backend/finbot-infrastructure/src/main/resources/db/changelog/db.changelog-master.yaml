@@ -115,3 +115,5 @@ databaseChangeLog:
       file: db/changelog/releases/057-admin-api-token.sql
   - include:
       file: db/changelog/releases/058-sub2api-direct-endpoints.sql
+  - include:
+      file: db/changelog/releases/059-ai-budget-terminal-recovery.sql

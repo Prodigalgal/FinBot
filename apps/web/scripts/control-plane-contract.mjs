@@ -1,40 +1,27 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import YAML from 'yaml';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '../../..');
 const contractPath = path.join(repositoryRoot, 'contracts/finbot-control-plane.openapi.yaml');
 const apiClientPath = path.join(repositoryRoot, 'apps/web/src/api.ts');
-const generatedTypePath = path.join(repositoryRoot, 'apps/web/src/generated/control-plane.ts');
+const webTypesPath = path.join(repositoryRoot, 'apps/web/src/types.ts');
 const controllerRoot = path.join(
   repositoryRoot,
   'services/backend/finbot-bootstrap/src/main/java/io/omnnu/finbot/api',
 );
-const mode = process.argv[2] ?? 'check';
 const httpMethods = new Set(['get', 'post', 'put', 'delete', 'patch']);
 
 const contract = YAML.parse(await readFile(contractPath, 'utf8'));
 const controllerOperations = await extractControllerOperations(controllerRoot);
 
-if (mode === 'sync') {
-  synchronizeContract(contract, controllerOperations);
-  await writeFile(contractPath, YAML.stringify(contract, { lineWidth: 0 }), 'utf8');
-  await mkdir(path.dirname(generatedTypePath), { recursive: true });
-  await writeFile(generatedTypePath, generateTypes(contract), 'utf8');
-} else if (mode === 'check') {
-  const expectedTypes = generateTypes(contract);
-  const currentTypes = await readFile(generatedTypePath, 'utf8');
-  if (currentTypes !== expectedTypes) {
-    throw new Error('Generated control-plane TypeScript contract is stale; run npm run contract:sync');
-  }
-} else {
-  throw new Error(`Unsupported contract command: ${mode}`);
-}
-
 validateControllerCoverage(contract, controllerOperations);
+validateOperationContracts(contract, controllerOperations);
 await validateWebCoverage(contract, apiClientPath);
+await validateWebModelDeclarations(contract, webTypesPath);
 console.log(
   `Control-plane contract verified: ${Object.keys(contract.paths).length} paths, `
     + `${controllerOperations.size} controller operations.`,
@@ -52,7 +39,8 @@ async function extractControllerOperations(directory) {
       continue;
     }
     const annotationPattern = /@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)(?:\s*\(([\s\S]*?)\))?/g;
-    for (const annotation of source.matchAll(annotationPattern)) {
+    const annotations = [...source.matchAll(annotationPattern)];
+    for (const [index, annotation] of annotations.entries()) {
       const method = annotation[1].replace('Mapping', '').toLowerCase();
       const argument = annotation[2] ?? '';
       const methodPath = argument.match(/"(\/[^"]*)"/)?.[1] ?? '';
@@ -61,7 +49,22 @@ async function extractControllerOperations(directory) {
       if (operations.has(key)) {
         throw new Error(`Duplicate controller operation ${key}: ${file}`);
       }
-      operations.set(key, { method, path: fullPath, file });
+      const operationSource = source.slice(
+        annotation.index,
+        annotations[index + 1]?.index ?? source.length,
+      );
+      const javaMethod = operationSource.match(/public\s+([\w.$<>,? ]+)\s+\w+\s*\(/);
+      if (!javaMethod) {
+        throw new Error(`Could not extract Controller method signature for ${key}: ${file}`);
+      }
+      operations.set(key, {
+        method,
+        path: fullPath,
+        file,
+        hasRequestBody: operationSource.includes('@RequestBody'),
+        requestType: operationSource.match(/@RequestBody(?:\([^)]*\))?\s+([\w.$<>?]+)\s+\w+/)?.[1] ?? null,
+        responseType: javaMethod[1].replace(/\s+/g, ' ').trim(),
+      });
     }
   }
   return operations;
@@ -87,6 +90,35 @@ async function validateWebCoverage(document, file) {
   if (missing.size > 0) {
     throw new Error(`Web API paths missing from OpenAPI: ${[...missing].sort().join(', ')}`);
   }
+  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const mismatches = [];
+  const visit = (node) => {
+    if (ts.isCallExpression(node)
+        && ts.isIdentifier(node.expression)
+        && node.expression.text === 'request'
+        && node.typeArguments?.length === 1) {
+      const route = webRequestRoute(node.arguments[0], sourceFile);
+      if (route) {
+        const method = webRequestMethod(node.arguments[1], sourceFile);
+        const contractRoute = Object.keys(document.paths)
+          .find((candidate) => normalizeParameterizedPath(candidate) === normalizeParameterizedPath(route));
+        const operation = contractRoute ? document.paths[contractRoute][method] : null;
+        const responseType = node.typeArguments[0].getText(sourceFile);
+        if (!operation) {
+          mismatches.push(`${method.toUpperCase()} ${route} has no OpenAPI operation`);
+        } else if (operation['x-finbot-web-response-type'] !== responseType) {
+          mismatches.push(
+            `${method.toUpperCase()} ${contractRoute} expects ${operation['x-finbot-web-response-type'] ?? 'unset'} but Web uses ${responseType}`,
+          );
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  if (mismatches.length > 0) {
+    throw new Error(`OpenAPI/Web response type drift:\n${mismatches.sort().join('\n')}`);
+  }
 }
 
 function validateControllerCoverage(document, controllerOperations) {
@@ -108,92 +140,161 @@ function validateControllerCoverage(document, controllerOperations) {
   }
 }
 
-function synchronizeContract(document, controllerOperations) {
-  const synchronizedPaths = {};
-  for (const operation of [...controllerOperations.values()].sort(compareOperations)) {
-    const existingPath = document.paths[operation.path] ?? {};
-    const pathItem = synchronizedPaths[operation.path] ?? {};
-    pathItem[operation.method] = existingPath[operation.method]
-      ?? genericOperation(operation.method, operation.path);
-    synchronizedPaths[operation.path] = pathItem;
+function validateOperationContracts(document, controllerOperations) {
+  const genericResponses = new Set(['#/components/responses/JsonObject', '#/components/responses/JsonArray']);
+  const violations = [];
+  for (const [route, pathItem] of Object.entries(document.paths)) {
+    for (const [method, operation] of Object.entries(pathItem)) {
+      if (!httpMethods.has(method)) continue;
+      const key = operationKey(method, route);
+      const controller = controllerOperations.get(key);
+      const success = Object.entries(operation.responses ?? {})
+        .filter(([status]) => /^2\d\d$/.test(status));
+      if (success.length !== 1) {
+        violations.push(`${key} must declare exactly one success response`);
+      } else {
+        const [status, response] = success[0];
+        if (genericResponses.has(response?.$ref)) {
+          violations.push(`${key} uses a generic success response`);
+        }
+        if (status !== '204' && !response?.content) {
+          violations.push(`${key} success response has no explicit content schema`);
+        }
+        validateWebResponseBinding(document, key, status, response, operation, violations);
+      }
+      if (operation.responses?.default?.$ref !== '#/components/responses/Problem') {
+        violations.push(`${key} has no default Problem response`);
+      }
+      if (controller?.hasRequestBody !== Boolean(operation.requestBody)) {
+        violations.push(`${key} request body does not match the Controller method`);
+      }
+      if (operation['x-finbot-java-response-type'] !== controller?.responseType) {
+        violations.push(`${key} Java response type metadata is stale`);
+      }
+      if (controller?.hasRequestBody
+          && operation['x-finbot-java-request-type'] !== controller.requestType) {
+        violations.push(`${key} Java request type metadata is stale`);
+      }
+    }
   }
-  document.paths = synchronizedPaths;
+  if (document.components?.responses?.JsonObject || document.components?.responses?.JsonArray) {
+    violations.push('Generic JsonObject/JsonArray response components are forbidden');
+  }
+  if (violations.length > 0) {
+    throw new Error(`Incomplete control-plane operation contracts:\n${violations.sort().join('\n')}`);
+  }
 }
 
-function genericOperation(method, route) {
-  const parameters = [...route.matchAll(/\{([^}]+)\}/g)].map((match) => ({
-    name: match[1],
-    in: 'path',
-    required: true,
-    schema: { type: 'string' },
-  }));
-  if (method !== 'get') {
-    parameters.push({ $ref: '#/components/parameters/CsrfToken' });
+function validateWebResponseBinding(document, key, status, response, operation, violations) {
+  const responseType = operation['x-finbot-web-response-type'];
+  if (typeof responseType !== 'string') {
+    return;
   }
-  const successStatus = method === 'delete' ? '204' : '200';
-  const response = method === 'delete'
-    ? { description: 'Operation completed without a response body.' }
-    : { $ref: '#/components/responses/JsonObject' };
-  const operation = {
-    operationId: operationId(method, route),
-    responses: {
-      [successStatus]: response,
-      default: { $ref: '#/components/responses/Problem' },
-    },
-  };
-  if (parameters.length > 0) {
-    operation.parameters = parameters;
+  if (responseType === 'void') {
+    if (status !== '204') violations.push(`${key} declares void but does not return 204`);
+    return;
   }
-  if (route === '/auth/challenge' || route === '/auth/login') {
-    operation.security = [];
+  const resolvedResponse = resolveLocalReference(document, response);
+  const schema = resolvedResponse?.content?.['application/json']?.schema;
+  if (!schema) {
+    violations.push(`${key} has no application/json response schema for ${responseType}`);
+    return;
   }
-  return operation;
+  const arrayResponse = responseType.endsWith('[]');
+  const modelName = arrayResponse ? responseType.slice(0, -2) : responseType;
+  const reference = arrayResponse ? schema.items?.$ref : schema.$ref;
+  if ((arrayResponse && schema.type !== 'array') || referenceName(reference) !== modelName) {
+    violations.push(`${key} response schema does not match Web type ${responseType}`);
+  }
 }
 
-function generateTypes(document) {
-  const routes = Object.entries(document.paths).sort(([left], [right]) => left.localeCompare(right));
-  const pathUnion = routes
-    .map(([route]) => `  | ${JSON.stringify(`/api/v2${route === '/' ? '' : route}`)}`)
-    .join('\n');
-  const requestPathUnion = routes
-    .map(([route]) => {
-      const template = `/api/v2${route === '/' ? '' : route}`.replace(/\{[^}]+\}/g, '${string}');
-      return `  | \`${template}\``;
-    })
-    .join('\n');
-  const operationRows = routes.flatMap(([route, pathItem]) =>
-    Object.keys(pathItem)
-      .filter((method) => httpMethods.has(method))
-      .sort()
-      .map((method) => `  | { method: '${method.toUpperCase()}'; path: ${JSON.stringify(route)} }`));
-  const methodTypes = [...httpMethods].map((method) => {
-    const typeName = method[0].toUpperCase() + method.slice(1);
-    const matchingRoutes = routes
-      .filter(([, pathItem]) => method in pathItem)
-      .map(([route]) => {
-        const template = `/api/v2${route === '/' ? '' : route}`.replace(/\{[^}]+\}/g, '${string}');
-        return `  | \`${template}\``;
-      });
-    const methodRoutes = matchingRoutes.length > 0 ? matchingRoutes.join('\n') : '  never';
-    return `export type ControlPlane${typeName}RequestPathBase =\n${methodRoutes};\n\n`
-      + `export type ControlPlane${typeName}RequestPath = ControlPlane${typeName}RequestPathBase `
-      + `| \`\${ControlPlane${typeName}RequestPathBase}?\${string}\`;`;
-  }).join('\n\n');
-  return `// Generated by scripts/control-plane-contract.mjs. Do not edit manually.\n`
-    + `export type ControlPlanePath =\n${pathUnion};\n\n`
-    + `export type ControlPlaneRequestPathBase =\n${requestPathUnion};\n\n`
-    + 'export type ControlPlaneRequestPath = ControlPlaneRequestPathBase | `${ControlPlaneRequestPathBase}?${string}`;\n\n'
-    + `${methodTypes}\n\n`
-    + `export type ControlPlaneOperation =\n${operationRows.join('\n')};\n`;
+async function validateWebModelDeclarations(document, file) {
+  const source = await readFile(file, 'utf8');
+  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const interfaces = new Map();
+  sourceFile.forEachChild((node) => {
+    if (!ts.isInterfaceDeclaration(node)) return;
+    const properties = new Map();
+    for (const member of node.members) {
+      if (!ts.isPropertySignature(member) || !member.name) continue;
+      const name = propertyName(member.name);
+      if (name) properties.set(name, Boolean(member.questionToken));
+    }
+    const parents = (node.heritageClauses ?? [])
+      .filter((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
+      .flatMap((clause) => clause.types)
+      .map((type) => type.expression.getText(sourceFile));
+    interfaces.set(node.name.text, { properties, parents });
+  });
+
+  const responseModels = new Set();
+  for (const pathItem of Object.values(document.paths)) {
+    for (const [method, operation] of Object.entries(pathItem)) {
+      if (!httpMethods.has(method)) continue;
+      const responseType = operation['x-finbot-web-response-type'];
+      if (typeof responseType === 'string' && responseType !== 'void') {
+        responseModels.add(responseType.replace(/\[\]$/, ''));
+      }
+    }
+  }
+
+  const violations = [];
+  for (const modelName of [...responseModels].sort()) {
+    const declaration = inheritedInterfaceProperties(modelName, interfaces);
+    const schema = document.components?.schemas?.[modelName];
+    if (!declaration) {
+      violations.push(`${modelName} has no hand-written Web interface`);
+      continue;
+    }
+    if (!schema || schema.type !== 'object') {
+      violations.push(`${modelName} has no object schema in OpenAPI`);
+      continue;
+    }
+    const schemaProperties = new Set(Object.keys(schema.properties ?? {}));
+    const required = new Set(schema.required ?? []);
+    for (const [property, optional] of declaration) {
+      if (!schemaProperties.has(property)) {
+        violations.push(`${modelName}.${property} is missing from OpenAPI`);
+      } else if (optional === required.has(property)) {
+        violations.push(`${modelName}.${property} required/optional state differs from OpenAPI`);
+      }
+    }
+    for (const property of schemaProperties) {
+      if (!declaration.has(property)) violations.push(`${modelName}.${property} is missing from Web types`);
+    }
+  }
+  if (violations.length > 0) {
+    throw new Error(`OpenAPI/hand-written Web model drift:\n${violations.join('\n')}`);
+  }
 }
 
-function operationId(method, route) {
-  const words = route
-    .replace(/[{}]/g, '')
-    .split(/[/-]/)
-    .filter(Boolean)
-    .map((word) => word[0].toUpperCase() + word.slice(1));
-  return method + words.join('');
+function inheritedInterfaceProperties(modelName, interfaces, visiting = new Set()) {
+  const declaration = interfaces.get(modelName);
+  if (!declaration) return null;
+  if (visiting.has(modelName)) throw new Error(`Circular Web interface inheritance: ${modelName}`);
+  const nextVisiting = new Set(visiting).add(modelName);
+  const properties = new Map();
+  for (const parent of declaration.parents) {
+    const inherited = inheritedInterfaceProperties(parent, interfaces, nextVisiting);
+    if (!inherited) throw new Error(`${modelName} extends unknown Web interface ${parent}`);
+    for (const [name, optional] of inherited) properties.set(name, optional);
+  }
+  for (const [name, optional] of declaration.properties) properties.set(name, optional);
+  return properties;
+}
+
+function resolveLocalReference(document, value) {
+  if (!value?.$ref?.startsWith('#/')) return value;
+  return value.$ref.slice(2).split('/').reduce((current, segment) => current?.[segment], document);
+}
+
+function referenceName(reference) {
+  return typeof reference === 'string' ? reference.split('/').at(-1) : null;
+}
+
+function propertyName(name) {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return name.text;
+  return null;
 }
 
 function operationKey(method, route) {
@@ -208,8 +309,31 @@ function normalizeSlashes(value) {
   return ('/' + value).replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
 }
 
-function compareOperations(left, right) {
-  return left.path.localeCompare(right.path) || left.method.localeCompare(right.method);
+function webRequestMethod(initializer, sourceFile) {
+  if (!initializer || !ts.isObjectLiteralExpression(initializer)) return 'get';
+  const property = initializer.properties.find((candidate) =>
+    ts.isPropertyAssignment(candidate) && candidate.name.getText(sourceFile) === 'method');
+  if (!property || !ts.isPropertyAssignment(property)) return 'get';
+  return property.initializer.getText(sourceFile).replace(/["']/g, '').toLowerCase();
+}
+
+function webRequestRoute(argument, sourceFile) {
+  if (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) {
+    return stripApiPrefix(argument.text);
+  }
+  if (!ts.isTemplateExpression(argument)) return null;
+  let route = argument.head.text;
+  for (const span of argument.templateSpans) {
+    if (!span.expression.getText(sourceFile).startsWith('query(')) {
+      route += '{parameter}';
+    }
+    route += span.literal.text;
+  }
+  return stripApiPrefix(route);
+}
+
+function stripApiPrefix(route) {
+  return route.replace(/^\/api\/v2/, '').split('?')[0] || '/';
 }
 
 async function walk(directory) {

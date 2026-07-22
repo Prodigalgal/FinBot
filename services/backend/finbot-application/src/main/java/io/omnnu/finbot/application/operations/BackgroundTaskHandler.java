@@ -7,4 +7,10 @@ public interface BackgroundTaskHandler {
     BackgroundTaskType taskType();
 
     CompletionStage<Void> handle(BackgroundTask task);
+
+    default CompletionStage<Void> handle(
+            BackgroundTask task,
+            TaskCancellationToken cancellationToken) {
+        return TaskCancellationContext.call(cancellationToken, () -> handle(task));
+    }
 }

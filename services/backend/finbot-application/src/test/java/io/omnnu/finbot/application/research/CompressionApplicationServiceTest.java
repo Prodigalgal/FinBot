@@ -9,6 +9,7 @@ import io.omnnu.finbot.application.ai.AiCompletionFailed;
 import io.omnnu.finbot.application.ai.AiCompletionFinished;
 import io.omnnu.finbot.application.ai.AiCompletionGateway;
 import io.omnnu.finbot.application.ai.AiCompletionRequest;
+import io.omnnu.finbot.application.ai.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.ai.AiInvocationAuditStore;
 import io.omnnu.finbot.application.ai.AiInvocationCompletion;
 import io.omnnu.finbot.application.ai.AiInvocationFailure;
@@ -164,7 +165,7 @@ final class CompressionApplicationServiceTest {
             var service = new CompressionApplicationService(
                     repository,
                     store(context),
-                    invoker,
+                    new AiExecutionPolicyExecutor(invoker, CLOCK),
                     parser,
                     idGenerator,
                     CLOCK,
@@ -433,10 +434,6 @@ final class CompressionApplicationServiceTest {
                 long maximumWorkflowTokens,
                 BigDecimal maximumWorkflowCostUsd,
                 Instant reservedAt) {
-        }
-
-        @Override
-        public void release(AiInvocationId invocationId, Instant releasedAt) {
         }
     }
 

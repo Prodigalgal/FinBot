@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -17,6 +18,7 @@ import io.omnnu.finbot.application.ai.AiInvocationRecoveryStore;
 import io.omnnu.finbot.application.operations.BackgroundTask;
 import io.omnnu.finbot.application.operations.BackgroundTaskCoordinator;
 import io.omnnu.finbot.application.operations.BackgroundTaskHandler;
+import io.omnnu.finbot.application.operations.TaskCancellationContext;
 import io.omnnu.finbot.configuration.WorkerProperties;
 import io.omnnu.finbot.domain.operations.BackgroundTaskId;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
@@ -73,9 +75,22 @@ class BackgroundWorkerRuntimeTest {
         var task = task("task_lost_lease", BackgroundTaskType.INSTANT_RESEARCH);
         var handlerStarted = new CountDownLatch(1);
         var handlerCancelled = new CountDownLatch(1);
+        var cancellationPropagated = new CountDownLatch(1);
         var handlerResult = new CompletableFuture<Void>();
         handlerResult.whenComplete((ignored, failure) -> handlerCancelled.countDown());
-        var handler = handler(BackgroundTaskType.INSTANT_RESEARCH, handlerStarted, handlerResult);
+        var handler = new BackgroundTaskHandler() {
+            @Override
+            public BackgroundTaskType taskType() {
+                return BackgroundTaskType.INSTANT_RESEARCH;
+            }
+
+            @Override
+            public java.util.concurrent.CompletionStage<Void> handle(BackgroundTask ignored) {
+                TaskCancellationContext.current().orElseThrow().register(cancellationPropagated::countDown);
+                handlerStarted.countDown();
+                return handlerResult;
+            }
+        };
         when(coordinator.count(BackgroundTaskStatus.PENDING)).thenReturn(1L);
         when(coordinator.claim(any(), any(), any())).thenReturn(Optional.of(task));
         when(coordinator.heartbeat(eq(task), any(), any())).thenReturn(false);
@@ -97,11 +112,57 @@ class BackgroundWorkerRuntimeTest {
             runtime.heartbeat();
 
             assertTrue(handlerCancelled.await(1, TimeUnit.SECONDS));
+            assertTrue(cancellationPropagated.await(1, TimeUnit.SECONDS));
             assertTrue(handlerResult.isCancelled());
             verify(coordinator, after(250).never()).complete(any(), any());
             verify(coordinator, never()).fail(any(), any(), any(), any(), any());
             assertTrue(registry.get("finbot.worker.lease.lost").counter().count() >= 1);
         } finally {
+            runtime.destroy();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void doesNotReportLeaseLossWhileACompletedHandlerIsCommitting() throws Exception {
+        var coordinator = mock(BackgroundTaskCoordinator.class);
+        var task = task("task_committing", BackgroundTaskType.INSTANT_RESEARCH);
+        var handlerStarted = new CountDownLatch(1);
+        var commitStarted = new CountDownLatch(1);
+        var releaseCommit = new CountDownLatch(1);
+        when(coordinator.count(BackgroundTaskStatus.PENDING)).thenReturn(1L);
+        when(coordinator.claim(any(), any(), any())).thenReturn(Optional.of(task));
+        when(coordinator.heartbeat(eq(task), any(), any())).thenReturn(false);
+        doAnswer(invocation -> {
+            commitStarted.countDown();
+            assertTrue(releaseCommit.await(2, TimeUnit.SECONDS));
+            return null;
+        }).when(coordinator).complete(eq(task), any());
+        var registry = new SimpleMeterRegistry();
+        var executor = Executors.newSingleThreadExecutor();
+        var runtime = new BackgroundWorkerRuntime(
+                coordinator,
+                mock(AiInvocationRecoveryStore.class),
+                properties(1, 1),
+                executor,
+                java.util.List.of(handler(
+                        BackgroundTaskType.INSTANT_RESEARCH,
+                        handlerStarted,
+                        CompletableFuture.completedFuture(null))),
+                prefix -> prefix + "runtime_test",
+                Clock.systemUTC(),
+                registry);
+        try {
+            runtime.claimAvailableTask();
+            assertTrue(handlerStarted.await(1, TimeUnit.SECONDS));
+            assertTrue(commitStarted.await(1, TimeUnit.SECONDS));
+
+            runtime.heartbeat();
+
+            assertEquals(0.0, registry.get("finbot.worker.lease.lost").counter().count());
+            verify(coordinator, never()).fail(any(), any(), any(), any(), any());
+        } finally {
+            releaseCommit.countDown();
             runtime.destroy();
             executor.shutdownNow();
         }

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.omnnu.finbot.application.ai.AiBudgetReservationStore;
+import io.omnnu.finbot.application.ai.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.ai.AiCompletionGateway;
 import io.omnnu.finbot.application.ai.AiInvocationAuditStore;
 import io.omnnu.finbot.application.ai.AiRuntimeBindingResolver;
@@ -150,7 +151,7 @@ class TradeAutomationApplicationServiceTest {
                 Clock.fixed(NOW, ZoneOffset.UTC));
         return new TradeAutomationApplicationService(
                 workflowStore,
-                aiInvoker,
+                new AiExecutionPolicyExecutor(aiInvoker, Clock.fixed(NOW, ZoneOffset.UTC)),
                 unused(TradeDecisionOutputParser.class),
                 store,
                 unused(PaperOrderExecutionUseCase.class),

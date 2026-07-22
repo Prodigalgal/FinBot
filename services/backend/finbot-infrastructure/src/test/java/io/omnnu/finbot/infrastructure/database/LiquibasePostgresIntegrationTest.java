@@ -933,7 +933,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(60, result.getInt("changeset_count"));
+                    assertEquals(61, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
@@ -1480,6 +1480,27 @@ class LiquibasePostgresIntegrationTest {
                 .param("startedAt", OffsetDateTime.parse("2026-07-21T11:00:10Z"))
                 .param("completedAt", OffsetDateTime.parse("2026-07-21T11:00:20Z"))
                 .update();
+        jdbcClient.sql("""
+                update workflow_run
+                set reserved_tokens = 12000,
+                    reserved_cost_usd = 0.75000000
+                where run_id = :runId
+                """)
+                .param("runId", runId.value())
+                .update();
+        jdbcClient.sql("""
+                insert into ai_budget_reservation (
+                  invocation_id, run_id, reserved_tokens, reserved_cost_usd,
+                  status, reserved_at
+                ) values (
+                  :invocationId, :runId, 12000, 0.75000000,
+                  'RESERVED', :reservedAt
+                )
+                """)
+                .param("invocationId", "invocation_orphaned_" + suffix)
+                .param("runId", runId.value())
+                .param("reservedAt", OffsetDateTime.parse("2026-07-21T11:00:10Z"))
+                .update();
 
         var recovered = new JdbcAiInvocationRecoveryStore(jdbcClient)
                 .failOrphanedInvocations(Instant.parse("2026-07-21T11:01:10Z"));
@@ -1502,6 +1523,23 @@ class LiquibasePostgresIntegrationTest {
         assertEquals("FAILED", statuses.get(1).get(1));
         assertEquals("WORKER_RESTART_RECOVERY", statuses.get(1).get(2));
         assertEquals("60000", statuses.get(1).get(3));
+        var reservationState = jdbcClient.sql("""
+                select run.reserved_tokens, run.reserved_cost_usd,
+                       reservation.status, reservation.released_at is not null as released
+                from workflow_run run
+                join ai_budget_reservation reservation on reservation.run_id = run.run_id
+                where run.run_id = :runId
+                """)
+                .param("runId", runId.value())
+                .query((resultSet, rowNumber) -> List.of(
+                        Long.toString(resultSet.getLong("reserved_tokens")),
+                        resultSet.getBigDecimal("reserved_cost_usd").toPlainString(),
+                        resultSet.getString("status"),
+                        Boolean.toString(resultSet.getBoolean("released"))))
+                .single();
+        assertEquals(List.of("0", "0E-8", "RELEASED", "true"), reservationState);
+        assertEquals(0, new JdbcAiInvocationRecoveryStore(jdbcClient)
+                .failOrphanedInvocations(Instant.parse("2026-07-21T11:02:10Z")));
     }
 
     private static void updateSchema() throws Exception {

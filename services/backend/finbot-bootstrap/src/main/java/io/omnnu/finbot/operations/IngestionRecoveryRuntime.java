@@ -46,7 +46,9 @@ public final class IngestionRecoveryRuntime implements InitializingBean {
         recover();
     }
 
-    @Scheduled(fixedDelayString = "${finbot.ingestion.recovery-interval:PT5M}")
+    @Scheduled(
+            fixedDelayString = "${finbot.ingestion.recovery-interval:PT5M}",
+            scheduler = "workerControlScheduler")
     public void recover() {
         var now = clock.instant();
         var recovered = repository.recoverStaleCollections(now.minus(staleAfter), now);

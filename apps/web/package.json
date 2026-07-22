@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc -b && vite build",
-    "contract:sync": "node scripts/control-plane-contract.mjs sync",
-    "contract:check": "node scripts/control-plane-contract.mjs check",
+    "contract:check": "node scripts/control-plane-contract.mjs",
     "test": "vitest run",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "smoke:system": "node scripts/system-smoke.mjs"

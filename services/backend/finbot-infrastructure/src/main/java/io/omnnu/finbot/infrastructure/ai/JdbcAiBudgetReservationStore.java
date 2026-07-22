@@ -88,47 +88,4 @@ public class JdbcAiBudgetReservationStore implements AiBudgetReservationStore {
                 .update();
     }
 
-    @Override
-    @Transactional
-    public void release(AiInvocationId invocationId, Instant releasedAt) {
-        var reservation = jdbcClient.sql("""
-                select run_id, reserved_tokens, reserved_cost_usd
-                from ai_budget_reservation
-                where invocation_id = :invocationId and status = 'RESERVED'
-                for update
-                """)
-                .param("invocationId", invocationId.value())
-                .query((resultSet, rowNumber) -> new Reservation(
-                        resultSet.getString("run_id"),
-                        resultSet.getLong("reserved_tokens"),
-                        resultSet.getBigDecimal("reserved_cost_usd")))
-                .optional();
-        if (reservation.isEmpty()) {
-            return;
-        }
-        var value = reservation.orElseThrow();
-        jdbcClient.sql("""
-                update workflow_run
-                set reserved_tokens = greatest(0, reserved_tokens - :reservedTokens),
-                    reserved_cost_usd = greatest(0, reserved_cost_usd - :reservedCost),
-                    updated_at = :releasedAt
-                where run_id = :runId
-                """)
-                .param("runId", value.runId())
-                .param("reservedTokens", value.reservedTokens())
-                .param("reservedCost", value.reservedCost())
-                .param("releasedAt", timestamp(releasedAt))
-                .update();
-        jdbcClient.sql("""
-                update ai_budget_reservation
-                set status = 'RELEASED', released_at = :releasedAt
-                where invocation_id = :invocationId and status = 'RESERVED'
-                """)
-                .param("invocationId", invocationId.value())
-                .param("releasedAt", timestamp(releasedAt))
-                .update();
-    }
-
-    private record Reservation(String runId, long reservedTokens, BigDecimal reservedCost) {
-    }
 }

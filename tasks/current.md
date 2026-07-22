@@ -2,6 +2,14 @@
 
 > 2026-07-20 以 `main@d70397a`、Liquibase `55/55`、FinBot GitOps 发布提交 `a4ab96e` 和生产 K8S 为事实基线。共享 GitOps 仓库后续 revision 可能因其他应用前进，应以 FinBot 镜像与资源差异判断实际发布。完成任务只保留索引，不再在本页重复流水账。
 
+## P1：单副本执行控制面、服务拆分与完整 OpenAPI
+
+- 决策：保持 Java 等后端服务和 Web 单副本，不引入 Redis、MQ、Outbox 或分布式锁；PostgreSQL 继续作为唯一事实源和持久任务队列。
+- 范围：AI 预算原子终态、真实取消、绝对 deadline、有界 Provider 准入、Scheduler 隔离、大型服务拆分、完整 OpenAPI 和单副本 `Recreate`。
+- ADR：[`../docs/decisions/033-single-replica-modular-monolith.md`](../docs/decisions/033-single-replica-modular-monolith.md)。
+- 任务：[`in-progress/TASK-20260722-single-replica-control-plane-hardening.md`](./in-progress/TASK-20260722-single-replica-control-plane-hardening.md)。
+- 状态：代码与离线生产候选验收已完成；本机 149 个 Java 测试通过，20 个 PostgreSQL Testcontainers 用例因无容器运行时跳过，待 GitHub CI 实跑；尚未执行 GitOps 推送和生产 smoke。
+
 ## P1：Crawler Challenge 运行态收口
 
 - 状态：C1 分类、C2/C3 配置契约、Browser Worker 和管理 UI 已发布；C2/C3 尚未被任何生产信源启用。

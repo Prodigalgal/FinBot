@@ -13,6 +13,7 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
     implementation("org.jsoup:jsoup:1.21.2")
+    implementation("io.micrometer:micrometer-core")
 
     runtimeOnly("org.postgresql:postgresql")
 

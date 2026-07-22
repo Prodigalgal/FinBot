@@ -8,6 +8,7 @@ import io.omnnu.finbot.domain.shared.DomainText;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 
 public record AiCompletionRequest(
@@ -23,6 +24,7 @@ public record AiCompletionRequest(
         int maximumOutputTokens,
         Duration timeout,
         Duration capacityWaitTimeout,
+        Instant deadline,
         String promptVersion) {
     public AiCompletionRequest {
         Objects.requireNonNull(invocationId, "invocationId");
@@ -36,6 +38,7 @@ public record AiCompletionRequest(
         userPrompt = DomainText.required(userPrompt, "userPrompt", 200_000);
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(capacityWaitTimeout, "capacityWaitTimeout");
+        Objects.requireNonNull(deadline, "deadline");
         promptVersion = DomainText.required(promptVersion, "promptVersion", 80);
         if (maximumOutputTokens < 64 || maximumOutputTokens > 65_536) {
             throw new IllegalArgumentException("maximumOutputTokens must be between 64 and 65536");

@@ -1,7 +1,15 @@
 package io.omnnu.finbot.application.workflow;
 
-import io.omnnu.finbot.application.ai.WorkflowAiInvoker;
-import io.omnnu.finbot.application.ai.WorkflowAiInvoker.AiInvocationRejectedException;
+import static io.omnnu.finbot.application.workflow.WorkflowExecutionGraph.agentLayers;
+import static io.omnnu.finbot.application.workflow.WorkflowExecutionGraph.findMessage;
+import static io.omnnu.finbot.application.workflow.WorkflowExecutionGraph.latestRound;
+import static io.omnnu.finbot.application.workflow.WorkflowExecutionGraph.maximumDebateRounds;
+import static io.omnnu.finbot.application.workflow.WorkflowExecutionGraph.roleName;
+import static io.omnnu.finbot.application.workflow.WorkflowExecutionGraph.turnIndexes;
+
+import io.omnnu.finbot.application.ai.AiExecutionFailure;
+import io.omnnu.finbot.application.ai.AiExecutionPolicyExecutor;
+import io.omnnu.finbot.application.operations.TaskCancellationContext;
 import io.omnnu.finbot.domain.workflow.AgentMessage;
 import io.omnnu.finbot.domain.workflow.AgentMessageContent;
 import io.omnnu.finbot.domain.workflow.AgentMessagePublished;
@@ -25,13 +33,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -41,28 +46,30 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
     private final WorkflowExecutionStore executionStore;
     private final WorkflowEventPublisher eventPublisher;
     private final WorkflowRunFailureUseCase workflowFailure;
-    private final WorkflowAiInvoker aiInvoker;
+    private final AiExecutionPolicyExecutor aiExecution;
     private final StructuredAiOutputParser outputParser;
     private final Clock clock;
     private final Executor executor;
     private final WorkflowPromptComposer promptComposer = new WorkflowPromptComposer();
     private final WorkflowConditionEvaluator conditionEvaluator = new WorkflowConditionEvaluator();
+    private final WorkflowCheckpointManager checkpoints;
 
     public WorkflowExecutionService(
             WorkflowExecutionStore executionStore,
             WorkflowEventPublisher eventPublisher,
             WorkflowRunFailureUseCase workflowFailure,
-            WorkflowAiInvoker aiInvoker,
+            AiExecutionPolicyExecutor aiExecution,
             StructuredAiOutputParser outputParser,
             Clock clock,
             Executor executor) {
         this.executionStore = Objects.requireNonNull(executionStore, "executionStore");
         this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
         this.workflowFailure = Objects.requireNonNull(workflowFailure, "workflowFailure");
-        this.aiInvoker = Objects.requireNonNull(aiInvoker, "aiInvoker");
+        this.aiExecution = Objects.requireNonNull(aiExecution, "aiExecution");
         this.outputParser = Objects.requireNonNull(outputParser, "outputParser");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.executor = Objects.requireNonNull(executor, "executor");
+        this.checkpoints = new WorkflowCheckpointManager(this.executionStore, this.clock);
     }
 
     @Override
@@ -163,6 +170,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     round,
                     deadline) || partial;
             completedRounds++;
+            TaskCancellationContext.throwIfCancelled();
             executionStore.updateDebate(
                     session.debateId(),
                     DebateStatus.RUNNING,
@@ -199,6 +207,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                         loopRound,
                         deadline) || partial;
                 completedRounds++;
+                TaskCancellationContext.throwIfCancelled();
                 executionStore.updateDebate(
                         session.debateId(),
                         DebateStatus.RUNNING,
@@ -237,6 +246,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         }
         publishProgress(execution.runId(), chair.nodeId(), 95, "主席已完成独立仲裁");
         var completedAt = clock.instant();
+        TaskCancellationContext.throwIfCancelled();
         executionStore.updateDebate(
                 session.debateId(),
                 partial ? DebateStatus.PARTIAL : DebateStatus.COMPLETED,
@@ -292,7 +302,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     .toList();
             layer.stream()
                     .filter(node -> !activeNodes.contains(node))
-                    .forEach(node -> saveSkippedCheckpoint(
+                    .forEach(node -> checkpoints.skipped(
                             execution.runId(),
                             node,
                             round,
@@ -367,6 +377,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                                 List.of()),
                         prompt.repliesTo(),
                         clock.instant());
+                TaskCancellationContext.throwIfCancelled();
                 executionStore.saveMessage(message);
                 publishMessage(message, round);
                 return new NodeResult(message, true);
@@ -393,7 +404,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         var existingMessage = findMessage(visibleMessages, messageId)
                 .or(() -> findMessage(executionStore.messages(session.debateId()), messageId));
         if (existingMessage.isPresent()) {
-            healCompletedCheckpoint(execution.runId(), node, round, existingMessage.orElseThrow());
+            checkpoints.healCompleted(execution.runId(), node, round, existingMessage.orElseThrow());
             return existingMessage.orElseThrow();
         }
         var prompt = promptComposer.composeAgent(execution, node, round, visibleMessages);
@@ -411,8 +422,9 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 content,
                 prompt.repliesTo(),
                 clock.instant());
+        TaskCancellationContext.throwIfCancelled();
         executionStore.saveMessage(message);
-        saveCompletedCheckpoint(execution.runId(), node, round, message.content().summary());
+        checkpoints.completed(execution.runId(), node, round, message.content().summary());
         publishMessage(message, round);
         return message;
     }
@@ -429,7 +441,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         var existing = findMessage(messages, messageId)
                 .or(() -> findMessage(executionStore.messages(session.debateId()), messageId));
         if (existing.isPresent()) {
-            healCompletedCheckpoint(execution.runId(), chair, 0, existing.orElseThrow());
+            checkpoints.healCompleted(execution.runId(), chair, 0, existing.orElseThrow());
             return existing.orElseThrow();
         }
         publishStageStarted(execution.runId(), WorkflowStage.PRODUCT_SELECTION, chair.nodeId());
@@ -453,8 +465,9 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 content,
                 prompt.repliesTo(),
                 clock.instant());
+        TaskCancellationContext.throwIfCancelled();
         executionStore.saveMessage(message);
-        saveCompletedCheckpoint(execution.runId(), chair, 0, message.content().summary());
+        checkpoints.completed(execution.runId(), chair, 0, message.content().summary());
         publishMessage(message, eventRound);
         return message;
     }
@@ -496,178 +509,51 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             Instant deadline,
             boolean chair) {
         var checkpoint = executionStore.findCheckpoint(execution.runId(), node.nodeId(), round, 0);
-        var bindings = node.fallbackAiBinding() == null
-                ? List.of(node.primaryAiBinding())
-                : List.of(node.primaryAiBinding(), node.fallbackAiBinding());
-        var attemptsPerBinding = node.retryPolicy().maximumAttempts();
-        var totalAttempts = Math.multiplyExact(bindings.size(), attemptsPerBinding);
+        var totalAttempts = aiExecution.totalAttempts(node);
         var firstAttempt = checkpoint.map(value -> Math.min(
                         totalAttempts,
                         value.attempt() + 1))
                 .orElse(1);
-        NodeExecutionFailure lastFailure = null;
-        for (var attempt = firstAttempt; attempt <= totalAttempts; attempt++) {
-            var bindingIndex = (attempt - 1) / attemptsPerBinding;
-            var bindingAttempt = (attempt - 1) % attemptsPerBinding + 1;
-            var binding = bindings.get(bindingIndex);
-            saveRunningCheckpoint(execution.runId(), node, round, attempt, checkpoint.orElse(null));
-            try {
-                var output = aiInvoker.invokeDetailed(
-                        execution.runId(),
-                        execution.definitionVersion(),
-                        node,
-                        binding,
-                        userPrompt,
-                        deadline).output();
-                var parsed = chair ? outputParser.parseChair(output) : outputParser.parseAgent(output);
-                if (chair && execution.marketScope() != null && parsed.forecast() == null) {
-                    throw new IllegalArgumentException(
-                            "Market analysis chair did not return the required structured forecast");
-                }
-                return chair ? normalizeForecastReference(parsed, execution) : parsed;
-            } catch (AiInvocationRejectedException exception) {
-                lastFailure = new NodeExecutionFailure(
-                        exception.errorCode(),
-                        exception.getMessage(),
-                        exception.retryable());
-            } catch (IllegalArgumentException exception) {
-                lastFailure = new NodeExecutionFailure(
-                        "AI_OUTPUT_SCHEMA_INVALID",
-                        "AI output did not match the required structured contract",
-                        true);
-            } catch (RuntimeException exception) {
-                lastFailure = new NodeExecutionFailure(
-                        "AI_PIPELINE_FAILURE",
-                        "AI invocation pipeline failed: " + exception.getClass().getSimpleName(),
-                        true);
-            }
-            var bindingExhausted = bindingAttempt == attemptsPerBinding || !lastFailure.retryable();
-            if (bindingExhausted && bindingIndex + 1 < bindings.size()) {
-                continue;
-            }
-            if (bindingExhausted) {
-                break;
-            }
-            pause(node.retryPolicy().backoff().multipliedBy(bindingAttempt));
+        try {
+            return aiExecution.execute(
+                    execution.runId(),
+                    execution.definitionVersion(),
+                    node,
+                    userPrompt,
+                    deadline,
+                    firstAttempt,
+                    output -> {
+                        var parsed = chair ? outputParser.parseChair(output) : outputParser.parseAgent(output);
+                        if (chair && execution.marketScope() != null && parsed.forecast() == null) {
+                            throw new IllegalArgumentException(
+                                    "Market analysis chair did not return the required structured forecast");
+                        }
+                        return chair ? normalizeForecastReference(parsed, execution) : parsed;
+                    },
+                    (attempt, binding) -> checkpoints.running(
+                            execution.runId(),
+                            node,
+                            round,
+                            attempt,
+                            checkpoint.orElse(null)))
+                    .parsed();
+        } catch (AiExecutionFailure failure) {
+            var nodeFailure = new NodeExecutionFailure(
+                    failure.errorCode(),
+                    failure.getMessage(),
+                    failure.retryable());
+            checkpoints.failed(
+                    execution.runId(),
+                    node,
+                    round,
+                    nodeFailure.errorCode(),
+                    nodeFailure.getMessage());
+            throw nodeFailure;
         }
-        var failure = Objects.requireNonNullElseGet(lastFailure, () -> new NodeExecutionFailure(
-                "NODE_EXECUTION_FAILED",
-                "Workflow node failed without a classified error",
-                false));
-        saveFailedCheckpoint(execution.runId(), node, round, failure);
-        throw failure;
-    }
-
-    private void healCompletedCheckpoint(
-            WorkflowRunId runId,
-            WorkflowNodeDefinition node,
-            int round,
-            AgentMessage message) {
-        var checkpoint = executionStore.findCheckpoint(runId, node.nodeId(), round, 0);
-        if (checkpoint.isEmpty()
-                || checkpoint.orElseThrow().status() != WorkflowCheckpointStatus.COMPLETED) {
-            saveCompletedCheckpoint(runId, node, round, message.content().summary());
-        }
-    }
-
-    private void saveRunningCheckpoint(
-            WorkflowRunId runId,
-            WorkflowNodeDefinition node,
-            int round,
-            int attempt,
-            WorkflowCheckpoint previous) {
-        var now = clock.instant();
-        executionStore.saveCheckpoint(new WorkflowCheckpoint(
-                WorkflowExecutionIds.checkpoint(runId, node.nodeId(), round),
-                runId,
-                node.nodeId(),
-                round,
-                0,
-                attempt,
-                WorkflowCheckpointStatus.RUNNING,
-                null,
-                null,
-                null,
-                previous == null || previous.startedAt() == null ? now : previous.startedAt(),
-                null,
-                now));
-    }
-
-    private void saveCompletedCheckpoint(
-            WorkflowRunId runId,
-            WorkflowNodeDefinition node,
-            int round,
-            String summary) {
-        var previous = executionStore.findCheckpoint(runId, node.nodeId(), round, 0);
-        var now = clock.instant();
-        executionStore.saveCheckpoint(new WorkflowCheckpoint(
-                WorkflowExecutionIds.checkpoint(runId, node.nodeId(), round),
-                runId,
-                node.nodeId(),
-                round,
-                0,
-                previous.map(WorkflowCheckpoint::attempt).orElse(1),
-                WorkflowCheckpointStatus.COMPLETED,
-                summary,
-                null,
-                null,
-                previous.map(WorkflowCheckpoint::startedAt).orElse(now),
-                now,
-                now));
-    }
-
-    private void saveFailedCheckpoint(
-            WorkflowRunId runId,
-            WorkflowNodeDefinition node,
-            int round,
-            NodeExecutionFailure failure) {
-        var previous = executionStore.findCheckpoint(runId, node.nodeId(), round, 0);
-        var now = clock.instant();
-        executionStore.saveCheckpoint(new WorkflowCheckpoint(
-                WorkflowExecutionIds.checkpoint(runId, node.nodeId(), round),
-                runId,
-                node.nodeId(),
-                round,
-                0,
-                previous.map(WorkflowCheckpoint::attempt)
-                        .orElse(node.retryPolicy().maximumAttempts()
-                                * (node.fallbackAiBinding() == null ? 1 : 2)),
-                WorkflowCheckpointStatus.FAILED,
-                null,
-                failure.errorCode(),
-                failure.getMessage(),
-                previous.map(WorkflowCheckpoint::startedAt).orElse(now),
-                now,
-                now));
-    }
-
-    private void saveSkippedCheckpoint(
-            WorkflowRunId runId,
-            WorkflowNodeDefinition node,
-            int round,
-            String summary) {
-        var existing = executionStore.findCheckpoint(runId, node.nodeId(), round, 0);
-        if (existing.filter(value -> value.status().finalStatus()).isPresent()) {
-            return;
-        }
-        var now = clock.instant();
-        executionStore.saveCheckpoint(new WorkflowCheckpoint(
-                WorkflowExecutionIds.checkpoint(runId, node.nodeId(), round),
-                runId,
-                node.nodeId(),
-                round,
-                0,
-                1,
-                WorkflowCheckpointStatus.SKIPPED,
-                summary,
-                null,
-                null,
-                now,
-                now,
-                now));
     }
 
     private void publishMessage(AgentMessage message, int eventRound) {
+        TaskCancellationContext.throwIfCancelled();
         eventPublisher.publish(message.runId(), (eventId, sequence, occurredAt) ->
                 new AgentMessagePublished(
                         eventId,
@@ -684,6 +570,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             WorkflowRunId runId,
             WorkflowStage stage,
             WorkflowNodeId nodeId) {
+        TaskCancellationContext.throwIfCancelled();
         eventPublisher.publish(runId, (eventId, sequence, occurredAt) ->
                 new WorkflowStageStarted(eventId, runId, sequence, stage, nodeId, occurredAt));
     }
@@ -693,6 +580,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             WorkflowNodeId nodeId,
             int percent,
             String summary) {
+        TaskCancellationContext.throwIfCancelled();
         eventPublisher.publish(runId, (eventId, sequence, occurredAt) ->
                 new WorkflowProgressed(
                         eventId,
@@ -706,6 +594,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
     }
 
     private void terminalize(WorkflowRunId runId, TerminalWorkflowFailure failure) {
+        TaskCancellationContext.throwIfCancelled();
         var failedAt = clock.instant();
         executionStore.findDebate(runId).ifPresent(session -> executionStore.updateDebate(
                 session.debateId(),
@@ -718,56 +607,6 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 failure.getMessage(),
                 failure.retryable(),
                 failedAt);
-    }
-
-    private static List<List<WorkflowNodeDefinition>> agentLayers(WorkflowDefinitionVersion version) {
-        var orderedAgents = version.topologicalNodes().stream()
-                .filter(WorkflowNodeDefinition::enabled)
-                .filter(node -> node.nodeType() == WorkflowNodeType.AGENT
-                        || node.nodeType() == WorkflowNodeType.AGGREGATOR)
-                .toList();
-        var agentIds = orderedAgents.stream()
-                .map(WorkflowNodeDefinition::nodeId)
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        var levelByNode = new HashMap<WorkflowNodeId, Integer>();
-        var layers = new TreeMap<Integer, List<WorkflowNodeDefinition>>();
-        for (var agent : orderedAgents) {
-            var level = version.edges().stream()
-                    .filter(edge -> !edge.loopEdge())
-                    .filter(edge -> edge.targetNodeId().equals(agent.nodeId()))
-                    .filter(edge -> agentIds.contains(edge.sourceNodeId()))
-                    .mapToInt(edge -> levelByNode.getOrDefault(edge.sourceNodeId(), 0) + 1)
-                    .max()
-                    .orElse(0);
-            levelByNode.put(agent.nodeId(), level);
-            layers.computeIfAbsent(level, ignored -> new ArrayList<>()).add(agent);
-        }
-        return layers.values().stream()
-                .map(layer -> layer.stream()
-                        .sorted(Comparator.comparing(node -> node.nodeId().value()))
-                        .toList())
-                .toList();
-    }
-
-    private static int maximumDebateRounds(WorkflowDefinitionVersion version) {
-        return version.defaultDebateRounds() + version.edges().stream()
-                .filter(io.omnnu.finbot.domain.workflow.WorkflowEdgeDefinition::loopEdge)
-                .map(io.omnnu.finbot.domain.workflow.WorkflowEdgeDefinition::maximumTraversals)
-                .filter(Objects::nonNull)
-                .mapToInt(Integer::intValue)
-                .sum();
-    }
-
-    private static int latestRound(List<AgentMessage> messages) {
-        return messages.stream().mapToInt(AgentMessage::roundIndex).max().orElse(0);
-    }
-
-    private static Map<WorkflowNodeId, Integer> turnIndexes(List<WorkflowNodeDefinition> agents) {
-        var indexes = new LinkedHashMap<WorkflowNodeId, Integer>();
-        for (var index = 0; index < agents.size(); index++) {
-            indexes.put(agents.get(index).nodeId(), index + 1);
-        }
-        return Map.copyOf(indexes);
     }
 
     private static void awaitLayer(List<CompletableFuture<NodeResult>> futures) {
@@ -784,38 +623,11 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         }
     }
 
-    private static Optional<AgentMessage> findMessage(
-            List<AgentMessage> messages,
-            io.omnnu.finbot.domain.workflow.AgentMessageId messageId) {
-        return messages.stream()
-                .filter(message -> message.messageId().equals(messageId))
-                .findFirst();
-    }
-
-    private static String roleName(WorkflowNodeDefinition node) {
-        return node.roleName() == null ? node.displayName() : node.roleName();
-    }
-
     private static boolean terminalOrPaused(WorkflowRunStatus status) {
         return switch (status) {
             case ACCEPTED, RUNNING -> false;
             case WAITING_HUMAN, PARTIAL, COMPLETED, FAILED, CANCELLED -> true;
         };
-    }
-
-    private static void pause(java.time.Duration duration) {
-        if (duration.isZero()) {
-            return;
-        }
-        try {
-            Thread.sleep(duration);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new NodeExecutionFailure(
-                    "NODE_RETRY_INTERRUPTED",
-                    "Workflow node retry was interrupted",
-                    true);
-        }
     }
 
     private static TerminalWorkflowFailure terminalFailure(NodeExecutionFailure failure) {

@@ -11,10 +11,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 0
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: finbot-backend
@@ -167,10 +164,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 0
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: finbot-quant
@@ -271,10 +265,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 0
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: finbot-web
@@ -373,10 +364,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 0
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: finbot-browser-worker
