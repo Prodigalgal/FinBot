@@ -549,25 +549,28 @@ class LiquibasePostgresIntegrationTest {
                           (select version_id from workflow_definition_version
                            where status = 'PUBLISHED') as published_version_id,
                           (select operation from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v10'
+                           where version_id = 'workflowversion_standard_v11'
                               and node_type = 'QUANT') as published_quant_operation,
-                           (select debate_protocol from workflow_definition_version
-                           where version_id = 'workflowversion_standard_v10')
+                          (select debate_protocol from workflow_definition_version
+                           where version_id = 'workflowversion_standard_v11')
                              as published_debate_protocol,
+                          (select checksum from workflow_definition_version
+                           where version_id = 'workflowversion_standard_v11')
+                             as published_workflow_checksum,
                           (select status from workflow_definition_version
                            where version_id = 'workflowversion_standard_v8')
                             as legacy_v8_status,
                           (select count(*) from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v10'
+                           where version_id = 'workflowversion_standard_v11'
                               and node_type = 'SOCIAL_CHOICE'
                              and output_contract = 'CONSENSUS_RESULT'
                              and operation = 'schulze_social_choice'
                              and enabled = true) as social_choice_node_count,
                           (select count(*) from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v10'
+                           where version_id = 'workflowversion_standard_v11'
                               and node_type = 'CHAIR') as published_chair_node_count,
                           (select count(*) from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v10'
+                           where version_id = 'workflowversion_standard_v11'
                               and node_type in ('AGENT', 'AGGREGATOR')
                              and enabled = true) as debate_participant_count,
                           (select count(*) from workflow_edge_definition edge
@@ -577,7 +580,7 @@ class LiquibasePostgresIntegrationTest {
                            join workflow_node_definition target
                              on target.version_id = edge.version_id
                             and target.node_id = edge.target_node_id
-                           where edge.version_id = 'workflowversion_standard_v10'
+                           where edge.version_id = 'workflowversion_standard_v11'
                              and source.node_type in ('AGENT', 'AGGREGATOR')
                              and target.node_type in ('AGENT', 'AGGREGATOR', 'SOCIAL_CHOICE')
                              and edge.context_mode <> 'EXCLUDE') as debate_content_leak_edge_count,
@@ -588,12 +591,12 @@ class LiquibasePostgresIntegrationTest {
                            join workflow_node_definition target
                              on target.version_id = edge.version_id
                             and target.node_id = edge.target_node_id
-                           where edge.version_id = 'workflowversion_standard_v10'
+                           where edge.version_id = 'workflowversion_standard_v11'
                              and source.node_type in ('AGENT', 'AGGREGATOR')
                              and target.node_type = 'SOCIAL_CHOICE'
                              and edge.context_mode = 'EXCLUDE') as debate_exclusion_edge_count,
                           (select count(*) from workflow_node_definition
-                           where version_id = 'workflowversion_standard_v10'
+                           where version_id = 'workflowversion_standard_v11'
                               and node_type = 'SOCIAL_CHOICE'
                              and (provider_profile_id is not null
                                   or model_name is not null
@@ -614,8 +617,8 @@ class LiquibasePostgresIntegrationTest {
                            (select count(*) from ai_model_profile
                             where provider_profile_id = 'provider_any2api_research'
                               and enabled = true
-                              and default_reasoning_effort = 'MAX'
-                              and maximum_reasoning_effort = 'MAX')
+                              and default_reasoning_effort = 'HIGH'
+                              and maximum_reasoning_effort = 'HIGH')
                              as any2api_model_count,
                            (select count(*) from ai_model_profile
                             where provider_profile_id = 'provider_any2api_research'
@@ -627,18 +630,18 @@ class LiquibasePostgresIntegrationTest {
                               and token_limit_parameter_style = 'PROTOCOL_DEFAULT')
                              as any2api_default_token_limit_model_count,
                            (select count(*) from workflow_node_definition
-                            where version_id = 'workflowversion_standard_v10'
+                            where version_id = 'workflowversion_standard_v11'
                               and node_type in (
                                 'AI_CLEANER', 'COMPRESSOR', 'COMPRESSION_VALIDATOR',
                                 'AGENT', 'AGGREGATOR'
                               )
                               and provider_profile_id = 'provider_any2api_research'
                               and fallback_provider_profile_id = 'provider_any2api_research'
-                              and reasoning_effort = 'MAX'
-                              and fallback_reasoning_effort = 'MAX')
+                              and reasoning_effort = 'HIGH'
+                              and fallback_reasoning_effort = 'HIGH')
                              as any2api_research_node_count,
                            (select count(*) from workflow_node_definition
-                            where version_id = 'workflowversion_standard_v10'
+                            where version_id = 'workflowversion_standard_v11'
                               and node_type in (
                                 'AI_CLEANER', 'COMPRESSOR', 'COMPRESSION_VALIDATOR',
                                 'AGENT', 'AGGREGATOR'
@@ -649,7 +652,7 @@ class LiquibasePostgresIntegrationTest {
                            (select count(*) from (
                               select logical_role_key
                               from workflow_node_definition
-                              where version_id = 'workflowversion_standard_v10'
+                              where version_id = 'workflowversion_standard_v11'
                                 and node_type in ('AGENT', 'AGGREGATOR')
                               group by logical_role_key
                               having count(*) = 2
@@ -658,9 +661,9 @@ class LiquibasePostgresIntegrationTest {
                            (select count(*)
                             from workflow_node_definition current_node
                             join workflow_node_definition previous_node
-                              on previous_node.version_id = 'workflowversion_standard_v9'
+                              on previous_node.version_id = 'workflowversion_standard_v10'
                              and previous_node.node_id = current_node.node_id
-                            where current_node.version_id = 'workflowversion_standard_v10'
+                            where current_node.version_id = 'workflowversion_standard_v11'
                               and current_node.node_type = 'EXECUTION_REVIEW'
                               and row(
                                 current_node.provider_profile_id,
@@ -684,7 +687,7 @@ class LiquibasePostgresIntegrationTest {
                                 previous_node.operation
                               )) as unchanged_execution_review_count,
                            (select count(*) from workflow_node_definition
-                            where version_id = 'workflowversion_standard_v10'
+                            where version_id = 'workflowversion_standard_v11'
                               and model_name like 'qwen/%') as qwen_default_binding_count,
                           (select count(*) from information_source where deleted_at is null)
                             as source_count,
@@ -971,12 +974,15 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(2, result.getInt("account_count"));
                 assertEquals(10, result.getInt("schedule_count"));
                 assertEquals(9, result.getInt("role_count"));
-                assertEquals(179, result.getInt("node_count"));
+                assertEquals(202, result.getInt("node_count"));
                 assertEquals(23, result.getInt("published_node_count"));
-                assertEquals(10, result.getInt("workflow_version_count"));
-                assertEquals("workflowversion_standard_v10", result.getString("published_version_id"));
+                assertEquals(11, result.getInt("workflow_version_count"));
+                assertEquals("workflowversion_standard_v11", result.getString("published_version_id"));
                 assertEquals("multi_strategy_ensemble", result.getString("published_quant_operation"));
                 assertEquals("SDB_SCA_V1", result.getString("published_debate_protocol"));
+                assertEquals(
+                        "6729ffa0000fab14a8d6d5ee6b5bfaaaa311fffd40980c0ceee46cfafec8f482",
+                        result.getString("published_workflow_checksum"));
                 assertEquals("ARCHIVED", result.getString("legacy_v8_status"));
                 assertEquals(1, result.getInt("social_choice_node_count"));
                 assertEquals(0, result.getInt("published_chair_node_count"));
@@ -1127,7 +1133,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(69, result.getInt("changeset_count"));
+                    assertEquals(70, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

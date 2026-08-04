@@ -66,6 +66,7 @@
 - Provider 连接参数变化会立即使旧目录失效，并以请求代次隔离迟到响应；角色和最终执行编辑器只允许启用且归属一致的 Provider/Model/Reasoning 组合。
 - 工作流编辑器不再生成跨 Provider 的 Model 绑定，并排除禁用 Provider/Model。
 - Provider 使用表单中新 URL/Key 读取目录时不会回退测试数据库旧配置。
+- 生产目录验收发现 Any2API 研究模型只支持到 `HIGH`；Liquibase 066 校准模型 profile，并从不可变的 v10 派生 v11，将研究节点从无效的 `MAX` 调整到上游实际最大值，主席和最终执行节点保持不变。
 
 ## 本地验证
 

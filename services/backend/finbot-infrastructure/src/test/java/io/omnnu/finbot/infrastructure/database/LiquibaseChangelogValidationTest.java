@@ -23,7 +23,7 @@ class LiquibaseChangelogValidationTest {
         try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, database)) {
             liquibase.validate();
             var changeSets = liquibase.getDatabaseChangeLog().getChangeSets();
-            assertEquals(69, changeSets.size());
+            assertEquals(70, changeSets.size());
             assertEquals("001-foundation", changeSets.getFirst().getId());
             assertEquals("002-platform-foundation", changeSets.get(1).getId());
             assertEquals("003-background-operations", changeSets.get(2).getId());
@@ -78,7 +78,8 @@ class LiquibaseChangelogValidationTest {
             assertEquals("062-standard-workflow-sdb-sca", changeSets.get(65).getId());
             assertEquals("063-research-forecast-direction-probabilities", changeSets.get(66).getId());
             assertEquals("064-any2api-research-routing", changeSets.get(67).getId());
-            assertEquals("065-ai-model-token-limit-capability", changeSets.getLast().getId());
+            assertEquals("065-ai-model-token-limit-capability", changeSets.get(68).getId());
+            assertEquals("066-any2api-reasoning-capability", changeSets.getLast().getId());
             assertTrue(changeSets.getFirst().getChanges().size() >= 1);
         }
     }
