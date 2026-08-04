@@ -34,12 +34,12 @@ RUN python3 -m venv /app/.venv \
     && /app/.venv/bin/pip install --upgrade pip \
     && /app/.venv/bin/pip install . \
     && /app/.venv/bin/pip uninstall --yes pip setuptools \
-    && python3 -m pip uninstall --break-system-packages --yes pip setuptools virtualenv \
+    && /usr/bin/python3 -m pip uninstall --break-system-packages --yes pip setuptools virtualenv \
     && rm -rf /root/.local/share/virtualenv \
     && ! /app/.venv/bin/python -c "import pip" \
     && ! /app/.venv/bin/python -c "import setuptools" \
-    && ! python3 -c "import pip" \
-    && ! python3 -c "import setuptools" \
+    && ! /usr/bin/python3 -c "import pip" \
+    && ! /usr/bin/python3 -c "import setuptools" \
     && chown -R finbot:finbot /app /ms-playwright
 
 USER 10001:10001
