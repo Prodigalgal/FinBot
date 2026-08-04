@@ -235,8 +235,8 @@ class BrowserChallengeSolver:
             # Try light interaction that some walls require without clicking captcha widgets.
             try:
                 await page.mouse.move(120 + (elapsed // 500) % 40, 160 + (elapsed // 700) % 30)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:
+                LOGGER.debug("challenge progress mouse movement failed", exc_info=True)
 
     @staticmethod
     async def _safe_content(page: Page) -> str:
@@ -284,6 +284,6 @@ class BrowserChallengeSolver:
             return True
         # JSON success body is never a challenge wall.
         stripped = body_text.lstrip()
-        if stripped.startswith("{") or stripped.startswith("["):
+        if stripped.startswith(("{", "[")):
             return False
         return False

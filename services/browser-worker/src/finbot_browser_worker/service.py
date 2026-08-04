@@ -79,7 +79,7 @@ def create_app(solver: BrowserSolver | None = None, service_token: str | None = 
                 detail="browser solve capacity exhausted",
                 headers={"Retry-After": "1"},
             ) from error
-        except Exception as error:  # noqa: BLE001 - map all browser failures to 502
+        except Exception as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"browser solve failed: {error.__class__.__name__}",

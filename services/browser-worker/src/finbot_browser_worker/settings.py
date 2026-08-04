@@ -63,7 +63,9 @@ def _validated_proxy_url(value: str) -> str:
     if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
         raise ValueError("proxy_url must not contain a path, query, or fragment")
     try:
-        parsed.port
+        port = parsed.port
     except ValueError as error:
         raise ValueError("proxy_url contains an invalid port") from error
+    if port is not None and not 1 <= port <= 65_535:
+        raise ValueError("proxy_url contains an invalid port")
     return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))

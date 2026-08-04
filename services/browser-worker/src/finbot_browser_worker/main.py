@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 
-from fastapi import FastAPI
 import uvicorn
+from fastapi import FastAPI
 
 from finbot_browser_worker.service import create_app
 
