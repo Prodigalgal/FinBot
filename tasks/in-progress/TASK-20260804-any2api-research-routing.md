@@ -11,6 +11,7 @@ SDB-SCA 确定性社会选择和最终执行机器人保持不变。
 - 发布默认工作流 v10，迁移清洗、压缩、验证和研究席位。
 - 增加模型级输出上限参数能力，严格适配上游 `protocolContract`，不静默丢弃参数。
 - 节点诊断复用正式重试/fallback 执行策略，并放宽异步 HTTP 等待窗口。
+- 为 `/api/v2/workflow-versions/` 增加 Envoy 长请求规则，避免 15 秒默认路由超时。
 - 通过运行时密钥覆盖保存 API Key，仓库和 Liquibase 不保存明文。
 - 补充 Liquibase/PostgreSQL 契约与生产流式测活。
 
