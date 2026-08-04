@@ -10,7 +10,10 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 RUN python -m pip install --upgrade pip \
-    && python -m pip install .
+    && python -m pip install . \
+    && python -m pip uninstall --yes pip setuptools \
+    && ! python -c "import pip" \
+    && ! python -c "import setuptools"
 USER 10001:10001
 EXPOSE 8081
 ENTRYPOINT ["finbot-quant"]
