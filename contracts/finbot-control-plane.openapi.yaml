@@ -5770,19 +5770,162 @@ components:
           items:
             type: string
           type: array
+        modelCapabilities:
+          items:
+            $ref: "#/components/schemas/DiscoveredModelCapability"
+          type: array
         providerProfileId:
           type: string
         status:
           type: string
+        warnings:
+          items:
+            $ref: "#/components/schemas/ModelCatalogWarning"
+          type: array
       required:
         - providerProfileId
         - status
         - models
+        - modelCapabilities
+        - warnings
         - httpStatus
         - latencyMilliseconds
         - errorCode
         - errorMessage
         - checkedAt
+      type: object
+    CapabilitySource:
+      enum:
+        - UNKNOWN
+        - DECLARED
+        - PROBED
+        - MANUAL_OVERRIDE
+      type: string
+    CapabilitySupport:
+      enum:
+        - UNKNOWN
+        - SUPPORTED
+        - UNSUPPORTED
+      type: string
+    ModelAvailability:
+      enum:
+        - UNKNOWN
+        - AVAILABLE
+        - DEGRADED
+        - UNAVAILABLE
+      type: string
+    ModelCapabilitySources:
+      additionalProperties: false
+      properties:
+        availability:
+          $ref: "#/components/schemas/CapabilitySource"
+        supportedProtocols:
+          $ref: "#/components/schemas/CapabilitySource"
+        maximumReasoningEffort:
+          $ref: "#/components/schemas/CapabilitySource"
+        tokenLimitParameterStyles:
+          $ref: "#/components/schemas/CapabilitySource"
+        streaming:
+          $ref: "#/components/schemas/CapabilitySource"
+        tools:
+          $ref: "#/components/schemas/CapabilitySource"
+        multimodal:
+          $ref: "#/components/schemas/CapabilitySource"
+        maximumContextTokens:
+          $ref: "#/components/schemas/CapabilitySource"
+        maximumInputTokens:
+          $ref: "#/components/schemas/CapabilitySource"
+        maximumOutputTokens:
+          $ref: "#/components/schemas/CapabilitySource"
+      required:
+        - availability
+        - supportedProtocols
+        - maximumReasoningEffort
+        - tokenLimitParameterStyles
+        - streaming
+        - tools
+        - multimodal
+        - maximumContextTokens
+        - maximumInputTokens
+        - maximumOutputTokens
+      type: object
+    DiscoveredModelCapability:
+      additionalProperties: false
+      properties:
+        modelName:
+          type: string
+        availability:
+          $ref: "#/components/schemas/ModelAvailability"
+        supportedProtocols:
+          type: array
+          items:
+            type: string
+            enum:
+              - CHAT
+              - RESPONSES
+        maximumReasoningEffort:
+          oneOf:
+            - $ref: "#/components/schemas/ReasoningEffort"
+            - type: "null"
+        tokenLimitParameterStyles:
+          type: array
+          items:
+            $ref: "#/components/schemas/TokenLimitParameterStyle"
+        streaming:
+          $ref: "#/components/schemas/CapabilitySupport"
+        tools:
+          $ref: "#/components/schemas/CapabilitySupport"
+        multimodal:
+          $ref: "#/components/schemas/CapabilitySupport"
+        maximumContextTokens:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 1
+        maximumInputTokens:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 1
+        maximumOutputTokens:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 1
+        sources:
+          $ref: "#/components/schemas/ModelCapabilitySources"
+      required:
+        - modelName
+        - availability
+        - supportedProtocols
+        - maximumReasoningEffort
+        - tokenLimitParameterStyles
+        - streaming
+        - tools
+        - multimodal
+        - maximumContextTokens
+        - maximumInputTokens
+        - maximumOutputTokens
+        - sources
+      type: object
+    ModelCatalogWarning:
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        modelName:
+          type:
+            - string
+            - "null"
+        message:
+          type: string
+      required:
+        - code
+        - modelName
+        - message
       type: object
     ProxyEngine:
       enum:

@@ -1,5 +1,6 @@
 package io.omnnu.finbot.application.workflow.service;
 
+import io.omnnu.finbot.application.shared.port.out.SortableIdGenerator;
 import io.omnnu.finbot.application.workflow.dto.SaveAgentRoleCommand;
 import io.omnnu.finbot.application.workflow.dto.SaveWorkflowDraftCommand;
 import io.omnnu.finbot.application.workflow.dto.WorkflowDefinitionSummary;
@@ -7,9 +8,9 @@ import io.omnnu.finbot.application.workflow.exception.WorkflowManagementConflict
 import io.omnnu.finbot.application.workflow.exception.WorkflowNotFoundException;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowManagementUseCase;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowManagementRepository;
+import io.omnnu.finbot.application.workflow.validation.WorkflowAiBindingValidator;
 import io.omnnu.finbot.application.workflow.validation.WorkflowPublicationValidator;
-
-import io.omnnu.finbot.application.shared.port.out.SortableIdGenerator;
+import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.shared.DomainText;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplate;
 import io.omnnu.finbot.domain.workflow.AgentRoleTemplateId;
@@ -36,14 +37,17 @@ import java.util.Objects;
 
 public final class WorkflowManagementService implements WorkflowManagementUseCase {
     private final WorkflowManagementRepository repository;
+    private final WorkflowAiBindingValidator aiBindingValidator;
     private final SortableIdGenerator idGenerator;
     private final Clock clock;
 
     public WorkflowManagementService(
             WorkflowManagementRepository repository,
+            WorkflowAiBindingValidator aiBindingValidator,
             SortableIdGenerator idGenerator,
             Clock clock) {
         this.repository = Objects.requireNonNull(repository, "repository");
+        this.aiBindingValidator = Objects.requireNonNull(aiBindingValidator, "aiBindingValidator");
         this.idGenerator = Objects.requireNonNull(idGenerator, "idGenerator");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
@@ -124,6 +128,7 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
             throw new WorkflowManagementConflictException("只有草稿版本可以发布");
         }
         WorkflowPublicationValidator.validate(draft);
+        aiBindingValidator.validate(draft);
         return repository.publish(versionId, clock.instant());
     }
 
@@ -159,6 +164,7 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
                 target.nodes(),
                 target.edges());
         WorkflowPublicationValidator.validate(copy);
+        aiBindingValidator.validate(copy);
         var saved = repository.saveDraft(
                 summary.name(), summary.description(), summary.builtIn(), copy, null, now);
         return repository.publish(saved.versionId(), now);
@@ -173,6 +179,9 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
                 .orElseThrow(() -> new WorkflowNotFoundException("工作流不存在"));
         if (active && summary.publishedVersionId() == null) {
             throw new WorkflowManagementConflictException("工作流发布后才能激活");
+        }
+        if (active) {
+            aiBindingValidator.validate(version(summary.publishedVersionId()));
         }
         if (summary.active() == active) {
             return summary;
@@ -197,6 +206,7 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
         var now = clock.instant();
         if (command.roleTemplateId() == null) {
             var role = role(command, new AgentRoleTemplateId(idGenerator.next("role_")), 0, now, now);
+            validateRoleBinding(role);
             return repository.createRole(role);
         }
         var existing = repository.findRole(command.roleTemplateId())
@@ -213,8 +223,16 @@ public final class WorkflowManagementService implements WorkflowManagementUseCas
                 command.expectedVersion() + 1,
                 existing.createdAt(),
                 now);
+        validateRoleBinding(role);
         return repository.updateRole(role, command.expectedVersion())
                 .orElseThrow(() -> new WorkflowManagementConflictException("角色已被修改，请刷新后重试"));
+    }
+
+    private void validateRoleBinding(AgentRoleTemplate role) {
+        aiBindingValidator.validateRoleDefault(new AiModelBinding(
+                role.defaultProviderProfileId(),
+                role.defaultModelName(),
+                role.defaultReasoningEffort()));
     }
 
     @Override

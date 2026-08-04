@@ -1018,7 +1018,47 @@ export interface SetupProfileApplication {
 export interface ProviderModelCatalog {
   providerProfileId: string; status: string; models: string[]; httpStatus: number | null;
   latencyMilliseconds: number | null; errorCode: string | null; errorMessage: string | null;
+  modelCapabilities: DiscoveredModelCapability[];
+  warnings: ModelCatalogWarning[];
   checkedAt: string;
+}
+
+export type CapabilitySource = 'UNKNOWN' | 'DECLARED' | 'PROBED' | 'MANUAL_OVERRIDE';
+export type ModelAvailability = 'UNKNOWN' | 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE';
+export type CapabilitySupport = 'UNKNOWN' | 'SUPPORTED' | 'UNSUPPORTED';
+
+export interface ModelCapabilitySources {
+  availability: CapabilitySource;
+  supportedProtocols: CapabilitySource;
+  maximumReasoningEffort: CapabilitySource;
+  tokenLimitParameterStyles: CapabilitySource;
+  streaming: CapabilitySource;
+  tools: CapabilitySource;
+  multimodal: CapabilitySource;
+  maximumContextTokens: CapabilitySource;
+  maximumInputTokens: CapabilitySource;
+  maximumOutputTokens: CapabilitySource;
+}
+
+export interface DiscoveredModelCapability {
+  modelName: string;
+  availability: ModelAvailability;
+  supportedProtocols: Array<'CHAT' | 'RESPONSES'>;
+  maximumReasoningEffort: ReasoningEffort | null;
+  tokenLimitParameterStyles: TokenLimitParameterStyle[];
+  streaming: CapabilitySupport;
+  tools: CapabilitySupport;
+  multimodal: CapabilitySupport;
+  maximumContextTokens: number | null;
+  maximumInputTokens: number | null;
+  maximumOutputTokens: number | null;
+  sources: ModelCapabilitySources;
+}
+
+export interface ModelCatalogWarning {
+  code: string;
+  modelName: string | null;
+  message: string;
 }
 
 export interface AgentRole {

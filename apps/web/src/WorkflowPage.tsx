@@ -291,8 +291,9 @@ function NodeEditor({ node, schema, providers, models, roles, update, duplicateS
       : <TextField label="受控操作" value={node.operation || ''} onChange={(event) => update({ operation: event.target.value || null })} helperText="填写后端登记的 operation ID，不执行任意脚本或 URL" />}
     {llmBacked && node.primaryAiBinding && <><TextField select label="角色模板" value={node.roleTemplateId || ''} onChange={(event) => { const role = roles.find((item) => item.roleTemplateId === event.target.value); if (!role) { update({ roleTemplateId: null }); return; } update({ roleTemplateId: role.roleTemplateId, logicalRoleKey: isDebateSeat(node.nodeType) ? role.roleTemplateId : null, roleName: role.displayName, systemPrompt: role.systemPrompt, userPromptTemplate: role.userPromptTemplate, outputContract: role.outputContract, primaryAiBinding: { providerProfileId: role.defaultProviderProfileId, modelName: role.defaultModelName, reasoningEffort: role.defaultReasoningEffort } }); }}><MenuItem value="">不绑定模板</MenuItem>{roles.map((role) => <MenuItem key={role.roleTemplateId} value={role.roleTemplateId}>{role.displayName}</MenuItem>)}</TextField><TextField label="角色名称" value={node.roleName || ''} onChange={(event) => update({ roleName: event.target.value })} />{isDebateSeat(node.nodeType) && <TextField label="逻辑角色 Key" value={node.logicalRoleKey || ''} onChange={(event) => update({ logicalRoleKey: event.target.value.toLowerCase() })} helperText="同一角色的异构模型席位必须使用相同 Key；社会选择时该角色总权重固定为 1" inputProps={{ pattern: '^[a-z][a-z0-9_-]{1,79}$' }} />}<TextField select label="输出契约" value={node.outputContract || ''} onChange={(event) => update({ outputContract: event.target.value as WorkflowOutputContract })}>{schema.outputContracts.map((contract) => <MenuItem key={contract} value={contract}>{contract}</MenuItem>)}</TextField><AiBindingEditor title="主模型" binding={node.primaryAiBinding} providers={providers} models={models} efforts={schema.reasoningEfforts} update={(primaryAiBinding) => update({ primaryAiBinding })} /><FormControlLabel control={<Switch checked={node.fallbackAiBinding !== null} onChange={(event) => {
       if (!event.target.checked) { update({ fallbackAiBinding: null }); return; }
-      const fallbackModel = models.find((model) => model.enabled && model.providerProfileId !== providerId(node.primaryAiBinding!)) || models.find((model) => model.enabled) || models[0];
-      if (fallbackModel) update({ fallbackAiBinding: { providerProfileId: fallbackModel.providerProfileId, modelName: fallbackModel.modelName, reasoningEffort: fallbackModel.defaultReasoningEffort } });
+      const alternateProviders = providers.filter((provider) => provider.profileId !== providerId(node.primaryAiBinding!));
+      const fallbackBinding = defaultAiBinding(alternateProviders, models) || defaultAiBinding(providers, models);
+      if (fallbackBinding) update({ fallbackAiBinding: fallbackBinding });
     }} />} label="启用兜底模型" />{node.fallbackAiBinding && <AiBindingEditor title="兜底模型" binding={node.fallbackAiBinding} providers={providers} models={models} efforts={schema.reasoningEfforts} update={(fallbackAiBinding) => update({ fallbackAiBinding })} />}<TextField multiline minRows={5} label="系统提示词" value={node.systemPrompt || ''} onChange={(event) => update({ systemPrompt: event.target.value })} /><TextField multiline minRows={3} label="用户提示模板" value={node.userPromptTemplate || ''} onChange={(event) => update({ userPromptTemplate: event.target.value })} /></>}
     <TextField select label="上下文模式" value={node.contextMode} onChange={(event) => update({ contextMode: event.target.value })}>{schema.contextModes.map((mode) => <MenuItem key={mode} value={mode}>{mode}</MenuItem>)}</TextField><Stack direction="row" spacing={1}><TextField label="历史轮次" type="number" value={node.contextHistoryRounds} onChange={(event) => update({ contextHistoryRounds: Number(event.target.value) })} /><TextField label="上下文消息" type="number" value={node.contextMaximumMessages} onChange={(event) => update({ contextMaximumMessages: Number(event.target.value) })} /></Stack><Stack direction="row" spacing={1}><TextField label="重试次数" type="number" value={node.retryMaximumAttempts} onChange={(event) => update({ retryMaximumAttempts: Number(event.target.value) })} /><TextField label="退避秒数" type="number" value={node.retryBackoffSeconds} onChange={(event) => update({ retryBackoffSeconds: Number(event.target.value) })} /></Stack><Stack direction="row" spacing={1}><TextField label="最大 Token" type="number" value={node.maximumOutputTokens} onChange={(event) => update({ maximumOutputTokens: Number(event.target.value) })} /><TextField label="超时秒数" type="number" value={node.timeoutSeconds} onChange={(event) => update({ timeoutSeconds: Number(event.target.value) })} inputProps={{ min: 5, max: 3600, step: 1 }} /></Stack>
   </Stack>;
@@ -342,13 +343,17 @@ function ConditionOperandEditor({ operand, update }: { operand: NonNullable<Work
 
 function AiBindingEditor({ title, binding, providers, models, efforts, update }: { title: string; binding: AiModelBinding; providers: AiProvider[]; models: AiModel[]; efforts: ReasoningEffort[]; update: (binding: AiModelBinding) => void }) {
   const selectedProviderId = providerId(binding);
-  const providerModels = models.filter((model) => model.providerProfileId === selectedProviderId);
+  const selectableProviders = providers.filter((provider) => provider.enabled && enabledModelsForProvider(models, provider.profileId).length > 0);
+  const providerModels = enabledModelsForProvider(models, selectedProviderId);
   const selectedModel = providerModels.find((model) => model.modelName === binding.modelName);
   const supportedEfforts = selectedModel ? reasoningEffortsForModel(efforts, selectedModel) : efforts;
-  return <Stack spacing={1.25} sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 1.5 }}><Typography variant="subtitle2">{title}</Typography><TextField select label="AI 厂商" value={selectedProviderId} onChange={(event) => {
-    const nextModel = models.find((model) => model.enabled && model.providerProfileId === event.target.value) || models.find((model) => model.providerProfileId === event.target.value);
-    update({ providerProfileId: event.target.value, modelName: nextModel?.modelName || binding.modelName, reasoningEffort: nextModel?.defaultReasoningEffort || binding.reasoningEffort });
-  }}>{providers.map((provider) => <MenuItem key={provider.profileId} value={provider.profileId}>{provider.displayName}</MenuItem>)}</TextField><TextField select label="模型" value={binding.modelName} onChange={(event) => { const model = providerModels.find((item) => item.modelName === event.target.value); update({ ...binding, modelName: event.target.value, reasoningEffort: model?.defaultReasoningEffort || binding.reasoningEffort }); }}>{providerModels.map((model) => <MenuItem key={model.modelProfileId} value={model.modelName}>{model.modelName}</MenuItem>)}{!providerModels.some((model) => model.modelName === binding.modelName) && <MenuItem value={binding.modelName}>{binding.modelName}</MenuItem>}</TextField><TextField select label="思考强度" value={binding.reasoningEffort} onChange={(event) => update({ ...binding, reasoningEffort: event.target.value as ReasoningEffort })}>{supportedEfforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField></Stack>;
+  const providerValue = selectableProviders.some((provider) => provider.profileId === selectedProviderId) ? selectedProviderId : '';
+  const modelValue = selectedModel?.modelName || '';
+  return <Stack spacing={1.25} sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 1.5 }}><Typography variant="subtitle2">{title}</Typography>{(!providerValue || !modelValue) && <Alert severity="error">当前绑定的厂商或模型已停用，请重新选择后再发布。</Alert>}<TextField select label="AI 厂商" value={providerValue} onChange={(event) => {
+    const nextModel = enabledModelsForProvider(models, event.target.value)[0];
+    if (!nextModel) return;
+    update({ providerProfileId: event.target.value, modelName: nextModel.modelName, reasoningEffort: nextModel.defaultReasoningEffort });
+  }}><MenuItem value="" disabled>请选择启用的厂商</MenuItem>{selectableProviders.map((provider) => <MenuItem key={provider.profileId} value={provider.profileId}>{provider.displayName}</MenuItem>)}</TextField><TextField select label="模型" value={modelValue} onChange={(event) => { const model = providerModels.find((item) => item.modelName === event.target.value); if (!model) return; update({ ...binding, modelName: model.modelName, reasoningEffort: model.defaultReasoningEffort }); }}><MenuItem value="" disabled>请选择启用的模型</MenuItem>{providerModels.map((model) => <MenuItem key={model.modelProfileId} value={model.modelName}>{model.modelName}</MenuItem>)}</TextField><TextField select label="思考强度" value={binding.reasoningEffort} onChange={(event) => update({ ...binding, reasoningEffort: event.target.value as ReasoningEffort })}>{supportedEfforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField></Stack>;
 }
 
 function providerId(binding: AiModelBinding): string {
@@ -436,13 +441,14 @@ function failurePolicyLabel(policy: string): string {
   return ({ STOP: '失败即停止', CONTINUE: '记录失败并继续', REPLAN: '停止并请求重规划' } as Record<string, string>)[policy] || policy;
 }
 
-function defaultAiBinding(providers: AiProvider[], models: AiModel[]): AiModelBinding | null {
-  const provider = providers.find((item) => item.enabled) || providers[0];
-  const model = models.find((item) => item.enabled && item.providerProfileId === provider?.profileId)
-    || models.find((item) => item.providerProfileId === provider?.profileId)
-    || models.find((item) => item.enabled)
-    || models[0];
-  if (!provider || !model) return null;
+export function enabledModelsForProvider(models: AiModel[], providerProfileId: string): AiModel[] {
+  return models.filter((model) => model.enabled && model.providerProfileId === providerProfileId);
+}
+
+export function defaultAiBinding(providers: AiProvider[], models: AiModel[]): AiModelBinding | null {
+  const provider = providers.find((candidate) => candidate.enabled && enabledModelsForProvider(models, candidate.profileId).length > 0);
+  if (!provider) return null;
+  const model = enabledModelsForProvider(models, provider.profileId)[0];
   return { providerProfileId: provider.profileId, modelName: model.modelName, reasoningEffort: model.defaultReasoningEffort };
 }
 

@@ -227,23 +227,17 @@ async function validateWebModelDeclarations(document, file) {
     interfaces.set(node.name.text, { properties, parents });
   });
 
-  const responseModels = new Set();
-  for (const pathItem of Object.values(document.paths)) {
-    for (const [method, operation] of Object.entries(pathItem)) {
-      if (!httpMethods.has(method)) continue;
-      const responseType = operation['x-finbot-web-response-type'];
-      if (typeof responseType === 'string' && responseType !== 'void') {
-        responseModels.add(responseType.replace(/\[\]$/, ''));
-      }
-    }
-  }
+  const rootResponseModels = webResponseModelNames(document);
+  const responseModels = reachableResponseObjectModels(document);
 
   const violations = [];
   for (const modelName of [...responseModels].sort()) {
     const declaration = inheritedInterfaceProperties(modelName, interfaces);
     const schema = document.components?.schemas?.[modelName];
     if (!declaration) {
-      violations.push(`${modelName} has no hand-written Web interface`);
+      if (rootResponseModels.has(modelName)) {
+        violations.push(`${modelName} has no hand-written Web interface`);
+      }
       continue;
     }
     if (!schema || schema.type !== 'object') {
@@ -266,6 +260,60 @@ async function validateWebModelDeclarations(document, file) {
   if (violations.length > 0) {
     throw new Error(`OpenAPI/hand-written Web model drift:\n${violations.join('\n')}`);
   }
+}
+
+function webResponseModelNames(document) {
+  const models = new Set();
+  for (const pathItem of Object.values(document.paths)) {
+    for (const [method, operation] of Object.entries(pathItem)) {
+      if (!httpMethods.has(method)) continue;
+      const responseType = operation['x-finbot-web-response-type'];
+      if (typeof responseType === 'string' && responseType !== 'void') {
+        models.add(responseType.replace(/\[\]$/, ''));
+      }
+    }
+  }
+  return models;
+}
+
+function reachableResponseObjectModels(document) {
+  const reachable = new Set();
+  const visitedReferences = new Set();
+
+  const visit = (schema) => {
+    if (!schema || typeof schema !== 'object') return;
+    if (typeof schema.$ref === 'string') {
+      const modelName = referenceName(schema.$ref);
+      if (!modelName || visitedReferences.has(schema.$ref)) return;
+      visitedReferences.add(schema.$ref);
+      const referencedSchema = resolveLocalReference(document, schema);
+      if (referencedSchema?.type === 'object') reachable.add(modelName);
+      visit(referencedSchema);
+      return;
+    }
+    visit(schema.items);
+    if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+      visit(schema.additionalProperties);
+    }
+    for (const property of Object.values(schema.properties ?? {})) visit(property);
+    for (const branch of schema.allOf ?? []) visit(branch);
+    for (const branch of schema.anyOf ?? []) visit(branch);
+    for (const branch of schema.oneOf ?? []) visit(branch);
+  };
+
+  for (const pathItem of Object.values(document.paths)) {
+    for (const [method, operation] of Object.entries(pathItem)) {
+      if (!httpMethods.has(method)) continue;
+      if (typeof operation['x-finbot-web-response-type'] !== 'string'
+          || operation['x-finbot-web-response-type'] === 'void') continue;
+      for (const [status, response] of Object.entries(operation.responses ?? {})) {
+        if (!/^2\d\d$/.test(status)) continue;
+        const resolvedResponse = resolveLocalReference(document, response);
+        visit(resolvedResponse?.content?.['application/json']?.schema);
+      }
+    }
+  }
+  return reachable;
 }
 
 function inheritedInterfaceProperties(modelName, interfaces, visiting = new Set()) {

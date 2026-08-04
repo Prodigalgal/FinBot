@@ -135,6 +135,7 @@ import io.omnnu.finbot.application.workflow.service.WorkflowDiagnosticsService;
 import io.omnnu.finbot.application.workflow.service.SdbScaDebateExecutionService;
 import io.omnnu.finbot.application.workflow.service.WorkflowExecutionService;
 import io.omnnu.finbot.application.workflow.service.WorkflowManagementService;
+import io.omnnu.finbot.application.workflow.validation.WorkflowAiBindingValidator;
 import io.omnnu.finbot.application.workflow.service.WorkflowRunApplicationService;
 import io.omnnu.finbot.application.workflow.service.WorkflowRunFailureService;
 import io.omnnu.finbot.application.workflow.service.WorkflowRunResumeService;
@@ -334,9 +335,14 @@ public class RuntimeConfiguration {
     @Bean
     WorkflowManagementUseCase workflowManagementUseCase(
             WorkflowManagementRepository repository,
+            ConfigurationRepository configuration,
             SortableIdGenerator idGenerator,
             Clock clock) {
-        return new WorkflowManagementService(repository, idGenerator, clock);
+        return new WorkflowManagementService(
+                repository,
+                new WorkflowAiBindingValidator(configuration),
+                idGenerator,
+                clock);
     }
 
     @Bean

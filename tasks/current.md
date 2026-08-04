@@ -2,6 +2,13 @@
 
 > 2026-07-23 以 `main@e714266`、Liquibase `67/67`、FinBot GitOps 发布提交 `b59aad1` 和生产 K8S 为事实基线。共享 GitOps 仓库后续 revision 可能因其他应用前进，应以 FinBot 镜像与资源差异判断实际发布。完成任务只保留索引，不再在本页重复流水账。
 
+## P0：OpenAI-Compatible 模型能力发现与发布校验
+
+- 目标：保持任意 OpenAI Chat Completions / Responses 兼容端点可插拔，增加厂商无关的可选能力发现、能力来源和工作流发布前确定性配置校验。
+- 边界：不增加厂商名称分支，不把短时运行健康作为发布硬门禁，不在发布事务中请求外部模型。
+- 任务：[`in-progress/TASK-20260804-openai-compatible-model-capabilities.md`](./in-progress/TASK-20260804-openai-compatible-model-capabilities.md)。
+- 状态：厂商无关能力契约、目录解析、发布门禁、OpenAPI、UI 和本地全量验证已完成；等待 CI/GitOps 与生产真实目录/节点验收。
+
 ## P0：Any2API 研究流程路由
 
 - 目标：将清洗、事实抽取、压缩验证和 SDB-SCA 研究席位统一接入 Any2API，同时维持上游模型异构性。
