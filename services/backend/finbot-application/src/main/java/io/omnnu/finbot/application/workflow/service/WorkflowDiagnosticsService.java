@@ -15,7 +15,7 @@ import io.omnnu.finbot.application.workflow.port.out.WorkflowEventPublisher;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
 import io.omnnu.finbot.application.workflow.validation.WorkflowPublicationValidator;
 
-import io.omnnu.finbot.application.ai.service.WorkflowAiInvoker;
+import io.omnnu.finbot.application.ai.service.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.configuration.port.in.ConfigurationUseCase;
 import io.omnnu.finbot.application.shared.service.IdempotencyKeys;
 import io.omnnu.finbot.application.shared.port.out.SortableIdGenerator;
@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
 
 public final class WorkflowDiagnosticsService implements WorkflowDiagnosticsUseCase {
     private static final BigDecimal MILLION = new BigDecimal("1000000");
@@ -51,7 +52,7 @@ public final class WorkflowDiagnosticsService implements WorkflowDiagnosticsUseC
     private final WorkflowExecutionStore executionStore;
     private final WorkflowRunFailureUseCase failureUseCase;
     private final WorkflowEventPublisher eventPublisher;
-    private final WorkflowAiInvoker aiInvoker;
+    private final AiExecutionPolicyExecutor aiExecution;
     private final SortableIdGenerator idGenerator;
     private final Clock clock;
     private final Executor executor;
@@ -63,7 +64,7 @@ public final class WorkflowDiagnosticsService implements WorkflowDiagnosticsUseC
             WorkflowExecutionStore executionStore,
             WorkflowRunFailureUseCase failureUseCase,
             WorkflowEventPublisher eventPublisher,
-            WorkflowAiInvoker aiInvoker,
+            AiExecutionPolicyExecutor aiExecution,
             SortableIdGenerator idGenerator,
             Clock clock,
             Executor executor) {
@@ -73,7 +74,7 @@ public final class WorkflowDiagnosticsService implements WorkflowDiagnosticsUseC
         this.executionStore = Objects.requireNonNull(executionStore, "executionStore");
         this.failureUseCase = Objects.requireNonNull(failureUseCase, "failureUseCase");
         this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
-        this.aiInvoker = Objects.requireNonNull(aiInvoker, "aiInvoker");
+        this.aiExecution = Objects.requireNonNull(aiExecution, "aiExecution");
         this.idGenerator = Objects.requireNonNull(idGenerator, "idGenerator");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.executor = Objects.requireNonNull(executor, "executor");
@@ -230,12 +231,15 @@ public final class WorkflowDiagnosticsService implements WorkflowDiagnosticsUseC
                 null,
                 startedAt));
         try {
-            var result = aiInvoker.invokeDetailed(
+            var result = aiExecution.execute(
                     started.runId(),
                     version,
                     node,
                     prompt,
-                    startedAt.plus(Duration.ofSeconds(node.timeoutSeconds())));
+                    startedAt.plus(Duration.ofSeconds(node.timeoutSeconds())),
+                    1,
+                    Function.identity(),
+                    AiExecutionPolicyExecutor.AiAttemptListener.noOp()).invocation();
             var completedAt = clock.instant();
             executionStore.saveCheckpoint(new WorkflowCheckpoint(
                     checkpointId,

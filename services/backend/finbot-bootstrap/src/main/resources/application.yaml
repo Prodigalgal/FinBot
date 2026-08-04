@@ -6,6 +6,9 @@ spring:
   threads:
     virtual:
       enabled: true
+  mvc:
+    async:
+      request-timeout: ${FINBOT_HTTP_ASYNC_REQUEST_TIMEOUT:PT10M}
   datasource:
     url: ${FINBOT_DATABASE_URL:jdbc:postgresql://localhost:5432/finbot}
     username: ${FINBOT_DATABASE_USERNAME:finbot}

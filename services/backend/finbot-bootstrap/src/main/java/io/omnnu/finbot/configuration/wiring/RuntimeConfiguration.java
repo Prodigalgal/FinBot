@@ -488,7 +488,7 @@ public class RuntimeConfiguration {
             WorkflowExecutionStore executionStore,
             WorkflowRunFailureUseCase failureUseCase,
             WorkflowEventPublisher eventPublisher,
-            WorkflowAiInvoker aiInvoker,
+            AiExecutionPolicyExecutor aiExecution,
             SortableIdGenerator idGenerator,
             Clock clock,
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
@@ -499,7 +499,7 @@ public class RuntimeConfiguration {
                 executionStore,
                 failureUseCase,
                 eventPublisher,
-                aiInvoker,
+                aiExecution,
                 idGenerator,
                 clock,
                 executor);
