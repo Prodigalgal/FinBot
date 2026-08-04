@@ -46,4 +46,21 @@ SDB-SCA 确定性社会选择和最终执行机器人保持不变。
 - [x] Provider/模型目录与 v10 工作流迁移
 - [x] 模型级 token-limit 能力契约与 UI 配置
 - [x] 自动化测试
-- [ ] CI/GitOps 与生产运行态验证
+- [x] CI/GitOps 与生产运行态验证
+
+## 生产验收
+
+- 源码 revision：`3513627f340b645ecb757035d7006aaca8cc1a6f`。
+- GitHub Actions：run `30884853950` 全绿；Java/PostgreSQL、OpenAPI、Web、Python、系统 smoke、镜像扫描和签名全部通过。
+- GitOps revision：`f7bb41cd40349c073a43fdd175810aa9226ff895`；ArgoCD `finbot` 为 `Synced/Healthy`。
+- Backend、Web、Quant、Browser Worker 均为 `sha-3513627...`、单副本 `Ready`、零重启。
+- Any2API 密钥来源为 `DATABASE_OVERRIDE`，Provider probe 为 `READY`，发现 42 个模型；仓库 Secret scan 未发现明文密钥。
+- v10 为 `PUBLISHED/SDB_SCA_V1`：15 个研究 AI 节点使用 Any2API；确定性 `SOCIAL_CHOICE` 无 AI binding；两个最终执行节点保持 GPT-5.6 Sol/MAX 配置不变。
+- 真实节点运行：LongCat、MiniMax、MiMo、GLM、DeepSeek 均得到成功结果；GLM 辩论席位最长一次约 131 秒。
+- 最终公网 smoke：LongCat 清洗节点经 Cloudflare 在 57.8 秒返回 `COMPLETED` JSON，去除重复块并保留时间、数值和引用，未再触发旧 15 秒 504。
+
+## 遗留外部风险
+
+- Any2API 的 DeepSeek、LongCat、MiniMax usage 可能返回 `0/0`，MiMo 曾对短输入报告偏大的 prompt tokens；成本核算需要上游统一 usage 口径。
+- Qwen 目录可发现但真实调用曾返回 502，MiniMax M2.7-highspeed 曾返回额度耗尽，继续排除在默认工作流之外。
+- `/v1/models` 尚未携带模型级 `supported_parameters`；FinBot 已提供模型能力热配置，但上游若直接暴露该契约可进一步自动化探测。

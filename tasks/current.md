@@ -9,7 +9,7 @@
 - 模型准入：仅使用已通过真实 Chat Completions 流式、`reasoning_effort=max` 和 SSE 终态验证的 DeepSeek、GLM、LongCat、MiMo、MiniMax；Qwen 当前 502，MiniMax M2.7-highspeed 当前额度错误，不进入默认工作流。
 - 密钥：Any2API API Key 仅通过 `runtime_secret_override` 热配置，不写入 Git、Liquibase 或镜像。
 - 任务：[`in-progress/TASK-20260804-any2api-research-routing.md`](./in-progress/TASK-20260804-any2api-research-routing.md)。
-- 状态：目录、管理面、非流式/流式和最大 reasoning 实测已完成；v10 迁移、测试与生产发布进行中。
+- 状态：已完成。v10、模型能力契约、诊断重试/fallback、长请求路由、CI/GitOps 和生产真实节点验收均已闭环；主席与最终执行保持原配置。
 
 ## P0：SDB-SCA 双盲同时辩论升级
 
