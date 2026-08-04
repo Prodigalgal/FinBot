@@ -2,6 +2,15 @@
 
 > 2026-07-23 以 `main@e714266`、Liquibase `67/67`、FinBot GitOps 发布提交 `b59aad1` 和生产 K8S 为事实基线。共享 GitOps 仓库后续 revision 可能因其他应用前进，应以 FinBot 镜像与资源差异判断实际发布。完成任务只保留索引，不再在本页重复流水账。
 
+## P0：Any2API 研究流程路由
+
+- 目标：将清洗、事实抽取、压缩验证和 SDB-SCA 研究席位统一接入 Any2API，同时维持上游模型异构性。
+- 边界：确定性 `SOCIAL_CHOICE` 与 `gpt-5.6-sol/MAX` 最终执行初审/反思保持不变；采集、量化、交易所和 AI Web Search 不迁移。
+- 模型准入：仅使用已通过真实 Chat Completions 流式、`reasoning_effort=max` 和 SSE 终态验证的 DeepSeek、GLM、LongCat、MiMo、MiniMax；Qwen 当前 502，MiniMax M2.7-highspeed 当前额度错误，不进入默认工作流。
+- 密钥：Any2API API Key 仅通过 `runtime_secret_override` 热配置，不写入 Git、Liquibase 或镜像。
+- 任务：[`in-progress/TASK-20260804-any2api-research-routing.md`](./in-progress/TASK-20260804-any2api-research-routing.md)。
+- 状态：目录、管理面、非流式/流式和最大 reasoning 实测已完成；v10 迁移、测试与生产发布进行中。
+
 ## P0：SDB-SCA 双盲同时辩论升级
 
 - 目标：消除顺序锚定、后发优势、模型身份偏见和单一 Chair 终局偏差，以 barrier 隔离和确定性社会选择输出可执行共识。
