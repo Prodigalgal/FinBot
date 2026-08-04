@@ -9,10 +9,12 @@ import io.omnnu.finbot.domain.debate.DebatePhaseId;
 import io.omnnu.finbot.domain.debate.DebatePhaseType;
 import io.omnnu.finbot.domain.debate.DebateTaskId;
 import io.omnnu.finbot.domain.debate.DebateTaskVariant;
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.workflow.DebateId;
 import io.omnnu.finbot.domain.workflow.WorkflowCheckpointId;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
+import io.omnnu.finbot.application.workflow.dto.DebateSession;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -22,8 +24,8 @@ final class WorkflowExecutionIds {
     private WorkflowExecutionIds() {
     }
 
-    static DebateId debate(WorkflowRunId runId) {
-        return new DebateId(identifier("debate_", runId.value()));
+    static DebateId debate(WorkflowRunId runId, DecisionPanelKey panelKey) {
+        return new DebateId(identifier("debate_", runId.value(), panelKey.value()));
     }
 
     static WorkflowCheckpointId checkpoint(
@@ -38,6 +40,20 @@ final class WorkflowExecutionIds {
     }
 
     static AgentMessageId message(
+            DebateSession session,
+            WorkflowNodeId nodeId,
+            int roundIndex) {
+        if (session.inputHash() == null) {
+            return legacyMessage(session.runId(), nodeId, roundIndex);
+        }
+        return new AgentMessageId(identifier(
+                "message_",
+                session.debateId().value(),
+                nodeId.value(),
+                Integer.toString(roundIndex)));
+    }
+
+    private static AgentMessageId legacyMessage(
             WorkflowRunId runId,
             WorkflowNodeId nodeId,
             int roundIndex) {

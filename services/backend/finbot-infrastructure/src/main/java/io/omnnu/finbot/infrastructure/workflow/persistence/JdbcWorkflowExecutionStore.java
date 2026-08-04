@@ -8,7 +8,11 @@ import io.omnnu.finbot.application.workflow.dto.DebateSession;
 import io.omnnu.finbot.application.workflow.dto.WorkflowCheckpoint;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
 import io.omnnu.finbot.application.market.dto.ResearchMarketScope;
+import io.omnnu.finbot.application.workflow.exception.DecisionPanelSeedConflictException;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
+import io.omnnu.finbot.domain.debate.DecisionPanelInputHash;
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
+import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowManagementRepository;
 import io.omnnu.finbot.domain.workflow.AgentClaim;
 import io.omnnu.finbot.domain.workflow.AgentMessage;
@@ -148,9 +152,22 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 .update();
         if (changed == 1) {
             jdbcClient.sql("""
-                    update debate_session
-                    set status = 'RUNNING', completed_at = null
-                    where run_id = :runId and status = 'FAILED'
+                    with failed_panel as (
+                      select debate_id
+                      from debate_session
+                      where run_id = :runId and status = 'FAILED'
+                      order by case panel_purpose
+                        when 'EVIDENCE' then 1
+                        when 'RESEARCH' then 2
+                        when 'PRINCIPAL_REVIEW' then 3
+                        when 'EXECUTION' then 4
+                        else 5
+                      end, panel_key
+                      limit 1
+                    )
+                    update debate_session debate
+                    set status = 'RUNNING', completed_at = null, version = debate.version + 1
+                    where debate.debate_id = (select debate_id from failed_panel)
                     """)
                     .param("runId", runId.value())
                     .update();
@@ -240,63 +257,153 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
     public void startDebate(DebateSession session) {
         jdbcClient.sql("""
                 insert into debate_session (
-                  debate_id, run_id, status, configured_rounds, completed_rounds,
-                  decision_node_id, started_at, completed_at
+                  debate_id, run_id, panel_key, panel_purpose, input_hash,
+                  status, configured_rounds, completed_rounds,
+                  decision_node_id, started_at, completed_at, version
                 ) values (
-                  :debateId, :runId, :status, :configuredRounds, :completedRounds,
-                  :decisionNodeId, :startedAt, :completedAt
-                ) on conflict (run_id) do nothing
+                  :debateId, :runId, :panelKey, :panelPurpose, :inputHash,
+                  :status, :configuredRounds, :completedRounds,
+                  :decisionNodeId, :startedAt, :completedAt, :version
+                ) on conflict (run_id, panel_key) do nothing
                 """)
                 .param("debateId", session.debateId().value())
                 .param("runId", session.runId().value())
+                .param("panelKey", session.panelKey().value())
+                .param("panelPurpose", session.panelPurpose().name())
+                .param("inputHash", session.inputHash() == null ? null : session.inputHash().value())
                 .param("status", session.status().name())
                 .param("configuredRounds", session.configuredRounds())
                 .param("completedRounds", session.completedRounds())
                 .param("decisionNodeId", session.decisionNodeId().value())
                 .param("startedAt", timestamp(session.startedAt()))
                 .param("completedAt", timestamp(session.completedAt()))
+                .param("version", session.version())
                 .update();
+        var persisted = findDebate(session.runId(), session.panelKey())
+                .orElseThrow(() -> new IllegalStateException("Decision panel session was not persisted"));
+        if (persisted.panelPurpose() != session.panelPurpose()
+                || !persisted.decisionNodeId().equals(session.decisionNodeId())
+                || persisted.configuredRounds() != session.configuredRounds()
+                || !Objects.equals(persisted.inputHash(), session.inputHash())) {
+            throw new DecisionPanelSeedConflictException(
+                    "Decision panel seed conflicts with the persisted session");
+        }
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<DebateSession> findDebate(WorkflowRunId runId) {
+    public Optional<DebateSession> findDebate(WorkflowRunId runId, DecisionPanelKey panelKey) {
         return jdbcClient.sql("""
-                select debate_id, status, configured_rounds, completed_rounds,
-                       decision_node_id, started_at, completed_at
-                from debate_session where run_id = :runId
+                select debate_id, panel_key, panel_purpose, input_hash, status,
+                       configured_rounds, completed_rounds, decision_node_id,
+                       started_at, completed_at, version
+                from debate_session
+                where run_id = :runId and panel_key = :panelKey
                 """)
                 .param("runId", runId.value())
-                .query((resultSet, rowNumber) -> new DebateSession(
-                        new DebateId(resultSet.getString("debate_id")),
-                        runId,
-                        DebateStatus.valueOf(resultSet.getString("status")),
-                        resultSet.getInt("configured_rounds"),
-                        resultSet.getInt("completed_rounds"),
-                        new WorkflowNodeId(resultSet.getString("decision_node_id")),
-                        instant(resultSet.getObject("started_at", OffsetDateTime.class)),
-                        nullableInstant(resultSet.getObject("completed_at", OffsetDateTime.class))))
+                .param("panelKey", panelKey.value())
+                .query((resultSet, rowNumber) -> debateSession(resultSet, runId))
                 .optional();
     }
 
     @Override
-    public void updateDebate(
+    @Transactional(readOnly = true)
+    public List<DebateSession> debates(WorkflowRunId runId) {
+        return jdbcClient.sql("""
+                select debate_id, panel_key, panel_purpose, input_hash, status,
+                       configured_rounds, completed_rounds, decision_node_id,
+                       started_at, completed_at, version
+                from debate_session
+                where run_id = :runId
+                order by panel_key
+                """)
+                .param("runId", runId.value())
+                .query((resultSet, rowNumber) -> debateSession(resultSet, runId))
+                .list();
+    }
+
+    @Override
+    public long recordDebateProgress(
             DebateId debateId,
+            long expectedVersion,
+            int completedRounds) {
+        var changed = jdbcClient.sql("""
+                update debate_session
+                set completed_rounds = :completedRounds,
+                    version = version + 1
+                where debate_id = :debateId
+                  and version = :expectedVersion
+                  and status = 'RUNNING'
+                  and completed_rounds <= :completedRounds
+                """)
+                .param("debateId", debateId.value())
+                .param("expectedVersion", expectedVersion)
+                .param("completedRounds", completedRounds)
+                .update();
+        if (changed == 1) {
+            return expectedVersion + 1;
+        }
+        return jdbcClient.sql("""
+                select version from debate_session
+                where debate_id = :debateId
+                  and status = 'RUNNING'
+                  and completed_rounds = :completedRounds
+                  and version = :replayedVersion
+                """)
+                .param("debateId", debateId.value())
+                .param("completedRounds", completedRounds)
+                .param("replayedVersion", expectedVersion + 1)
+                .query(Long.class)
+                .optional()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Decision panel progress lost its version or status race"));
+    }
+
+    @Override
+    public void transitionDebate(
+            DebateId debateId,
+            long expectedVersion,
             DebateStatus status,
             int completedRounds,
             Instant completedAt) {
-        jdbcClient.sql("""
+        if (status == DebateStatus.RUNNING) {
+            throw new IllegalArgumentException("transitionDebate requires a terminal status");
+        }
+        var changed = jdbcClient.sql("""
                 update debate_session
                 set status = :status,
                     completed_rounds = :completedRounds,
-                    completed_at = :completedAt
+                    completed_at = :completedAt,
+                    version = version + 1
                 where debate_id = :debateId
+                  and version = :expectedVersion
+                  and status = 'RUNNING'
                 """)
                 .param("debateId", debateId.value())
+                .param("expectedVersion", expectedVersion)
                 .param("status", status.name())
                 .param("completedRounds", completedRounds)
                 .param("completedAt", timestamp(completedAt))
                 .update();
+        if (changed == 1) {
+            return;
+        }
+        var alreadyApplied = jdbcClient.sql("""
+                select count(*) from debate_session
+                where debate_id = :debateId
+                  and status = :status
+                  and completed_rounds = :completedRounds
+                  and version = :replayedVersion
+                """)
+                .param("debateId", debateId.value())
+                .param("status", status.name())
+                .param("completedRounds", completedRounds)
+                .param("replayedVersion", expectedVersion + 1)
+                .query(Integer.class)
+                .single() == 1;
+        if (!alreadyApplied) {
+            throw new IllegalStateException("Decision panel transition lost its version or status race");
+        }
     }
 
     @Override
@@ -515,6 +622,23 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to encode workflow execution value", exception);
         }
+    }
+
+    private static DebateSession debateSession(ResultSet resultSet, WorkflowRunId runId) throws SQLException {
+        var inputHash = resultSet.getString("input_hash");
+        return new DebateSession(
+                new DebateId(resultSet.getString("debate_id")),
+                runId,
+                new DecisionPanelKey(resultSet.getString("panel_key")),
+                DecisionPanelPurpose.valueOf(resultSet.getString("panel_purpose")),
+                inputHash == null ? null : new DecisionPanelInputHash(inputHash),
+                DebateStatus.valueOf(resultSet.getString("status")),
+                resultSet.getInt("configured_rounds"),
+                resultSet.getInt("completed_rounds"),
+                new WorkflowNodeId(resultSet.getString("decision_node_id")),
+                instant(resultSet.getObject("started_at", OffsetDateTime.class)),
+                nullableInstant(resultSet.getObject("completed_at", OffsetDateTime.class)),
+                resultSet.getLong("version"));
     }
 
     private static Instant instant(OffsetDateTime value) {

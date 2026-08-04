@@ -37,6 +37,7 @@ import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.workflow.AgentMessage;
 import io.omnnu.finbot.domain.workflow.AgentMessageContent;
 import io.omnnu.finbot.domain.workflow.AgentMessageStatus;
@@ -255,6 +256,60 @@ class WorkflowExecutionServiceTest {
         assertEquals("provider_test_default", chairRequests.get(0).providerProfileId().value());
         assertEquals("provider_fallback_default", chairRequests.get(1).providerProfileId().value());
         assertEquals(WorkflowRunStatus.COMPLETED, store.status());
+    }
+
+    @Test
+    void completesWorkflowWithoutReplayingAiWhenPanelAlreadyReachedTerminalState() {
+        var version = workflowVersion();
+        var store = new InMemoryExecutionStore(new WorkflowExecutionContext(
+                RUN_ID,
+                WorkflowRunStatus.ACCEPTED,
+                "Analyze BTC liquidity and directional risk",
+                "{\"evidence\":[{\"evidence_id\":\"evidence_test\"}]}",
+                version));
+        store.startDebate(new DebateSession(
+                new DebateId("debate_terminal_recovery"),
+                RUN_ID,
+                DecisionPanelKey.RESEARCH,
+                io.omnnu.finbot.domain.debate.DecisionPanelPurpose.RESEARCH,
+                null,
+                DebateStatus.COMPLETED,
+                3,
+                3,
+                new WorkflowNodeId("node_chair00"),
+                NOW.minusSeconds(60),
+                NOW,
+                4));
+        var gateway = new RecordingCompletionGateway();
+        var events = new RecordingEventPublisher();
+        var ids = new AtomicInteger();
+        var invoker = new WorkflowAiInvoker(
+                gateway,
+                ignored -> new AiRuntimeBinding(AiProtocol.CHAT, ReasoningEffort.MAX),
+                new NoOpAuditStore(),
+                new NoOpBudgetStore(),
+                events,
+                prefix -> prefix + "recovery" + ids.incrementAndGet(),
+                CLOCK);
+
+        try (var executor = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().factory())) {
+            var service = new WorkflowExecutionService(
+                    store,
+                    events,
+                    new WorkflowRunFailureService(store, events),
+                    new AiExecutionPolicyExecutor(invoker, CLOCK),
+                    outputParser(),
+                    ignored -> {
+                        throw new AssertionError("Legacy workflow must not use the SDB-SCA runner");
+                    },
+                    CLOCK,
+                    executor);
+            service.execute(RUN_ID).toCompletableFuture().join();
+        }
+
+        assertEquals(WorkflowRunStatus.COMPLETED, store.status());
+        assertEquals(0, gateway.requests().size());
+        assertEquals(4, store.debate().orElseThrow().version());
     }
 
     private static StructuredAiOutputParser outputParser() {
@@ -500,7 +555,7 @@ class WorkflowExecutionServiceTest {
         private final WorkflowExecutionContext initialContext;
         private final AtomicReference<WorkflowRunStatus> status =
                 new AtomicReference<>(WorkflowRunStatus.ACCEPTED);
-        private final AtomicReference<DebateSession> debate = new AtomicReference<>();
+        private final Map<DecisionPanelKey, DebateSession> debates = new ConcurrentHashMap<>();
         private final Map<String, WorkflowCheckpoint> checkpoints = new ConcurrentHashMap<>();
         private final List<AgentMessage> messages = new CopyOnWriteArrayList<>();
 
@@ -548,29 +603,86 @@ class WorkflowExecutionServiceTest {
 
         @Override
         public void startDebate(DebateSession session) {
-            debate.compareAndSet(null, session);
+            debates.putIfAbsent(session.panelKey(), session);
         }
 
         @Override
-        public Optional<DebateSession> findDebate(WorkflowRunId runId) {
-            return Optional.ofNullable(debate.get());
+        public Optional<DebateSession> findDebate(WorkflowRunId runId, DecisionPanelKey panelKey) {
+            return Optional.ofNullable(debates.get(panelKey));
         }
 
         @Override
-        public void updateDebate(
+        public List<DebateSession> debates(WorkflowRunId runId) {
+            return debates.values().stream()
+                    .filter(session -> session.runId().equals(runId))
+                    .sorted(java.util.Comparator.comparing(session -> session.panelKey().value()))
+                    .toList();
+        }
+
+        @Override
+        public long recordDebateProgress(
                 DebateId debateId,
+                long expectedVersion,
+                int completedRounds) {
+            var current = requireDebate(debateId);
+            if (current.version() != expectedVersion || current.status() != DebateStatus.RUNNING) {
+                throw new IllegalStateException("Decision panel progress race");
+            }
+            var updated = copyDebate(
+                    current,
+                    current.status(),
+                    completedRounds,
+                    current.completedAt(),
+                    expectedVersion + 1);
+            debates.put(current.panelKey(), updated);
+            return updated.version();
+        }
+
+        @Override
+        public void transitionDebate(
+                DebateId debateId,
+                long expectedVersion,
                 DebateStatus debateStatus,
                 int completedRounds,
                 Instant completedAt) {
-            debate.updateAndGet(current -> new DebateSession(
+            var current = requireDebate(debateId);
+            if (current.version() != expectedVersion || current.status() != DebateStatus.RUNNING) {
+                throw new IllegalStateException("Decision panel transition race");
+            }
+            debates.put(current.panelKey(), copyDebate(
+                    current,
+                    debateStatus,
+                    completedRounds,
+                    completedAt,
+                    expectedVersion + 1));
+        }
+
+        private DebateSession requireDebate(DebateId debateId) {
+            return debates.values().stream()
+                    .filter(session -> session.debateId().equals(debateId))
+                    .findFirst()
+                    .orElseThrow();
+        }
+
+        private static DebateSession copyDebate(
+                DebateSession current,
+                DebateStatus status,
+                int completedRounds,
+                Instant completedAt,
+                long version) {
+            return new DebateSession(
                     current.debateId(),
                     current.runId(),
-                    debateStatus,
+                    current.panelKey(),
+                    current.panelPurpose(),
+                    current.inputHash(),
+                    status,
                     current.configuredRounds(),
                     completedRounds,
                     current.decisionNodeId(),
                     current.startedAt(),
-                    completedAt));
+                    completedAt,
+                    version);
         }
 
         @Override
@@ -601,7 +713,7 @@ class WorkflowExecutionServiceTest {
         }
 
         private Optional<DebateSession> debate() {
-            return Optional.ofNullable(debate.get());
+            return Optional.ofNullable(debates.get(DecisionPanelKey.RESEARCH));
         }
 
         private Optional<WorkflowCheckpoint> checkpoint(WorkflowNodeId nodeId, int roundIndex) {

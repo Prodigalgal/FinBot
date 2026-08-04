@@ -4,6 +4,7 @@ import io.omnnu.finbot.application.workflow.dto.DebateSession;
 import io.omnnu.finbot.application.workflow.dto.WorkflowCheckpoint;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
 
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.workflow.AgentMessage;
 import io.omnnu.finbot.domain.workflow.DebateId;
 import io.omnnu.finbot.domain.workflow.DebateStatus;
@@ -27,9 +28,18 @@ public interface WorkflowExecutionStore extends WorkflowRunFailureStore, Workflo
 
     void startDebate(DebateSession session);
 
-    Optional<DebateSession> findDebate(WorkflowRunId runId);
+    Optional<DebateSession> findDebate(WorkflowRunId runId, DecisionPanelKey panelKey);
 
-    void updateDebate(DebateId debateId, DebateStatus status, int completedRounds, Instant completedAt);
+    List<DebateSession> debates(WorkflowRunId runId);
+
+    long recordDebateProgress(DebateId debateId, long expectedVersion, int completedRounds);
+
+    void transitionDebate(
+            DebateId debateId,
+            long expectedVersion,
+            DebateStatus status,
+            int completedRounds,
+            Instant completedAt);
 
     void saveMessage(AgentMessage message);
 

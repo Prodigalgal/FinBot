@@ -104,12 +104,16 @@ class SdbScaPhaseExecutorTest {
         var session = new DebateSession(
                 new DebateId("debate_sdb_phase_test"),
                 RUN_ID,
+                io.omnnu.finbot.domain.debate.DecisionPanelKey.RESEARCH,
+                io.omnnu.finbot.domain.debate.DecisionPanelPurpose.RESEARCH,
+                new io.omnnu.finbot.domain.debate.DecisionPanelInputHash("a".repeat(64)),
                 DebateStatus.RUNNING,
                 1,
                 0,
                 new WorkflowNodeId("node_social_choice"),
                 NOW,
-                null);
+                null,
+                0);
         var protocolStore = new InMemoryProtocolStore();
         var completionGateway = new RecordingCompletionGateway();
         var ids = new AtomicInteger();

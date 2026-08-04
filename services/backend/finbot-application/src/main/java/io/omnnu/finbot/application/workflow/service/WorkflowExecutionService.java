@@ -23,6 +23,8 @@ import io.omnnu.finbot.application.ai.service.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.operations.service.TaskCancellationContext;
 import io.omnnu.finbot.domain.workflow.AgentMessage;
 import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
+import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import io.omnnu.finbot.domain.workflow.AgentMessageContent;
 import io.omnnu.finbot.domain.workflow.AgentMessagePublished;
 import io.omnnu.finbot.domain.workflow.AgentMessageStatus;
@@ -66,6 +68,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
     private final WorkflowPromptComposer promptComposer = new WorkflowPromptComposer();
     private final WorkflowConditionEvaluator conditionEvaluator = new WorkflowConditionEvaluator();
     private final WorkflowCheckpointManager checkpoints;
+    private final DecisionPanelSessionService panelSessions;
 
     public WorkflowExecutionService(
             WorkflowExecutionStore executionStore,
@@ -85,6 +88,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         this.clock = Objects.requireNonNull(clock, "clock");
         this.executor = Objects.requireNonNull(executor, "executor");
         this.checkpoints = new WorkflowCheckpointManager(this.executionStore, this.clock);
+        this.panelSessions = new DecisionPanelSessionService(this.executionStore, this.clock);
     }
 
     @Override
@@ -113,11 +117,13 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         } catch (SdbScaExecutionException failure) {
             var terminalFailure = new TerminalWorkflowFailure(
                     failure.errorCode(), failure.getMessage(), failure.retryable());
-            terminalize(runId, terminalFailure);
-            throw terminalFailure;
+            if (terminalize(runId, terminalFailure)) {
+                throw terminalFailure;
+            }
         } catch (TerminalWorkflowFailure failure) {
-            terminalize(runId, failure);
-            throw failure;
+            if (terminalize(runId, failure)) {
+                throw failure;
+            }
         }
     }
 
@@ -173,6 +179,9 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     "Persisted debate round budget does not match the workflow version",
                     false);
         }
+        if (completeRecoveredTerminalPanel(execution, session)) {
+            return;
+        }
         var attemptStartedAt = clock.instant();
         var deadlineBase = session.startedAt().isAfter(attemptStartedAt)
                 ? session.startedAt()
@@ -182,6 +191,8 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         var turnIndexes = turnIndexes(agents);
         var partial = messages.stream().anyMatch(message -> message.status() == AgentMessageStatus.FAILED);
         var completedRounds = 0;
+        var persistedCompletedRounds = session.completedRounds();
+        var panelVersion = session.version();
 
         publishStageStarted(execution.runId(), WorkflowStage.DEBATE, agents.getFirst().nodeId());
         for (var round = 1; round <= version.defaultDebateRounds(); round++) {
@@ -195,11 +206,13 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     deadline) || partial;
             completedRounds++;
             TaskCancellationContext.throwIfCancelled();
-            executionStore.updateDebate(
-                    session.debateId(),
-                    DebateStatus.RUNNING,
-                    completedRounds,
-                    null);
+            if (completedRounds > persistedCompletedRounds) {
+                panelVersion = executionStore.recordDebateProgress(
+                        session.debateId(),
+                        panelVersion,
+                        completedRounds);
+                persistedCompletedRounds = completedRounds;
+            }
             publishProgress(
                     execution.runId(),
                     chair.nodeId(),
@@ -232,11 +245,13 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                         deadline) || partial;
                 completedRounds++;
                 TaskCancellationContext.throwIfCancelled();
-                executionStore.updateDebate(
-                        session.debateId(),
-                        DebateStatus.RUNNING,
-                        completedRounds,
-                        null);
+                if (completedRounds > persistedCompletedRounds) {
+                    panelVersion = executionStore.recordDebateProgress(
+                            session.debateId(),
+                            panelVersion,
+                            completedRounds);
+                    persistedCompletedRounds = completedRounds;
+                }
                 publishProgress(
                         execution.runId(),
                         chair.nodeId(),
@@ -271,8 +286,9 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         publishProgress(execution.runId(), chair.nodeId(), 95, "主席已完成独立仲裁");
         var completedAt = clock.instant();
         TaskCancellationContext.throwIfCancelled();
-        executionStore.updateDebate(
+        executionStore.transitionDebate(
                 session.debateId(),
+                panelVersion,
                 partial ? DebateStatus.PARTIAL : DebateStatus.COMPLETED,
                 completedRounds,
                 completedAt);
@@ -297,15 +313,21 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 .orElse(decisionNode.nodeId());
         publishStageStarted(execution.runId(), WorkflowStage.DEBATE, firstParticipant);
         var result = sdbScaDebateRunner.run(execution);
-        publishMessage(result.consensusMessage(), 1);
-        publishProgress(execution.runId(), decisionNode.nodeId(), 95, "对称社会选择已完成");
-        var completedAt = clock.instant();
-        TaskCancellationContext.throwIfCancelled();
-        executionStore.updateDebate(
-                result.session().debateId(),
-                result.partial() ? DebateStatus.PARTIAL : DebateStatus.COMPLETED,
-                1,
-                completedAt);
+        var recoveredTerminalPanel = result.session().status() != DebateStatus.RUNNING;
+        var completedAt = recoveredTerminalPanel
+                ? Objects.requireNonNullElseGet(result.session().completedAt(), clock::instant)
+                : clock.instant();
+        if (!recoveredTerminalPanel) {
+            publishMessage(result.consensusMessage(), 1);
+            publishProgress(execution.runId(), decisionNode.nodeId(), 95, "对称社会选择已完成");
+            TaskCancellationContext.throwIfCancelled();
+            executionStore.transitionDebate(
+                    result.session().debateId(),
+                    result.session().version(),
+                    result.partial() ? DebateStatus.PARTIAL : DebateStatus.COMPLETED,
+                    1,
+                    completedAt);
+        }
         executionStore.completeRun(execution.runId(), result.partial(), completedAt);
         eventPublisher.publish(execution.runId(), (eventId, sequence, occurredAt) ->
                 new WorkflowCompleted(
@@ -319,21 +341,12 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
     private DebateSession ensureDebate(
             WorkflowExecutionContext execution,
             WorkflowNodeDefinition chair) {
-        var existing = executionStore.findDebate(execution.runId());
-        if (existing.isPresent()) {
-            return existing.orElseThrow();
-        }
-        var proposed = new DebateSession(
-                WorkflowExecutionIds.debate(execution.runId()),
-                execution.runId(),
-                DebateStatus.RUNNING,
-                maximumDebateRounds(execution.definitionVersion()),
-                0,
+        return panelSessions.ensure(
+                execution,
+                DecisionPanelKey.RESEARCH,
+                DecisionPanelPurpose.RESEARCH,
                 chair.nodeId(),
-                clock.instant(),
-                null);
-        executionStore.startDebate(proposed);
-        return executionStore.findDebate(execution.runId()).orElse(proposed);
+                maximumDebateRounds(execution.definitionVersion()));
     }
 
     private boolean executeRound(
@@ -412,7 +425,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             if (execution.definitionVersion().failurePolicy() == WorkflowFailurePolicy.CONTINUE) {
                 var prompt = promptComposer.composeAgent(execution, node, round, visibleMessages);
                 var message = new AgentMessage(
-                        WorkflowExecutionIds.message(execution.runId(), node.nodeId(), round),
+                        WorkflowExecutionIds.message(session, node.nodeId(), round),
                         session.debateId(),
                         execution.runId(),
                         node.nodeId(),
@@ -454,7 +467,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             int turnIndex,
             List<AgentMessage> visibleMessages,
             Instant deadline) {
-        var messageId = WorkflowExecutionIds.message(execution.runId(), node.nodeId(), round);
+        var messageId = WorkflowExecutionIds.message(session, node.nodeId(), round);
         var existingMessage = findMessage(visibleMessages, messageId)
                 .or(() -> findMessage(executionStore.messages(session.debateId()), messageId));
         if (existingMessage.isPresent()) {
@@ -491,7 +504,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             List<AgentMessage> messages,
             Instant deadline,
             int eventRound) {
-        var messageId = WorkflowExecutionIds.message(execution.runId(), chair.nodeId(), 0);
+        var messageId = WorkflowExecutionIds.message(session, chair.nodeId(), 0);
         var existing = findMessage(messages, messageId)
                 .or(() -> findMessage(executionStore.messages(session.debateId()), messageId));
         if (existing.isPresent()) {
@@ -647,20 +660,71 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                         occurredAt));
     }
 
-    private void terminalize(WorkflowRunId runId, TerminalWorkflowFailure failure) {
+    private boolean completeRecoveredTerminalPanel(
+            WorkflowExecutionContext execution,
+            DebateSession session) {
+        if (session.status() != DebateStatus.COMPLETED && session.status() != DebateStatus.PARTIAL) {
+            return false;
+        }
+        completeRunFromTerminalPanel(execution.runId(), session);
+        return true;
+    }
+
+    private void completeRunFromTerminalPanel(
+            WorkflowRunId runId,
+            DebateSession session) {
+        var completedAt = Objects.requireNonNullElseGet(session.completedAt(), clock::instant);
+        executionStore.completeRun(
+                runId,
+                session.status() == DebateStatus.PARTIAL,
+                completedAt);
+        eventPublisher.publish(runId, (eventId, sequence, occurredAt) ->
+                new WorkflowCompleted(
+                        eventId,
+                        runId,
+                        sequence,
+                        "debate:" + session.debateId().value(),
+                        occurredAt));
+    }
+
+    private boolean terminalize(WorkflowRunId runId, TerminalWorkflowFailure failure) {
         TaskCancellationContext.throwIfCancelled();
         var failedAt = clock.instant();
-        executionStore.findDebate(runId).ifPresent(session -> executionStore.updateDebate(
-                session.debateId(),
-                DebateStatus.FAILED,
-                session.completedRounds(),
-                failedAt));
+        var session = executionStore.findDebate(runId, DecisionPanelKey.RESEARCH).orElse(null);
+        if (session != null) {
+            if (session.status() == DebateStatus.COMPLETED || session.status() == DebateStatus.PARTIAL) {
+                completeRunFromTerminalPanel(runId, session);
+                return false;
+            }
+            if (session.status() == DebateStatus.RUNNING) {
+                try {
+                    executionStore.transitionDebate(
+                            session.debateId(),
+                            session.version(),
+                            DebateStatus.FAILED,
+                            session.completedRounds(),
+                            failedAt);
+                } catch (IllegalStateException race) {
+                    var latest = executionStore.findDebate(runId, DecisionPanelKey.RESEARCH)
+                            .orElseThrow(() -> race);
+                    if (latest.status() == DebateStatus.COMPLETED
+                            || latest.status() == DebateStatus.PARTIAL) {
+                        completeRunFromTerminalPanel(runId, latest);
+                        return false;
+                    }
+                    if (latest.status() == DebateStatus.RUNNING) {
+                        return false;
+                    }
+                }
+            }
+        }
         workflowFailure.fail(
                 runId,
                 failure.errorCode(),
                 failure.getMessage(),
                 failure.retryable(),
                 failedAt);
+        return true;
     }
 
     private static void awaitLayer(List<CompletableFuture<NodeResult>> futures) {

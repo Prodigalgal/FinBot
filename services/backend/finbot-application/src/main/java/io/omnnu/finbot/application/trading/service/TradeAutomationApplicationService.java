@@ -23,6 +23,7 @@ import io.omnnu.finbot.application.exchange.port.in.PaperOrderExecutionUseCase;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
 import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.market.InstrumentSymbol;
 import io.omnnu.finbot.domain.market.Quantity;
 import io.omnnu.finbot.domain.research.ForecastDirection;
@@ -467,7 +468,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
     }
 
     private AgentMessage decisionMessage(WorkflowRunId workflowRunId) {
-        var debate = workflowStore.findDebate(workflowRunId)
+        var debate = workflowStore.findDebate(workflowRunId, DecisionPanelKey.RESEARCH)
                 .orElseThrow(() -> new IllegalStateException("Workflow has no debate result"));
         return workflowStore.messages(debate.debateId()).stream()
                 .filter(message -> message.messageType() == AgentMessageType.CONSENSUS_RESULT

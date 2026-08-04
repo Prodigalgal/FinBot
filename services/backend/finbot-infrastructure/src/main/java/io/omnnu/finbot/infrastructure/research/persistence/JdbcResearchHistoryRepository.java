@@ -254,6 +254,8 @@ public final class JdbcResearchHistoryRepository implements ResearchHistoryRepos
                 join workflow_run run on run.run_id = session.run_id
                 join workflow_definition_version version on version.version_id = run.workflow_version_id
                 where session.run_id = :runId
+                  and session.panel_key = 'research'
+                  and session.panel_purpose = 'RESEARCH'
                   and version.debate_protocol = 'SDB_SCA_V1'
                 """)
                 .param("runId", runId.value())

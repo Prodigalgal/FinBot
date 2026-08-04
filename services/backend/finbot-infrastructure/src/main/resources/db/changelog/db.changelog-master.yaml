@@ -131,3 +131,5 @@ databaseChangeLog:
       file: db/changelog/releases/065-ai-model-token-limit-capability.sql
   - include:
       file: db/changelog/releases/066-any2api-reasoning-capability.sql
+  - include:
+      file: db/changelog/releases/067-full-chain-decision-panels.sql

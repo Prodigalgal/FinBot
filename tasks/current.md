@@ -2,6 +2,14 @@
 
 > 2026-07-23 以 `main@e714266`、Liquibase `67/67`、FinBot GitOps 发布提交 `b59aad1` 和生产 K8S 为事实基线。共享 GitOps 仓库后续 revision 可能因其他应用前进，应以 FinBot 镜像与资源差异判断实际发布。完成任务只保留索引，不再在本页重复流水账。
 
+## P0：全链路 SDB-SCA 决策面板
+
+- 目标：将证据互证、研究、主审和执行统一为多 Provider、多席位、双盲对称且确定性终局的决策面板，硬风控与 OMS 保持不可绕过。
+- 需求：[`../docs/requirements/39-full-chain-sdb-sca.md`](../docs/requirements/39-full-chain-sdb-sca.md)。
+- 决策：[`../docs/decisions/036-full-chain-sdb-sca-panels.md`](../docs/decisions/036-full-chain-sdb-sca-panels.md)。
+- 任务：[`in-progress/TASK-20260804-full-chain-sdb-sca.md`](./in-progress/TASK-20260804-full-chain-sdb-sca.md)。
+- 状态：需求与 ADR 已完成；多 panel session、冻结输入哈希、复合唯一键和 CAS 基座已实现，正在提取通用 Panel Engine 并保持研究协议行为等价。
+
 ## P0：OpenAI-Compatible 模型能力发现与发布校验
 
 - 目标：保持任意 OpenAI Chat Completions / Responses 兼容端点可插拔，增加厂商无关的可选能力发现、能力来源和工作流发布前确定性配置校验。

@@ -41,6 +41,7 @@ import io.omnnu.finbot.infrastructure.operations.persistence.TaskPayloadCodec;
 import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcWorkflowStore;
 import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcDebateProtocolStore;
 import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcWorkflowManagementRepository;
+import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcWorkflowExecutionStore;
 import io.omnnu.finbot.infrastructure.workflow.persistence.WorkflowEventCodec;
 import io.omnnu.finbot.application.workflow.exception.DebateProtocolConflictException;
 import io.omnnu.finbot.application.workflow.dto.StartWorkflowCommand;
@@ -1133,7 +1134,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(70, result.getInt("changeset_count"));
+                    assertEquals(71, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
@@ -1774,15 +1775,17 @@ class LiquibasePostgresIntegrationTest {
                 .update();
         jdbcClient.sql("""
                 insert into debate_session (
-                  debate_id, run_id, status, configured_rounds, completed_rounds,
-                  decision_node_id, started_at
+                  debate_id, run_id, panel_key, panel_purpose, input_hash,
+                  status, configured_rounds, completed_rounds, decision_node_id, started_at
                 ) values (
-                  :debateId, :runId, 'RUNNING', 1, 0, 'node_legacy_compat', :now
+                  :debateId, :runId, 'research', 'RESEARCH', :inputHash,
+                  'RUNNING', 1, 0, 'node_legacy_compat', :now
                 )
                 on conflict (debate_id) do nothing
                 """)
                 .param("debateId", debateId.value())
                 .param("runId", runId.value())
+                .param("inputHash", "c".repeat(64))
                 .param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
                 .update();
 
@@ -1991,6 +1994,127 @@ class LiquibasePostgresIntegrationTest {
                 decision.decidedAt());
         assertThrows(DebateProtocolConflictException.class, () ->
                 transactions.executeWithoutResult(ignored -> store.saveDecision(conflictingDecision)));
+    }
+
+    @Test
+    void storesMultipleDecisionPanelsPerWorkflowRunAndGuardsPanelIdentity() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var now = OffsetDateTime.parse("2026-08-04T14:00:00Z");
+        var runId = "run_multi_panel_store_test";
+
+        jdbcClient.sql("""
+                insert into workflow_run (
+                  run_id, idempotency_key, workflow_type, status, trigger_type,
+                  request_summary, accepted_at, created_at, updated_at
+                ) values (
+                  :runId, :idempotencyKey, 'INSTANT_RESEARCH', 'RUNNING', 'MANUAL',
+                  'Multi-panel store test', :now, :now, :now
+                ) on conflict (run_id) do nothing
+                """)
+                .param("runId", runId)
+                .param("idempotencyKey", "test:multi-panel:" + runId)
+                .param("now", now)
+                .update();
+
+        insertPanel(jdbcClient, runId, "debate_multi_panel_research", "research", "RESEARCH", "d".repeat(64), now);
+        insertPanel(jdbcClient, runId, "debate_multi_panel_principal", "principal_review", "PRINCIPAL_REVIEW", "e".repeat(64), now);
+
+        assertEquals(2, jdbcClient.sql("select count(*) from debate_session where run_id = :runId")
+                .param("runId", runId)
+                .query(Integer.class)
+                .single());
+        assertEquals(1, jdbcClient.sql("""
+                update debate_session
+                set completed_rounds = 1, version = version + 1
+                where debate_id = 'debate_multi_panel_research'
+                  and status = 'RUNNING' and version = 0
+                """).update());
+        assertEquals(0, jdbcClient.sql("""
+                update debate_session
+                set completed_rounds = 1, version = version + 1
+                where debate_id = 'debate_multi_panel_research'
+                  and status = 'RUNNING' and version = 0
+                """).update());
+
+        var workflowRepository = new JdbcWorkflowManagementRepository(jdbcClient, new ObjectMapper());
+        var executionStore = new JdbcWorkflowExecutionStore(
+                jdbcClient, workflowRepository, new ObjectMapper());
+        var researchDebateId = new DebateId("debate_multi_panel_research");
+        assertEquals(1, executionStore.recordDebateProgress(researchDebateId, 0, 1));
+        jdbcClient.sql("""
+                update debate_session
+                set status = 'FAILED', version = version + 1
+                where debate_id = 'debate_multi_panel_research'
+                """).update();
+        jdbcClient.sql("""
+                update debate_session
+                set status = 'RUNNING', version = version + 1
+                where debate_id = 'debate_multi_panel_research'
+                """).update();
+        assertThrows(IllegalStateException.class, () ->
+                executionStore.recordDebateProgress(researchDebateId, 0, 1));
+
+        jdbcClient.sql("""
+                update debate_session set status = 'FAILED', version = version + 1
+                where run_id = :runId
+                """).param("runId", runId).update();
+        jdbcClient.sql("""
+                update workflow_run set status = 'FAILED', updated_at = :now
+                where run_id = :runId
+                """).param("runId", runId).param("now", now).update();
+        assertTrue(executionStore.resumeFailed(new WorkflowRunId(runId), now.toInstant()));
+        assertEquals(1, jdbcClient.sql("""
+                select count(*) from debate_session
+                where run_id = :runId and status = 'RUNNING'
+                """).param("runId", runId).query(Integer.class).single());
+        assertEquals("research", jdbcClient.sql("""
+                select panel_key from debate_session
+                where run_id = :runId and status = 'RUNNING'
+                """).param("runId", runId).query(String.class).single());
+        assertEquals(1, jdbcClient.sql("""
+                select count(*) from debate_session
+                where run_id = :runId and status = 'FAILED'
+                """).param("runId", runId).query(Integer.class).single());
+
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () ->
+                insertPanel(
+                        jdbcClient,
+                        runId,
+                        "debate_multi_panel_duplicate",
+                        "research",
+                        "RESEARCH",
+                        "f".repeat(64),
+                        now));
+    }
+
+    private static void insertPanel(
+            JdbcClient jdbcClient,
+            String runId,
+            String debateId,
+            String panelKey,
+            String panelPurpose,
+            String inputHash,
+            OffsetDateTime now) {
+        jdbcClient.sql("""
+                insert into debate_session (
+                  debate_id, run_id, panel_key, panel_purpose, input_hash,
+                  status, configured_rounds, completed_rounds, decision_node_id,
+                  started_at, version
+                ) values (
+                  :debateId, :runId, :panelKey, :panelPurpose, :inputHash,
+                  'RUNNING', 1, 0, 'node_multi_panel_test', :now, 0
+                )
+                """)
+                .param("debateId", debateId)
+                .param("runId", runId)
+                .param("panelKey", panelKey)
+                .param("panelPurpose", panelPurpose)
+                .param("inputHash", inputHash)
+                .param("now", now)
+                .update();
     }
 
     private static ConsensusBallot ballot(

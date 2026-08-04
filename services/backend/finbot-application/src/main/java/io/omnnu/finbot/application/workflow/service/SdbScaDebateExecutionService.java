@@ -27,6 +27,8 @@ import io.omnnu.finbot.domain.debate.DebatePhaseType;
 import io.omnnu.finbot.domain.debate.DebateTask;
 import io.omnnu.finbot.domain.debate.DebateTaskStatus;
 import io.omnnu.finbot.domain.debate.DebateTaskVariant;
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
+import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import io.omnnu.finbot.domain.research.ForecastSignal;
 import io.omnnu.finbot.domain.workflow.AgentMessage;
 import io.omnnu.finbot.domain.workflow.AgentMessageContent;
@@ -57,6 +59,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
     private final SdbScaDocumentCodec documentCodec;
     private final Clock clock;
     private final SdbScaPhaseExecutor phaseExecutor;
+    private final DecisionPanelSessionService panelSessions;
     private final SdbScaPromptComposer promptComposer = new SdbScaPromptComposer();
     private final WorkflowConditionEvaluator conditionEvaluator = new WorkflowConditionEvaluator();
     private final SchulzeConsensusEngine consensusEngine = new SchulzeConsensusEngine();
@@ -76,6 +79,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
         this.outputParser = Objects.requireNonNull(outputParser, "outputParser");
         this.documentCodec = Objects.requireNonNull(documentCodec, "documentCodec");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.panelSessions = new DecisionPanelSessionService(this.executionStore, this.clock);
         this.phaseExecutor = new SdbScaPhaseExecutor(
                 protocolStore,
                 Objects.requireNonNull(aiExecution, "aiExecution"),
@@ -95,6 +99,21 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                     false);
         }
         var session = ensureDebate(execution, decisionNode);
+        if (session.status() == DebateStatus.COMPLETED
+                || session.status() == DebateStatus.PARTIAL) {
+            var consensusMessage = executionStore.messages(session.debateId()).stream()
+                    .filter(message -> message.messageType() == AgentMessageType.CONSENSUS_RESULT)
+                    .filter(message -> message.status() == AgentMessageStatus.COMPLETED)
+                    .findFirst()
+                    .orElseThrow(() -> new SdbScaExecutionException(
+                            "SDB_RECOVERY_RESULT_MISSING",
+                            "Completed SDB-SCA panel has no persisted consensus result",
+                            false));
+            return new SdbScaDebateResult(
+                    session,
+                    consensusMessage,
+                    session.status() == DebateStatus.PARTIAL);
+        }
         var configuredParticipants = version.topologicalNodes().stream()
                 .filter(WorkflowNodeDefinition::enabled)
                 .filter(node -> node.nodeType() == WorkflowNodeType.AGENT
@@ -387,14 +406,14 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
 
         var existingMessage = executionStore.messages(session.debateId()).stream()
                 .filter(message -> message.messageId().equals(
-                        WorkflowExecutionIds.message(execution.runId(), decisionNode.nodeId(), 0)))
+                        WorkflowExecutionIds.message(session, decisionNode.nodeId(), 0)))
                 .findFirst();
         if (existingMessage.isPresent()) {
             return new SdbScaDebateResult(session, existingMessage.orElseThrow(), partial);
         }
         var content = consensusMessageContent(outcome, winnerContent, forecast, explanation);
         var message = new AgentMessage(
-                WorkflowExecutionIds.message(execution.runId(), decisionNode.nodeId(), 0),
+                WorkflowExecutionIds.message(session, decisionNode.nodeId(), 0),
                 session.debateId(),
                 execution.runId(),
                 decisionNode.nodeId(),
@@ -540,28 +559,12 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
     private DebateSession ensureDebate(
             WorkflowExecutionContext execution,
             WorkflowNodeDefinition decisionNode) {
-        var existing = executionStore.findDebate(execution.runId());
-        if (existing.isPresent()) {
-            var session = existing.orElseThrow();
-            if (!session.decisionNodeId().equals(decisionNode.nodeId())) {
-                throw new SdbScaExecutionException(
-                        "SDB_DECISION_NODE_MISMATCH",
-                        "Persisted debate decision node does not match the immutable workflow version",
-                        false);
-            }
-            return session;
-        }
-        var proposed = new DebateSession(
-                WorkflowExecutionIds.debate(execution.runId()),
-                execution.runId(),
-                DebateStatus.RUNNING,
-                1,
-                0,
+        return panelSessions.ensure(
+                execution,
+                DecisionPanelKey.RESEARCH,
+                DecisionPanelPurpose.RESEARCH,
                 decisionNode.nodeId(),
-                clock.instant(),
-                null);
-        executionStore.startDebate(proposed);
-        return executionStore.findDebate(execution.runId()).orElse(proposed);
+                1);
     }
 
     private static DebateCandidate candidate(

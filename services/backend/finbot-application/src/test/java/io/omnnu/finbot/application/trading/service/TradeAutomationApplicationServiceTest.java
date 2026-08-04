@@ -216,12 +216,16 @@ class TradeAutomationApplicationServiceTest {
         var session = new DebateSession(
                 debateId,
                 RUN_ID,
+                io.omnnu.finbot.domain.debate.DecisionPanelKey.RESEARCH,
+                io.omnnu.finbot.domain.debate.DecisionPanelPurpose.RESEARCH,
+                new io.omnnu.finbot.domain.debate.DecisionPanelInputHash("b".repeat(64)),
                 DebateStatus.COMPLETED,
                 1,
                 1,
                 new WorkflowNodeId("node_social_choice"),
                 NOW,
-                NOW);
+                NOW,
+                1);
         var consensus = new AgentMessage(
                 new AgentMessageId("message_trade_sdb_test"),
                 debateId,
