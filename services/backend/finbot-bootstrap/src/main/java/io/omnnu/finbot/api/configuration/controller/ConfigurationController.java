@@ -104,6 +104,7 @@ public final class ConfigurationController {
                 request.modelName(),
                 request.defaultReasoningEffort(),
                 request.maximumReasoningEffort(),
+                request.tokenLimitParameterStyle(),
                 request.inputUsdPerMillion(),
                 request.outputUsdPerMillion(),
                 request.enabled()));
@@ -117,6 +118,7 @@ public final class ConfigurationController {
                 modelProfileId,
                 request.defaultReasoningEffort(),
                 request.maximumReasoningEffort(),
+                request.tokenLimitParameterStyle(),
                 request.inputUsdPerMillion(),
                 request.outputUsdPerMillion(),
                 request.enabled(),

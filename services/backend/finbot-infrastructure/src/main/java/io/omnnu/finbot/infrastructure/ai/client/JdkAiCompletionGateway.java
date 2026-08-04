@@ -18,6 +18,7 @@ import io.omnnu.finbot.application.ai.dto.AiUsageReported;
 import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
+import io.omnnu.finbot.domain.configuration.TokenLimitParameterStyle;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -81,7 +82,7 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             StreamSession publisher) {
         ProviderConcurrencyLimiter.Permit permit = null;
         try {
-            var profile = profileResolver.resolve(request.providerProfileId());
+            var profile = profileResolver.resolve(request.providerProfileId(), request.modelName());
             permit = concurrencyLimiter.acquire(
                     request.providerProfileId(),
                     profile.maximumConcurrentRequests(),
@@ -172,7 +173,7 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
         root.put("model", request.modelName());
         root.put("stream", true);
         if (request.protocol() == AiProtocol.CHAT) {
-            root.put("max_tokens", request.maximumOutputTokens());
+            addTokenLimit(root, request.maximumOutputTokens(), profile.tokenLimitParameterStyle(), request.protocol());
             var messages = root.putArray("messages");
             message(messages, "system", request.systemPrompt());
             message(messages, "user", request.userPrompt());
@@ -181,7 +182,7 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
         } else {
             root.put("instructions", request.systemPrompt());
             root.put("input", request.userPrompt());
-            root.put("max_output_tokens", request.maximumOutputTokens());
+            addTokenLimit(root, request.maximumOutputTokens(), profile.tokenLimitParameterStyle(), request.protocol());
             addReasoning(root, request.reasoningEffort(), profile.reasoningParameterStyle());
         }
         try {
@@ -375,6 +376,23 @@ public final class JdkAiCompletionGateway implements AiCompletionGateway {
             root.put("reasoning_effort", wireReasoning(effort));
         } else {
             root.putObject("reasoning").put("effort", wireReasoning(effort));
+        }
+    }
+
+    private static void addTokenLimit(
+            ObjectNode root,
+            int maximumOutputTokens,
+            TokenLimitParameterStyle style,
+            AiProtocol protocol) {
+        var parameter = switch (style) {
+            case PROTOCOL_DEFAULT -> protocol == AiProtocol.CHAT ? "max_tokens" : "max_output_tokens";
+            case MAX_TOKENS -> "max_tokens";
+            case MAX_COMPLETION_TOKENS -> "max_completion_tokens";
+            case MAX_OUTPUT_TOKENS -> "max_output_tokens";
+            case NONE -> null;
+        };
+        if (parameter != null) {
+            root.put(parameter, maximumOutputTokens);
         }
     }
 

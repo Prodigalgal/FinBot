@@ -5,9 +5,11 @@ import io.omnnu.finbot.infrastructure.ai.client.JdkAiCompletionGateway;
 import io.omnnu.finbot.infrastructure.ai.client.ProviderConcurrencyLimiter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.omnnu.finbot.application.ai.dto.AiCompletionEvent;
@@ -17,6 +19,7 @@ import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
+import io.omnnu.finbot.domain.configuration.TokenLimitParameterStyle;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import java.io.IOException;
@@ -50,6 +53,7 @@ class JdkAiCompletionGatewayTest {
                     PROVIDER,
                     AiProtocol.RESPONSES,
                     ReasoningParameterStyle.NESTED,
+                    TokenLimitParameterStyle.PROTOCOL_DEFAULT,
                     URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/v1/"),
                     "test-key",
                     30,
@@ -97,6 +101,85 @@ class JdkAiCompletionGatewayTest {
         }
     }
 
+    @Test
+    void tokenLimitCapabilityControlsChatWireParameter() throws Exception {
+        var omitted = captureChatPayload(TokenLimitParameterStyle.NONE);
+        assertFalse(omitted.has("max_tokens"));
+        assertFalse(omitted.has("max_completion_tokens"));
+        assertFalse(omitted.has("max_output_tokens"));
+
+        var protocolDefault = captureChatPayload(TokenLimitParameterStyle.PROTOCOL_DEFAULT);
+        assertEquals(1024, protocolDefault.path("max_tokens").asInt());
+    }
+
+    private static JsonNode captureChatPayload(TokenLimitParameterStyle tokenLimitStyle) throws Exception {
+        var captured = new AtomicReference<String>();
+        var server = completionServer(captured);
+        var executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            var profile = new AiRuntimeProfile(
+                    PROVIDER,
+                    AiProtocol.CHAT,
+                    ReasoningParameterStyle.FLAT,
+                    tokenLimitStyle,
+                    URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/v1/"),
+                    "test-key",
+                    30,
+                    1,
+                    30,
+                    0);
+            var gateway = new JdkAiCompletionGateway(
+                    HttpClient.newBuilder().executor(executor).build(),
+                    ignored -> profile,
+                    new ObjectMapper(),
+                    Clock.systemUTC(),
+                    executor,
+                    new ProviderConcurrencyLimiter(new SimpleMeterRegistry()));
+            var completed = new CountDownLatch(1);
+            gateway.stream(request(AiProtocol.CHAT)).subscribe(new Flow.Subscriber<>() {
+                @Override
+                public void onSubscribe(Flow.Subscription subscription) {
+                    subscription.request(Long.MAX_VALUE);
+                }
+
+                @Override
+                public void onNext(AiCompletionEvent event) {
+                }
+
+                @Override
+                public void onError(Throwable throwable) {
+                    completed.countDown();
+                }
+
+                @Override
+                public void onComplete() {
+                    completed.countDown();
+                }
+            });
+            assertTrue(completed.await(3, TimeUnit.SECONDS));
+            return new ObjectMapper().readTree(captured.get());
+        } finally {
+            server.stop(0);
+            executor.close();
+        }
+    }
+
+    private static HttpServer completionServer(AtomicReference<String> captured) throws IOException {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            captured.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            var response = "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n";
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, response.getBytes(StandardCharsets.UTF_8).length);
+            try (exchange; var output = exchange.getResponseBody()) {
+                output.write(response.getBytes(StandardCharsets.UTF_8));
+            }
+        });
+        server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        server.start();
+        return server;
+    }
+
     private static HttpServer stalledServer(
             CountDownLatch requestReceived,
             CountDownLatch releaseServer) throws IOException {
@@ -119,12 +202,16 @@ class JdkAiCompletionGatewayTest {
     }
 
     private static AiCompletionRequest request() {
+        return request(AiProtocol.RESPONSES);
+    }
+
+    private static AiCompletionRequest request(AiProtocol protocol) {
         return new AiCompletionRequest(
                 new AiInvocationId("invocation_stream_cancel_test"),
                 new WorkflowRunId("run_stream_cancel_test"),
                 new WorkflowNodeId("node_stream_cancel_test"),
                 PROVIDER,
-                AiProtocol.RESPONSES,
+                protocol,
                 "gpt-test",
                 ReasoningEffort.HIGH,
                 "Return a concise answer.",

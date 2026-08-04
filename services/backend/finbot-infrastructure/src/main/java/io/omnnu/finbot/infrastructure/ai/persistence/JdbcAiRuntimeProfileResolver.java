@@ -14,6 +14,7 @@ import io.omnnu.finbot.domain.configuration.AiModelBinding;
 import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
+import io.omnnu.finbot.domain.configuration.TokenLimitParameterStyle;
 import java.util.Objects;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -35,14 +36,30 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
 
     @Override
     public AiRuntimeProfile resolve(AiProviderProfileId profileId) {
+        return resolveProvider(profileId, "");
+    }
+
+    @Override
+    public AiRuntimeProfile resolve(AiProviderProfileId profileId, String modelName) {
+        return resolveProvider(profileId, Objects.requireNonNull(modelName, "modelName"));
+    }
+
+    private AiRuntimeProfile resolveProvider(AiProviderProfileId profileId, String modelName) {
         var stored = jdbcClient.sql("""
-                select protocol, reasoning_parameter_style, base_url, base_url_env, api_key_env,
-                       enabled, request_timeout_seconds,
-                       maximum_concurrent_requests, acquire_timeout_seconds, version
-                from ai_provider_profile
-                where profile_id = :profileId and deleted_at is null
+                select provider.protocol, provider.reasoning_parameter_style,
+                       provider.base_url, provider.base_url_env, provider.api_key_env,
+                       provider.enabled, provider.request_timeout_seconds,
+                       provider.maximum_concurrent_requests, provider.acquire_timeout_seconds, provider.version,
+                       coalesce(model.token_limit_parameter_style, 'PROTOCOL_DEFAULT') token_limit_parameter_style
+                from ai_provider_profile provider
+                left join ai_model_profile model
+                  on model.provider_profile_id = provider.profile_id
+                 and model.model_name = :modelName
+                 and model.enabled = true
+                where provider.profile_id = :profileId and provider.deleted_at is null
                 """)
                 .param("profileId", profileId.value())
+                .param("modelName", modelName)
                 .query((resultSet, rowNumber) -> new StoredProfile(
                         AiProtocol.valueOf(resultSet.getString("protocol")),
                         ReasoningParameterStyle.valueOf(resultSet.getString("reasoning_parameter_style")),
@@ -53,7 +70,9 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
                         resultSet.getInt("request_timeout_seconds"),
                         resultSet.getInt("maximum_concurrent_requests"),
                         resultSet.getInt("acquire_timeout_seconds"),
-                        resultSet.getLong("version")))
+                        resultSet.getLong("version"),
+                        TokenLimitParameterStyle.valueOf(
+                                resultSet.getString("token_limit_parameter_style"))))
                 .optional()
                 .orElseThrow(() -> new AiProviderConfigurationException("AI provider profile does not exist"));
         if (!stored.enabled()) {
@@ -74,6 +93,7 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
                 profileId,
                 stored.protocol(),
                 stored.reasoningParameterStyle(),
+                stored.tokenLimitParameterStyle(),
                 uri,
                 apiKey,
                 stored.requestTimeoutSeconds(),
@@ -139,6 +159,7 @@ public final class JdbcAiRuntimeProfileResolver implements AiRuntimeBindingResol
             int requestTimeoutSeconds,
             int maximumConcurrentRequests,
             int acquireTimeoutSeconds,
-            long configurationVersion) {
+            long configurationVersion,
+            TokenLimitParameterStyle tokenLimitParameterStyle) {
     }
 }

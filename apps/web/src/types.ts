@@ -714,9 +714,11 @@ export interface AiProvider {
 }
 export interface AiModel {
   modelProfileId: string; providerProfileId: string; modelName: string;
-  defaultReasoningEffort: ReasoningEffort; maximumReasoningEffort: ReasoningEffort; inputUsdPerMillion: number;
+  defaultReasoningEffort: ReasoningEffort; maximumReasoningEffort: ReasoningEffort;
+  tokenLimitParameterStyle: TokenLimitParameterStyle; inputUsdPerMillion: number;
   outputUsdPerMillion: number; enabled: boolean; version: number; updatedAt: string;
 }
+export type TokenLimitParameterStyle = 'PROTOCOL_DEFAULT' | 'MAX_TOKENS' | 'MAX_COMPLETION_TOKENS' | 'MAX_OUTPUT_TOKENS' | 'NONE';
 export interface ConfigurationSnapshot { settings: SystemSetting[]; providers: AiProvider[]; models: AiModel[] }
 
 export interface AdminApiToken {

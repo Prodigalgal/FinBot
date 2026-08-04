@@ -64,6 +64,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
         return jdbcClient.sql("""
                 select model.model_profile_id, model.provider_profile_id, model.model_name,
                        model.default_reasoning_effort, model.maximum_reasoning_effort,
+                       model.token_limit_parameter_style,
                        model.input_usd_per_million, model.output_usd_per_million,
                        model.enabled, model.version, model.updated_at
                 from ai_model_profile model
@@ -290,6 +291,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 update ai_model_profile
                 set default_reasoning_effort = :reasoningEffort,
                     maximum_reasoning_effort = :maximumReasoningEffort,
+                    token_limit_parameter_style = :tokenLimitParameterStyle,
                     input_usd_per_million = :inputRate,
                     output_usd_per_million = :outputRate,
                     enabled = :enabled,
@@ -300,6 +302,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 .param("modelProfileId", profile.modelProfileId())
                 .param("reasoningEffort", profile.defaultReasoningEffort().name())
                 .param("maximumReasoningEffort", profile.maximumReasoningEffort().name())
+                .param("tokenLimitParameterStyle", profile.tokenLimitParameterStyle().name())
                 .param("inputRate", profile.inputUsdPerMillion())
                 .param("outputRate", profile.outputUsdPerMillion())
                 .param("enabled", profile.enabled())
@@ -337,6 +340,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
         return jdbcClient.sql("""
                 select model.model_profile_id, model.provider_profile_id, model.model_name,
                        model.default_reasoning_effort, model.maximum_reasoning_effort,
+                       model.token_limit_parameter_style,
                        model.input_usd_per_million, model.output_usd_per_million,
                        model.enabled, model.version, model.updated_at
                 from ai_model_profile model
@@ -355,11 +359,13 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 insert into ai_model_profile (
                   model_profile_id, provider_profile_id, model_name,
                   default_reasoning_effort, maximum_reasoning_effort,
+                  token_limit_parameter_style,
                   input_usd_per_million, output_usd_per_million,
                   enabled, version, created_at, updated_at
                 ) values (
                   :modelProfileId, :providerProfileId, :modelName,
                   :defaultReasoningEffort, :maximumReasoningEffort,
+                  :tokenLimitParameterStyle,
                   :inputRate, :outputRate, :enabled, 0, :createdAt, :createdAt
                 ) on conflict (provider_profile_id, model_name) do nothing
                 """)
@@ -368,6 +374,7 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 .param("modelName", model.modelName())
                 .param("defaultReasoningEffort", model.defaultReasoningEffort().name())
                 .param("maximumReasoningEffort", model.maximumReasoningEffort().name())
+                .param("tokenLimitParameterStyle", model.tokenLimitParameterStyle().name())
                 .param("inputRate", model.inputUsdPerMillion())
                 .param("outputRate", model.outputUsdPerMillion())
                 .param("enabled", model.enabled())
@@ -412,6 +419,8 @@ public class JdbcConfigurationRepository implements ConfigurationRepository {
                 resultSet.getString("model_name"),
                 ReasoningEffort.valueOf(resultSet.getString("default_reasoning_effort")),
                 ReasoningEffort.valueOf(resultSet.getString("maximum_reasoning_effort")),
+                io.omnnu.finbot.domain.configuration.TokenLimitParameterStyle.valueOf(
+                        resultSet.getString("token_limit_parameter_style")),
                 resultSet.getBigDecimal("input_usd_per_million"),
                 resultSet.getBigDecimal("output_usd_per_million"),
                 resultSet.getBoolean("enabled"),

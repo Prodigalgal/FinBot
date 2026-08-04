@@ -1,6 +1,7 @@
 package io.omnnu.finbot.application.configuration.dto;
 
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.configuration.TokenLimitParameterStyle;
 import io.omnnu.finbot.domain.shared.DecimalValue;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -12,6 +13,7 @@ public record AiModelProfile(
         String modelName,
         ReasoningEffort defaultReasoningEffort,
         ReasoningEffort maximumReasoningEffort,
+        TokenLimitParameterStyle tokenLimitParameterStyle,
         BigDecimal inputUsdPerMillion,
         BigDecimal outputUsdPerMillion,
         boolean enabled,
@@ -23,6 +25,7 @@ public record AiModelProfile(
         modelName = requireText(modelName, "modelName", 160);
         Objects.requireNonNull(defaultReasoningEffort, "defaultReasoningEffort");
         Objects.requireNonNull(maximumReasoningEffort, "maximumReasoningEffort");
+        Objects.requireNonNull(tokenLimitParameterStyle, "tokenLimitParameterStyle");
         if (!maximumReasoningEffort.supports(defaultReasoningEffort)) {
             throw new IllegalArgumentException("defaultReasoningEffort exceeds model capability");
         }

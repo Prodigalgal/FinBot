@@ -127,3 +127,5 @@ databaseChangeLog:
       file: db/changelog/releases/063-research-forecast-direction-probabilities.sql
   - include:
       file: db/changelog/releases/064-any2api-research-routing.sql
+  - include:
+      file: db/changelog/releases/065-ai-model-token-limit-capability.sql

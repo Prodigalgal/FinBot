@@ -1,6 +1,7 @@
 package io.omnnu.finbot.api.configuration.dto;
 
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.configuration.TokenLimitParameterStyle;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -9,6 +10,7 @@ import java.math.BigDecimal;
 public record UpdateModelRequest(
         @NotNull ReasoningEffort defaultReasoningEffort,
         @NotNull ReasoningEffort maximumReasoningEffort,
+        @NotNull TokenLimitParameterStyle tokenLimitParameterStyle,
         @NotNull @DecimalMin("0") BigDecimal inputUsdPerMillion,
         @NotNull @DecimalMin("0") BigDecimal outputUsdPerMillion,
         boolean enabled,

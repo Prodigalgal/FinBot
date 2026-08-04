@@ -7,13 +7,20 @@ import { useEffect, useState } from 'react';
 
 import { api } from './api';
 import { SecretTextField } from './SecretTextField';
-import type { AgentRole, AiExperiment, AiModel, AiModelBinding, AiProvider, ConfigurationSnapshot, ExecutionAiStage, ProviderModelCatalog, ReasoningEffort, RiskPolicy, SetupProfileDefinition, TradeAutomationConfiguration, WorkflowDefinitionSummary } from './types';
+import type { AgentRole, AiExperiment, AiModel, AiModelBinding, AiProvider, ConfigurationSnapshot, ExecutionAiStage, ProviderModelCatalog, ReasoningEffort, RiskPolicy, SetupProfileDefinition, TokenLimitParameterStyle, TradeAutomationConfiguration, WorkflowDefinitionSummary } from './types';
 import { ErrorBlock, LoadingBlock, SectionTitle } from './ui';
 import { AgentRolesPanel, AiExperimentsPanel, SetupProfilesPanel } from './SettingsAdvancedPanels';
 import { ApiTokensPanel } from './ApiTokensPanel';
 import { replaceWorkspaceLocation, workspaceSubview } from './workspaceLocation';
 
 const efforts: ReasoningEffort[] = ['PROVIDER_DEFAULT', 'NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH', 'XHIGH', 'MAX'];
+const tokenLimitStyles: Array<{ value: TokenLimitParameterStyle; label: string }> = [
+  { value: 'PROTOCOL_DEFAULT', label: '协议默认' },
+  { value: 'MAX_TOKENS', label: 'max_tokens' },
+  { value: 'MAX_COMPLETION_TOKENS', label: 'max_completion_tokens' },
+  { value: 'MAX_OUTPUT_TOKENS', label: 'max_output_tokens' },
+  { value: 'NONE', label: '不发送' },
+];
 const settingsTabs = ['setup', 'runtime', 'providers', 'models', 'roles', 'execution', 'experiments', 'tokens'] as const;
 type SettingsTab = typeof settingsTabs[number];
 
@@ -42,7 +49,7 @@ export function SettingsPage() {
     try {
       await api.putRuntimeSecret('AI_PROVIDER', provider.profileId, 'API_KEY', apiKey, provider.credentialVersion);
       for (const modelName of modelNames) {
-        await api.createModel({ providerProfileId: provider.profileId, modelName, defaultReasoningEffort: maximumEffort, maximumReasoningEffort: maximumEffort, inputUsdPerMillion: 0, outputUsdPerMillion: 0, enabled: true });
+        await api.createModel({ providerProfileId: provider.profileId, modelName, defaultReasoningEffort: maximumEffort, maximumReasoningEffort: maximumEffort, tokenLimitParameterStyle: 'PROTOCOL_DEFAULT', inputUsdPerMillion: 0, outputUsdPerMillion: 0, enabled: true });
       }
       setMessage(`已创建厂商并导入 ${modelNames.length} 个探测模型`);
     } catch (cause) {
@@ -55,7 +62,7 @@ export function SettingsPage() {
     setError(null); setMessage('');
     try {
       for (const modelName of modelNames) {
-        await api.createModel({ providerProfileId, modelName, defaultReasoningEffort: maximumEffort, maximumReasoningEffort: maximumEffort, inputUsdPerMillion: 0, outputUsdPerMillion: 0, enabled: true });
+        await api.createModel({ providerProfileId, modelName, defaultReasoningEffort: maximumEffort, maximumReasoningEffort: maximumEffort, tokenLimitParameterStyle: 'PROTOCOL_DEFAULT', inputUsdPerMillion: 0, outputUsdPerMillion: 0, enabled: true });
       }
       setMessage(`已导入 ${modelNames.length} 个探测模型`);
       await load();
@@ -170,7 +177,7 @@ function ModelEditor({ model, providerName, save }: { model: AiModel; providerNa
   const supportedEfforts = efforts.filter((effort) => value.maximumReasoningEffort === 'PROVIDER_DEFAULT'
     ? effort === 'PROVIDER_DEFAULT'
     : effort === 'PROVIDER_DEFAULT' || efforts.indexOf(effort) <= efforts.indexOf(value.maximumReasoningEffort));
-  return <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}><Box sx={{ flex: 1 }}><Typography fontWeight={700}>{value.modelName}</Typography><Typography variant="caption" color="text.secondary">{providerName}</Typography></Box><TextField select label="能力上限" value={value.maximumReasoningEffort} onChange={(event) => { const maximumReasoningEffort = event.target.value as ReasoningEffort; const defaultReasoningEffort = efforts.indexOf(value.defaultReasoningEffort) <= efforts.indexOf(maximumReasoningEffort) ? value.defaultReasoningEffort : maximumReasoningEffort; setValue({ ...value, maximumReasoningEffort, defaultReasoningEffort }); }} sx={{ minWidth: 150 }}>{efforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField><TextField select label="默认思考强度" value={value.defaultReasoningEffort} onChange={(event) => setValue({ ...value, defaultReasoningEffort: event.target.value as ReasoningEffort })} sx={{ minWidth: 170 }}>{supportedEfforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField><TextField label="输入 $/M" type="number" value={value.inputUsdPerMillion} onChange={(event) => setValue({ ...value, inputUsdPerMillion: Number(event.target.value) })} sx={{ width: 120 }} /><TextField label="输出 $/M" type="number" value={value.outputUsdPerMillion} onChange={(event) => setValue({ ...value, outputUsdPerMillion: Number(event.target.value) })} sx={{ width: 120 }} /><Switch checked={value.enabled} onChange={(event) => setValue({ ...value, enabled: event.target.checked })} /><Button startIcon={<SaveIcon />} onClick={() => save(value)}>保存</Button></Stack></Paper>;
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}><Box sx={{ flex: 1 }}><Typography fontWeight={700}>{value.modelName}</Typography><Typography variant="caption" color="text.secondary">{providerName}</Typography></Box><TextField select label="能力上限" value={value.maximumReasoningEffort} onChange={(event) => { const maximumReasoningEffort = event.target.value as ReasoningEffort; const defaultReasoningEffort = efforts.indexOf(value.defaultReasoningEffort) <= efforts.indexOf(maximumReasoningEffort) ? value.defaultReasoningEffort : maximumReasoningEffort; setValue({ ...value, maximumReasoningEffort, defaultReasoningEffort }); }} sx={{ minWidth: 150 }}>{efforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField><TextField select label="默认思考强度" value={value.defaultReasoningEffort} onChange={(event) => setValue({ ...value, defaultReasoningEffort: event.target.value as ReasoningEffort })} sx={{ minWidth: 170 }}>{supportedEfforts.map((effort) => <MenuItem key={effort} value={effort}>{effort}</MenuItem>)}</TextField><TextField select label="输出上限参数" value={value.tokenLimitParameterStyle} onChange={(event) => setValue({ ...value, tokenLimitParameterStyle: event.target.value as TokenLimitParameterStyle })} sx={{ minWidth: 190 }}>{tokenLimitStyles.map((style) => <MenuItem key={style.value} value={style.value}>{style.label}</MenuItem>)}</TextField><TextField label="输入 $/M" type="number" value={value.inputUsdPerMillion} onChange={(event) => setValue({ ...value, inputUsdPerMillion: Number(event.target.value) })} sx={{ width: 120 }} /><TextField label="输出 $/M" type="number" value={value.outputUsdPerMillion} onChange={(event) => setValue({ ...value, outputUsdPerMillion: Number(event.target.value) })} sx={{ width: 120 }} /><Switch checked={value.enabled} onChange={(event) => setValue({ ...value, enabled: event.target.checked })} /><Button startIcon={<SaveIcon />} onClick={() => save(value)}>保存</Button></Stack></Paper>;
 }
 
 function ExecutionStageEditor({ stage, providers, models, save }: { stage: ExecutionAiStage; providers: AiProvider[]; models: AiModel[]; save: (value: ExecutionAiStage) => void }) {

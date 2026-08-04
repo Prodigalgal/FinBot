@@ -14,6 +14,7 @@ import io.omnnu.finbot.domain.configuration.AiProtocol;
 import io.omnnu.finbot.domain.configuration.AiProviderProfileId;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
 import io.omnnu.finbot.domain.configuration.ReasoningParameterStyle;
+import io.omnnu.finbot.domain.configuration.TokenLimitParameterStyle;
 import io.omnnu.finbot.application.ai.exception.AiProviderUnavailableException;
 import io.omnnu.finbot.application.configuration.dto.RuntimeSecretScope;
 import io.omnnu.finbot.application.configuration.dto.RuntimeSecretSource;
@@ -359,6 +360,7 @@ class LiquibasePostgresIntegrationTest {
                 "provider-test-primary-" + suffix,
                 ReasoningEffort.MAX,
                 ReasoningEffort.MAX,
+                TokenLimitParameterStyle.PROTOCOL_DEFAULT,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 true,
@@ -379,6 +381,7 @@ class LiquibasePostgresIntegrationTest {
                 "provider-test-secondary-" + suffix,
                 ReasoningEffort.XHIGH,
                 ReasoningEffort.MAX,
+                TokenLimitParameterStyle.NONE,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 true,
@@ -614,6 +617,15 @@ class LiquibasePostgresIntegrationTest {
                               and default_reasoning_effort = 'MAX'
                               and maximum_reasoning_effort = 'MAX')
                              as any2api_model_count,
+                           (select count(*) from ai_model_profile
+                            where provider_profile_id = 'provider_any2api_research'
+                              and token_limit_parameter_style = 'NONE')
+                             as any2api_no_token_limit_model_count,
+                           (select count(*) from ai_model_profile
+                            where provider_profile_id = 'provider_any2api_research'
+                              and model_name = 'glm/glm-5.2'
+                              and token_limit_parameter_style = 'PROTOCOL_DEFAULT')
+                             as any2api_default_token_limit_model_count,
                            (select count(*) from workflow_node_definition
                             where version_id = 'workflowversion_standard_v10'
                               and node_type in (
@@ -781,6 +793,10 @@ class LiquibasePostgresIntegrationTest {
                            where table_schema = 'public'
                              and table_name = 'ai_model_profile'
                              and column_name = 'maximum_reasoning_effort') as model_capability_column_count,
+                          (select count(*) from information_schema.columns
+                           where table_schema = 'public'
+                             and table_name = 'ai_model_profile'
+                             and column_name = 'token_limit_parameter_style') as token_limit_capability_column_count,
                           (select preferred_leverage from risk_policy where active = true)
                             as preferred_leverage,
                           (select maximum_leverage from risk_policy where active = true)
@@ -971,6 +987,8 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(0, result.getInt("social_choice_ai_binding_count"));
                 assertEquals(1, result.getInt("any2api_provider_ready"));
                 assertEquals(5, result.getInt("any2api_model_count"));
+                assertEquals(4, result.getInt("any2api_no_token_limit_model_count"));
+                assertEquals(1, result.getInt("any2api_default_token_limit_model_count"));
                 assertEquals(15, result.getInt("any2api_research_node_count"));
                 assertEquals(15, result.getInt("heterogeneous_fallback_count"));
                 assertEquals(5, result.getInt("heterogeneous_two_seat_role_count"));
@@ -1009,6 +1027,7 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(1, result.getInt("validator_role_count"));
                 assertEquals(5, result.getInt("fact_extraction_prompt_count"));
                 assertEquals(1, result.getInt("model_capability_column_count"));
+                assertEquals(1, result.getInt("token_limit_capability_column_count"));
                 assertEquals(0, new java.math.BigDecimal("20")
                         .compareTo(result.getBigDecimal("preferred_leverage")));
                 assertEquals(0, new java.math.BigDecimal("20")
@@ -1108,7 +1127,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(68, result.getInt("changeset_count"));
+                    assertEquals(69, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
