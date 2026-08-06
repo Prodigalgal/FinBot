@@ -11,6 +11,7 @@ import io.omnnu.finbot.application.market.dto.ResearchMarketScope;
 import io.omnnu.finbot.application.workflow.exception.DecisionPanelSeedConflictException;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
 import io.omnnu.finbot.domain.debate.DecisionPanelInputHash;
+import io.omnnu.finbot.domain.debate.DecisionPanelFrozenInput;
 import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowManagementRepository;
@@ -257,11 +258,11 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
     public void startDebate(DebateSession session) {
         jdbcClient.sql("""
                 insert into debate_session (
-                  debate_id, run_id, panel_key, panel_purpose, input_hash,
+                  debate_id, run_id, panel_key, panel_purpose, input_hash, frozen_input,
                   status, configured_rounds, completed_rounds,
                   decision_node_id, started_at, completed_at, version
                 ) values (
-                  :debateId, :runId, :panelKey, :panelPurpose, :inputHash,
+                  :debateId, :runId, :panelKey, :panelPurpose, :inputHash, cast(:frozenInput as jsonb),
                   :status, :configuredRounds, :completedRounds,
                   :decisionNodeId, :startedAt, :completedAt, :version
                 ) on conflict (run_id, panel_key) do nothing
@@ -271,6 +272,8 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
                 .param("panelKey", session.panelKey().value())
                 .param("panelPurpose", session.panelPurpose().name())
                 .param("inputHash", session.inputHash() == null ? null : session.inputHash().value())
+                .param("frozenInput", session.frozenInput() == null
+                        ? null : session.frozenInput().json())
                 .param("status", session.status().name())
                 .param("configuredRounds", session.configuredRounds())
                 .param("completedRounds", session.completedRounds())
@@ -294,7 +297,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
     @Transactional(readOnly = true)
     public Optional<DebateSession> findDebate(WorkflowRunId runId, DecisionPanelKey panelKey) {
         return jdbcClient.sql("""
-                select debate_id, panel_key, panel_purpose, input_hash, status,
+                select debate_id, panel_key, panel_purpose, input_hash, frozen_input::text as frozen_input, status,
                        configured_rounds, completed_rounds, decision_node_id,
                        started_at, completed_at, version
                 from debate_session
@@ -310,7 +313,7 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
     @Transactional(readOnly = true)
     public List<DebateSession> debates(WorkflowRunId runId) {
         return jdbcClient.sql("""
-                select debate_id, panel_key, panel_purpose, input_hash, status,
+                select debate_id, panel_key, panel_purpose, input_hash, frozen_input::text as frozen_input, status,
                        configured_rounds, completed_rounds, decision_node_id,
                        started_at, completed_at, version
                 from debate_session
@@ -626,12 +629,14 @@ public class JdbcWorkflowExecutionStore implements WorkflowExecutionStore {
 
     private static DebateSession debateSession(ResultSet resultSet, WorkflowRunId runId) throws SQLException {
         var inputHash = resultSet.getString("input_hash");
+        var frozenInput = resultSet.getString("frozen_input");
         return new DebateSession(
                 new DebateId(resultSet.getString("debate_id")),
                 runId,
                 new DecisionPanelKey(resultSet.getString("panel_key")),
                 DecisionPanelPurpose.valueOf(resultSet.getString("panel_purpose")),
                 inputHash == null ? null : new DecisionPanelInputHash(inputHash),
+                frozenInput == null ? null : new DecisionPanelFrozenInput(frozenInput),
                 DebateStatus.valueOf(resultSet.getString("status")),
                 resultSet.getInt("configured_rounds"),
                 resultSet.getInt("completed_rounds"),

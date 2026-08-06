@@ -27,7 +27,7 @@
 
 - [x] 现状审计与边界设计
 - [x] 需求与 ADR
-- [x] P0a：多 panel session、强类型 identity、冻结输入哈希、复合唯一键和 CAS Store
+- [x] P0a：多 panel session、强类型 identity、冻结输入 JSON/哈希、重试恢复、复合唯一键和 CAS Store
 - [ ] P0b：Panel Engine 提取、研究面板等价迁移与恢复回归
 - [ ] P1：主审面板与约束投影
 - [ ] P1：执行面板、硬风控和 OMS 联调

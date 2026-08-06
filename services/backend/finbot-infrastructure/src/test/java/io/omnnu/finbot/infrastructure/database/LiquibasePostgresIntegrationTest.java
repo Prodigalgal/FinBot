@@ -44,6 +44,8 @@ import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcWorkflowManagemen
 import io.omnnu.finbot.infrastructure.workflow.persistence.JdbcWorkflowExecutionStore;
 import io.omnnu.finbot.infrastructure.workflow.persistence.WorkflowEventCodec;
 import io.omnnu.finbot.application.workflow.exception.DebateProtocolConflictException;
+import io.omnnu.finbot.application.workflow.exception.DecisionPanelSeedConflictException;
+import io.omnnu.finbot.application.workflow.dto.DebateSession;
 import io.omnnu.finbot.application.workflow.dto.StartWorkflowCommand;
 import io.omnnu.finbot.application.catalog.dto.CatalogInstrumentSnapshot;
 import io.omnnu.finbot.application.catalog.dto.CatalogSyncScope;
@@ -93,6 +95,11 @@ import io.omnnu.finbot.domain.debate.DebateTask;
 import io.omnnu.finbot.domain.debate.DebateTaskId;
 import io.omnnu.finbot.domain.debate.DebateTaskStatus;
 import io.omnnu.finbot.domain.debate.DebateTaskVariant;
+import io.omnnu.finbot.domain.debate.DecisionPanelFrozenInput;
+import io.omnnu.finbot.domain.debate.DecisionPanelInputHash;
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
+import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
+import io.omnnu.finbot.domain.workflow.DebateStatus;
 import java.sql.DriverManager;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -1134,7 +1141,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(71, result.getInt("changeset_count"));
+                    assertEquals(72, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
@@ -2088,6 +2095,76 @@ class LiquibasePostgresIntegrationTest {
                         "RESEARCH",
                         "f".repeat(64),
                         now));
+    }
+
+    @Test
+    void persistsFrozenDecisionPanelInputAndUsesTheHashAsTheImmutableSeed() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcClient = JdbcClient.create(dataSource);
+        var objectMapper = new ObjectMapper();
+        var store = new JdbcWorkflowExecutionStore(
+                jdbcClient,
+                new JdbcWorkflowManagementRepository(jdbcClient, objectMapper),
+                objectMapper);
+        var now = Instant.parse("2026-08-06T02:00:00Z");
+        var runId = new WorkflowRunId("run_frozen_panel_store_test");
+        var panelKey = new DecisionPanelKey("execution");
+
+        jdbcClient.sql("""
+                insert into workflow_run (
+                  run_id, idempotency_key, workflow_type, status, trigger_type,
+                  request_summary, accepted_at, created_at, updated_at
+                ) values (
+                  :runId, :idempotencyKey, 'INSTANT_RESEARCH', 'RUNNING', 'MANUAL',
+                  'Frozen panel store test', :now, :now, :now
+                ) on conflict (run_id) do nothing
+                """)
+                .param("runId", runId.value())
+                .param("idempotencyKey", "test:frozen-panel:" + runId.value())
+                .param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
+                .update();
+
+        var original = new DebateSession(
+                new DebateId("debate_frozen_panel_store_test"),
+                runId,
+                panelKey,
+                DecisionPanelPurpose.EXECUTION,
+                new DecisionPanelInputHash("1".repeat(64)),
+                new DecisionPanelFrozenInput("{\"z\":1,\"a\":[2,1]}"),
+                DebateStatus.RUNNING,
+                1,
+                0,
+                new WorkflowNodeId("node_frozen_panel_test"),
+                now,
+                null,
+                0);
+
+        store.startDebate(original);
+        store.startDebate(original);
+
+        var persisted = store.findDebate(runId, panelKey).orElseThrow();
+        assertEquals(original.inputHash(), persisted.inputHash());
+        assertEquals(
+                objectMapper.readTree(original.frozenInput().json()),
+                objectMapper.readTree(persisted.frozenInput().json()));
+
+        var conflicting = new DebateSession(
+                new DebateId("debate_frozen_panel_store_conflict"),
+                runId,
+                panelKey,
+                DecisionPanelPurpose.EXECUTION,
+                new DecisionPanelInputHash("2".repeat(64)),
+                new DecisionPanelFrozenInput("{\"snapshot\":\"different\"}"),
+                DebateStatus.RUNNING,
+                1,
+                0,
+                new WorkflowNodeId("node_frozen_panel_test"),
+                now,
+                null,
+                0);
+        assertThrows(DecisionPanelSeedConflictException.class, () -> store.startDebate(conflicting));
     }
 
     private static void insertPanel(

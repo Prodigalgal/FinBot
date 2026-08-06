@@ -219,6 +219,7 @@ class TradeAutomationApplicationServiceTest {
                 io.omnnu.finbot.domain.debate.DecisionPanelKey.RESEARCH,
                 io.omnnu.finbot.domain.debate.DecisionPanelPurpose.RESEARCH,
                 new io.omnnu.finbot.domain.debate.DecisionPanelInputHash("b".repeat(64)),
+                new io.omnnu.finbot.domain.debate.DecisionPanelFrozenInput("{}"),
                 DebateStatus.COMPLETED,
                 1,
                 1,

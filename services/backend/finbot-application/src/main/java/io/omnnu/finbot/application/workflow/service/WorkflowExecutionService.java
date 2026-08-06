@@ -167,6 +167,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         }
 
         var session = ensureDebate(execution, chair);
+        var frozenExecution = DecisionPanelSessionService.restoreFrozenInput(execution, session);
         if (!session.decisionNodeId().equals(chair.nodeId())) {
             throw new TerminalWorkflowFailure(
                     "DEBATE_CHAIR_MISMATCH",
@@ -179,7 +180,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     "Persisted debate round budget does not match the workflow version",
                     false);
         }
-        if (completeRecoveredTerminalPanel(execution, session)) {
+        if (completeRecoveredTerminalPanel(frozenExecution, session)) {
             return;
         }
         var attemptStartedAt = clock.instant();
@@ -194,10 +195,10 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         var persistedCompletedRounds = session.completedRounds();
         var panelVersion = session.version();
 
-        publishStageStarted(execution.runId(), WorkflowStage.DEBATE, agents.getFirst().nodeId());
+        publishStageStarted(frozenExecution.runId(), WorkflowStage.DEBATE, agents.getFirst().nodeId());
         for (var round = 1; round <= version.defaultDebateRounds(); round++) {
             partial = executeRound(
-                    execution,
+                    frozenExecution,
                     session,
                     layers,
                     turnIndexes,
@@ -214,7 +215,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 persistedCompletedRounds = completedRounds;
             }
             publishProgress(
-                    execution.runId(),
+                    frozenExecution.runId(),
                     chair.nodeId(),
                     Math.min(85, completedRounds * 80 / maximumRounds),
                     "已完成第 " + completedRounds + " / " + maximumRounds + " 轮辩论");
@@ -229,14 +230,14 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 var loopRound = loopRoundOffset + traversal;
                 var alreadyStarted = messages.stream().anyMatch(message -> message.roundIndex() == loopRound);
                 if (!alreadyStarted && !conditionEvaluator.passes(
-                        execution,
+                        frozenExecution,
                         loopEdge,
                         Math.max(1, latestRound(messages)),
                         List.copyOf(messages))) {
                     break;
                 }
                 partial = executeRound(
-                        execution,
+                        frozenExecution,
                         session,
                         layers,
                         turnIndexes,
@@ -253,7 +254,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     persistedCompletedRounds = completedRounds;
                 }
                 publishProgress(
-                        execution.runId(),
+                        frozenExecution.runId(),
                         chair.nodeId(),
                         Math.min(85, completedRounds * 80 / maximumRounds),
                         "条件循环已触发第 " + traversal + " 次修订，累计完成 "
@@ -263,7 +264,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         }
 
         if (!conditionEvaluator.isActive(
-                execution,
+                frozenExecution,
                 chair,
                 Math.max(1, latestRound(messages)),
                 List.copyOf(messages))) {
@@ -273,7 +274,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                     false);
         }
         var chairMessage = executeChair(
-                execution,
+                frozenExecution,
                 session,
                 chair,
                 agents.size() + 1,
@@ -283,7 +284,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
         if (messages.stream().noneMatch(message -> message.messageId().equals(chairMessage.messageId()))) {
             messages.add(chairMessage);
         }
-        publishProgress(execution.runId(), chair.nodeId(), 95, "主席已完成独立仲裁");
+        publishProgress(frozenExecution.runId(), chair.nodeId(), 95, "主席已完成独立仲裁");
         var completedAt = clock.instant();
         TaskCancellationContext.throwIfCancelled();
         executionStore.transitionDebate(
@@ -292,11 +293,11 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
                 partial ? DebateStatus.PARTIAL : DebateStatus.COMPLETED,
                 completedRounds,
                 completedAt);
-        executionStore.completeRun(execution.runId(), partial, completedAt);
-        eventPublisher.publish(execution.runId(), (eventId, sequence, occurredAt) ->
+        executionStore.completeRun(frozenExecution.runId(), partial, completedAt);
+        eventPublisher.publish(frozenExecution.runId(), (eventId, sequence, occurredAt) ->
                 new WorkflowCompleted(
                         eventId,
-                        execution.runId(),
+                        frozenExecution.runId(),
                         sequence,
                         "debate:" + session.debateId().value(),
                         occurredAt));

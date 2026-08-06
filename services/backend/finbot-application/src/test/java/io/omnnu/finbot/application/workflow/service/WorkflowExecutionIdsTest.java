@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.debate.DecisionPanelInputHash;
+import io.omnnu.finbot.domain.debate.DecisionPanelFrozenInput;
 import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import io.omnnu.finbot.domain.workflow.DebateStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
@@ -46,6 +47,7 @@ class WorkflowExecutionIdsTest {
                         ? DecisionPanelPurpose.RESEARCH
                         : DecisionPanelPurpose.EXECUTION,
                 new DecisionPanelInputHash(inputHash),
+                new DecisionPanelFrozenInput("{}"),
                 DebateStatus.RUNNING,
                 1,
                 0,

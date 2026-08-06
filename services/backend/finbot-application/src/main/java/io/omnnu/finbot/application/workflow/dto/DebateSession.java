@@ -1,6 +1,7 @@
 package io.omnnu.finbot.application.workflow.dto;
 
 import io.omnnu.finbot.domain.debate.DecisionPanelInputHash;
+import io.omnnu.finbot.domain.debate.DecisionPanelFrozenInput;
 import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import io.omnnu.finbot.domain.workflow.DebateId;
@@ -16,6 +17,7 @@ public record DebateSession(
         DecisionPanelKey panelKey,
         DecisionPanelPurpose panelPurpose,
         DecisionPanelInputHash inputHash,
+        DecisionPanelFrozenInput frozenInput,
         DebateStatus status,
         int configuredRounds,
         int completedRounds,
@@ -36,6 +38,9 @@ public record DebateSession(
         }
         if (version < 0) {
             throw new IllegalArgumentException("Decision panel version cannot be negative");
+        }
+        if (frozenInput != null && inputHash == null) {
+            throw new IllegalArgumentException("Frozen decision panel input requires an input hash");
         }
     }
 }

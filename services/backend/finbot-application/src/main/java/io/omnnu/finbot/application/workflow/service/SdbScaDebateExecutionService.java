@@ -99,6 +99,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                     false);
         }
         var session = ensureDebate(execution, decisionNode);
+        var frozenExecution = DecisionPanelSessionService.restoreFrozenInput(execution, session);
         if (session.status() == DebateStatus.COMPLETED
                 || session.status() == DebateStatus.PARTIAL) {
             var consensusMessage = executionStore.messages(session.debateId()).stream()
@@ -118,17 +119,17 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                 .filter(WorkflowNodeDefinition::enabled)
                 .filter(node -> node.nodeType() == WorkflowNodeType.AGENT
                         || node.nodeType() == WorkflowNodeType.AGGREGATOR)
-                .filter(node -> conditionEvaluator.isActive(execution, node, 1, List.of()))
+                .filter(node -> conditionEvaluator.isActive(frozenExecution, node, 1, List.of()))
                 .sorted(Comparator.comparing(node -> node.nodeId().value()))
                 .toList();
         var configuration = version.debateProtocolConfiguration();
         var identityGuard = new SdbScaIdentityDisclosureGuard(configuredParticipants);
         if (configuredParticipants.size() < configuration.minimumParticipantSeats()) {
-            return lowQuorumResult(execution, session, decisionNode, List.of(), 0);
+            return lowQuorumResult(frozenExecution, session, decisionNode, List.of(), 0);
         }
 
         var proposal = phaseExecutor.execute(
-                execution,
+                frozenExecution,
                 session,
                 GENERATION,
                 DebatePhaseType.PROPOSAL,
@@ -137,7 +138,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                                 node,
                                 null,
                                 DebateTaskVariant.PRIMARY,
-                                promptComposer.proposal(execution, node),
+                                promptComposer.proposal(frozenExecution, node),
                                 output -> identityGuard.requireAnonymous(
                                         outputParser.parseProposal(output).canonicalJson())))
                         .toList());
@@ -165,7 +166,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
         if (candidates.size() < configuration.minimumParticipantSeats()
                 || participantRoleCount < configuration.minimumQuorumRoles()) {
             return lowQuorumResult(
-                    execution,
+                    frozenExecution,
                     session,
                     decisionNode,
                     candidates,
@@ -181,14 +182,14 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                         candidate.anonymousCandidateId(),
                         proposalArtifactsById.get(candidate.proposalArtifactId().value()).content())));
         var critiqueCommands = critiqueCommands(
-                execution,
+                frozenExecution,
                 candidates,
                 nodesById,
                 proposalViews,
                 configuration.critiqueAssignmentPolicy(),
                 identityGuard);
         var critique = phaseExecutor.execute(
-                execution,
+                frozenExecution,
                 session,
                 GENERATION,
                 DebatePhaseType.CRITIQUE,
@@ -209,12 +210,16 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                     node,
                     candidate.candidateId().value(),
                     DebateTaskVariant.PRIMARY,
-                    promptComposer.revision(execution, node, proposalViews.get(candidate.candidateId()), critiques),
+                    promptComposer.revision(
+                            frozenExecution,
+                            node,
+                            proposalViews.get(candidate.candidateId()),
+                            critiques),
                     output -> identityGuard.requireAnonymous(
                             outputParser.parseRevision(output).canonicalJson())));
         }
         var revision = phaseExecutor.execute(
-                execution,
+                frozenExecution,
                 session,
                 GENERATION,
                 DebatePhaseType.REVISION,
@@ -249,7 +254,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
         if (revisedCandidates.size() < configuration.minimumParticipantSeats()
                 || revisedRoleCount < configuration.minimumQuorumRoles()) {
             return lowQuorumResult(
-                    execution,
+                    frozenExecution,
                     session,
                     decisionNode,
                     revisedCandidates,
@@ -275,7 +280,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                         node,
                         null,
                         variant,
-                        promptComposer.ballot(execution, node, candidateViews, orientation),
+                        promptComposer.ballot(frozenExecution, node, candidateViews, orientation),
                         output -> outputParser.parseBallot(
                                         output,
                                         candidate.logicalRoleKey(),
@@ -285,7 +290,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
             }
         }
         var ballotPhase = phaseExecutor.execute(
-                execution,
+                frozenExecution,
                 session,
                 GENERATION,
                 DebatePhaseType.BALLOT,
@@ -311,7 +316,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
         var detailed = consensusEngine.resolveDetailed(
                 forward, reversed, configuration.minimumQuorumRoles());
         return completeResult(
-                execution,
+                frozenExecution,
                 session,
                 decisionNode,
                 revisedCandidates,

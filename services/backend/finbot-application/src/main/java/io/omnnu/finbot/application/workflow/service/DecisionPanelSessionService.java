@@ -6,6 +6,7 @@ import io.omnnu.finbot.application.workflow.exception.DecisionPanelSeedConflictE
 import io.omnnu.finbot.application.workflow.exception.SdbScaExecutionException;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
 import io.omnnu.finbot.domain.debate.DecisionPanelKey;
+import io.omnnu.finbot.domain.debate.DecisionPanelFrozenInput;
 import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import io.omnnu.finbot.domain.workflow.DebateStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
@@ -28,18 +29,21 @@ final class DecisionPanelSessionService {
             WorkflowNodeId decisionNodeId,
             int configuredRounds) {
         Objects.requireNonNull(execution, "execution");
-        var inputHash = DecisionPanelInputHasher.hash(execution, panelKey, purpose);
         var existing = executionStore.findDebate(execution.runId(), panelKey);
         if (existing.isPresent()) {
             return DecisionPanelSessionGuard.requireCompatible(
-                    existing.orElseThrow(), panelKey, purpose, inputHash, decisionNodeId);
+                    existing.orElseThrow(), panelKey, purpose, decisionNodeId);
         }
+        var frozenInput = new DecisionPanelFrozenInput(execution.researchContext());
+        var inputHash = DecisionPanelInputHasher.hash(
+                execution, panelKey, purpose, frozenInput);
         var proposed = new DebateSession(
                 WorkflowExecutionIds.debate(execution.runId(), panelKey),
                 execution.runId(),
                 panelKey,
                 purpose,
                 inputHash,
+                frozenInput,
                 DebateStatus.RUNNING,
                 configuredRounds,
                 0,
@@ -57,6 +61,23 @@ final class DecisionPanelSessionService {
         }
         var persisted = executionStore.findDebate(execution.runId(), panelKey).orElse(proposed);
         return DecisionPanelSessionGuard.requireCompatible(
-                persisted, panelKey, purpose, inputHash, decisionNodeId);
+                persisted, panelKey, purpose, decisionNodeId);
+    }
+
+    static WorkflowExecutionContext restoreFrozenInput(
+            WorkflowExecutionContext execution,
+            DebateSession session) {
+        Objects.requireNonNull(execution, "execution");
+        Objects.requireNonNull(session, "session");
+        if (session.frozenInput() == null) {
+            return execution;
+        }
+        return new WorkflowExecutionContext(
+                execution.runId(),
+                execution.status(),
+                execution.requestSummary(),
+                session.frozenInput().json(),
+                execution.definitionVersion(),
+                execution.marketScope());
     }
 }

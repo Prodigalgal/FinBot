@@ -2,6 +2,7 @@ package io.omnnu.finbot.application.workflow.service;
 
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
 import io.omnnu.finbot.domain.debate.DecisionPanelInputHash;
+import io.omnnu.finbot.domain.debate.DecisionPanelFrozenInput;
 import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import java.util.ArrayList;
@@ -14,10 +15,12 @@ final class DecisionPanelInputHasher {
     static DecisionPanelInputHash hash(
             WorkflowExecutionContext execution,
             DecisionPanelKey panelKey,
-            DecisionPanelPurpose purpose) {
+            DecisionPanelPurpose purpose,
+            DecisionPanelFrozenInput frozenInput) {
         Objects.requireNonNull(execution, "execution");
         Objects.requireNonNull(panelKey, "panelKey");
         Objects.requireNonNull(purpose, "purpose");
+        Objects.requireNonNull(frozenInput, "frozenInput");
         var parts = new ArrayList<String>();
         parts.add("decision-panel-input-v1");
         parts.add(panelKey.value());
@@ -25,7 +28,7 @@ final class DecisionPanelInputHasher {
         parts.add(execution.definitionVersion().versionId().value());
         parts.add(execution.definitionVersion().checksum());
         parts.add(Objects.requireNonNullElse(execution.requestSummary(), ""));
-        parts.add(execution.researchContext());
+        parts.add(frozenInput.json());
         var market = execution.marketScope();
         if (market == null) {
             parts.add("no-market-scope");

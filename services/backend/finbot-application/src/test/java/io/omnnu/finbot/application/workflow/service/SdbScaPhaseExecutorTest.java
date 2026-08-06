@@ -33,6 +33,7 @@ import io.omnnu.finbot.domain.consensus.ConsensusBallot;
 import io.omnnu.finbot.domain.consensus.ConsensusDecision;
 import io.omnnu.finbot.domain.consensus.LogicalRoleKey;
 import io.omnnu.finbot.domain.debate.CritiqueAssignmentPolicy;
+import io.omnnu.finbot.domain.debate.DecisionPanelFrozenInput;
 import io.omnnu.finbot.domain.debate.DebateArtifact;
 import io.omnnu.finbot.domain.debate.DebateArtifactId;
 import io.omnnu.finbot.domain.debate.DebateArtifactStatus;
@@ -107,6 +108,7 @@ class SdbScaPhaseExecutorTest {
                 io.omnnu.finbot.domain.debate.DecisionPanelKey.RESEARCH,
                 io.omnnu.finbot.domain.debate.DecisionPanelPurpose.RESEARCH,
                 new io.omnnu.finbot.domain.debate.DecisionPanelInputHash("a".repeat(64)),
+                new DecisionPanelFrozenInput(execution.researchContext()),
                 DebateStatus.RUNNING,
                 1,
                 0,
