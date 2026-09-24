@@ -1,6 +1,7 @@
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { Alert, Box, Button, Chip, Divider, LinearProgress, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import { Alert, Box, Button, Divider, LinearProgress, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ApiError, api } from './api';
@@ -10,7 +11,7 @@ import { ForecastPanel } from './ForecastPanel';
 import { DebateProtocolPanel } from './DebateProtocolPanel';
 import { ResearchCasePanel } from './ResearchCasePanel';
 import type { ResearchCase, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, TaskRecord, TradeAutomationDetail, WorkflowDefinitionSummary, WorkflowEvent, WorkflowRun } from './types';
-import { ErrorBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
+import { CopyableText, ErrorBlock, SectionTitle, StatusBadge, formatTime, statusLabel } from './ui';
 
 const eventTypes = ['workflow.accepted', 'workflow.stage.started', 'workflow.progressed', 'workflow.ai.text.delta', 'workflow.agent.message', 'workflow.completed', 'workflow.failed'];
 const previewStages = ['信息收集', 'AI 清洗', '多 Agent 压缩', '多轮辩论', '走势预测', '模拟验证', '生成报告'];
@@ -145,40 +146,154 @@ export function ResearchPage({ initialQuestion, initialLaunch }: { initialQuesti
 
   return (
     <Stack spacing={2.5}>
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack spacing={1.5}>
+      <Paper variant="outlined" sx={{ p: 2.5, borderRadius: '10px' }}>
+        <Stack spacing={2}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
-            <Typography variant="subtitle1">研究输入</Typography>
-            <Typography variant="caption" color="text.secondary">{question.length} / 2000</Typography>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800}>发起智能投研</Typography>
+              <Typography variant="caption" color="text.secondary">多智能体双盲辩论 · 量化指标验证 · 模拟盘执行</Typography>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ fontFeatureSettings: '"tnum"' }}>{question.length} / 2000</Typography>
           </Stack>
-          <TextField multiline minRows={4} value={question} onChange={(event) => setQuestion(event.target.value)} label="研究问题" inputProps={{ maxLength: 2000 }} />
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) minmax(0, 1fr) auto' }, gap: 1.25, alignItems: 'stretch' }}>
+          <TextField multiline minRows={3} value={question} onChange={(event) => setQuestion(event.target.value)} label="研究问题" inputProps={{ maxLength: 2000 }} />
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) minmax(0, 1fr) auto' }, gap: 1.5, alignItems: 'stretch' }}>
             <TextField select size="small" label="实盘研究工作流" value={workflowVersionId} onChange={(event) => setWorkflowVersionId(event.target.value)} sx={{ minWidth: 0, '& .MuiOutlinedInput-root': { minHeight: 44 } }}><MenuItem value="">系统默认工作流</MenuItem>{workflows.map((workflow) => <MenuItem key={workflow.definitionId} value={workflow.publishedVersionId || ''}>{workflow.name} · v{workflow.publishedVersionNumber}{workflow.active ? ' · 已激活' : ''}</MenuItem>)}</TextField>
             <TextField select size="small" label="模拟验证工作流" value={demoWorkflowVersionId} onChange={(event) => setDemoWorkflowVersionId(event.target.value)} sx={{ minWidth: 0, '& .MuiOutlinedInput-root': { minHeight: 44 } }}><MenuItem value="">与实盘工作流相同</MenuItem>{workflows.map((workflow) => <MenuItem key={workflow.definitionId} value={workflow.publishedVersionId || ''}>{workflow.name} · v{workflow.publishedVersionNumber}</MenuItem>)}</TextField>
-            <Button variant="contained" startIcon={<PlayArrowIcon />} disabled={busy || question.trim().length === 0} onClick={() => void start()} sx={{ minHeight: 44, px: 2.5, whiteSpace: 'nowrap' }}>{busy ? '正在受理' : '发起研究'}</Button>
+            <Button variant="contained" startIcon={<PlayArrowIcon />} disabled={busy || question.trim().length === 0} onClick={() => void start()} sx={{ minHeight: 44, px: 3, fontWeight: 700, whiteSpace: 'nowrap' }}>{busy ? '正在受理' : '发起研究'}</Button>
           </Box>
         </Stack>
       </Paper>
       {error !== null && <ErrorBlock error={error} />}
       {!launch && <ResearchProcessPreview />}
       {launch && <>
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="space-between"><Box><Typography fontWeight={700}>{run?.requestSummary || question}</Typography><Typography variant="caption" color="text.secondary">{launch.runId} · 任务 {launch.taskId}</Typography></Box><Stack direction="row" spacing={1}><Chip size="small" color={statusColor(run?.status || launch.workflowStatus)} label={statusLabel(run?.status || launch.workflowStatus)} /><Chip size="small" color={statusColor(task?.status || launch.taskStatus)} label={`任务 ${statusLabel(task?.status || launch.taskStatus)}`} /></Stack></Stack>
-          <LinearProgress variant="determinate" value={progress} sx={{ mt: 2 }} />
-          {task?.errorMessage && <Alert severity="error" sx={{ mt: 2 }}>{task.errorCode}: {task.errorMessage}</Alert>}
+        <Paper variant="outlined" sx={{ p: 2.25, borderRadius: '10px', bgcolor: 'rgba(29, 78, 216, 0.015)' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography fontWeight={800} sx={{ fontSize: '1rem', mb: 0.5 }}>{run?.requestSummary || question}</Typography>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Typography variant="caption" color="text.secondary">Run ID:</Typography>
+                <CopyableText text={launch.runId} />
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>· 任务 ID:</Typography>
+                <CopyableText text={launch.taskId} />
+              </Stack>
+            </Box>
+            <Stack direction="row" spacing={1} alignItems="center" flexShrink={0}>
+              <StatusBadge status={run?.status || launch.workflowStatus} />
+              <StatusBadge status={task?.status || launch.taskStatus} label={`任务 ${statusLabel(task?.status || launch.taskStatus)}`} />
+            </Stack>
+          </Stack>
+          <Box sx={{ mt: 2 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">流水线进度</Typography>
+              <Typography variant="caption" fontWeight={700} sx={{ fontFeatureSettings: '"tnum"' }}>{Math.round(progress)}%</Typography>
+            </Stack>
+            <LinearProgress
+              variant="determinate"
+              value={progress}
+              sx={{
+                height: 8,
+                borderRadius: '4px',
+                bgcolor: 'rgba(15, 23, 42, 0.06)',
+                '& .MuiLinearProgress-bar': {
+                  borderRadius: '4px',
+                  bgcolor: progress === 100 ? '#16a34a' : 'primary.main',
+                },
+              }}
+            />
+          </Box>
+          {task?.errorMessage && <Alert severity="error" sx={{ mt: 2, borderRadius: '8px' }}>{task.errorCode}: {task.errorMessage}</Alert>}
         </Paper>
         {researchCase && <ResearchCasePanel researchCase={researchCase} />}
-        <Box><SectionTitle title="实时阶段" action={<Button size="small" startIcon={<RefreshIcon />} onClick={() => void refreshDetails().catch(setError)}>刷新详情</Button>} />
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>实盘研究事件</Typography>
-          <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-            {events.map(({ type, event }, index) => <Stack key={event.sequence} direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ px: 2, py: 1.25, borderTop: index ? '1px solid' : 0, borderColor: 'divider' }}><Typography variant="caption" color="text.secondary" sx={{ width: 70 }}>#{event.sequence}</Typography><Box sx={{ flex: 1, minWidth: 0 }}><Typography fontWeight={700}>{eventTitle(type, event)}</Typography><Typography variant="body2" color="text.secondary">{eventSummary(event)}</Typography></Box><Typography variant="caption" color="text.secondary">{formatTime(event.occurredAt)}</Typography></Stack>)}
-            {events.length === 0 && <Box sx={{ p: 3, color: 'text.secondary' }}>等待流水线事件</Box>}
+        <Box>
+          <SectionTitle title="实时阶段" action={<Button size="small" startIcon={<RefreshIcon />} onClick={() => void refreshDetails().catch(setError)}>刷新详情</Button>} />
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, fontSize: '0.85rem' }}>实盘研究事件流</Typography>
+          <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: '10px' }}>
+            {events.map(({ type, event }, index) => (
+              <Stack
+                key={event.sequence}
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={2}
+                alignItems={{ sm: 'center' }}
+                sx={{
+                  px: 2,
+                  py: 1.25,
+                  borderTop: index ? '1px solid' : 0,
+                  borderColor: 'divider',
+                  transition: 'background-color 0.15s ease',
+                  '&:hover': { bgcolor: 'rgba(15, 23, 42, 0.015)' },
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 44,
+                    py: 0.25,
+                    textAlign: 'center',
+                    borderRadius: '4px',
+                    bgcolor: 'surfaceMuted',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    fontFeatureSettings: '"tnum"',
+                    color: 'text.secondary',
+                    flexShrink: 0,
+                  }}
+                >
+                  #{event.sequence}
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography fontWeight={700} sx={{ fontSize: '0.88rem' }}>{eventTitle(type, event)}</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem', mt: 0.25 }}>{eventSummary(event)}</Typography>
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontFeatureSettings: '"tnum"', flexShrink: 0 }}>
+                  {formatTime(event.occurredAt)}
+                </Typography>
+              </Stack>
+            ))}
+            {events.length === 0 && <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: '0.85rem' }}>等待流水线事件推送中...</Box>}
           </Paper>
           {demoRunId && <>
-            <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>模拟盘独立分析与执行事件</Typography>
-            <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-              {demoEvents.map(({ type, event }, index) => <Stack key={event.sequence} direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ px: 2, py: 1.25, borderTop: index ? '1px solid' : 0, borderColor: 'divider' }}><Typography variant="caption" color="text.secondary" sx={{ width: 70 }}>#{event.sequence}</Typography><Box sx={{ flex: 1, minWidth: 0 }}><Typography fontWeight={700}>{eventTitle(type, event)}</Typography><Typography variant="body2" color="text.secondary">{eventSummary(event)}</Typography></Box><Typography variant="caption" color="text.secondary">{formatTime(event.occurredAt)}</Typography></Stack>)}
-              {demoEvents.length === 0 && <Box sx={{ p: 3, color: 'text.secondary' }}>模拟分支已创建，等待流水线事件</Box>}
+            <Typography variant="subtitle2" sx={{ mt: 2.5, mb: 1, fontWeight: 700, fontSize: '0.85rem' }}>模拟盘独立分析与执行事件</Typography>
+            <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: '10px' }}>
+              {demoEvents.map(({ type, event }, index) => (
+                <Stack
+                  key={event.sequence}
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={2}
+                  alignItems={{ sm: 'center' }}
+                  sx={{
+                    px: 2,
+                    py: 1.25,
+                    borderTop: index ? '1px solid' : 0,
+                    borderColor: 'divider',
+                    transition: 'background-color 0.15s ease',
+                    '&:hover': { bgcolor: 'rgba(15, 23, 42, 0.015)' },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 44,
+                      py: 0.25,
+                      textAlign: 'center',
+                      borderRadius: '4px',
+                      bgcolor: 'surfaceMuted',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      fontFeatureSettings: '"tnum"',
+                      color: 'text.secondary',
+                      flexShrink: 0,
+                    }}
+                  >
+                    #{event.sequence}
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography fontWeight={700} sx={{ fontSize: '0.88rem' }}>{eventTitle(type, event)}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem', mt: 0.25 }}>{eventSummary(event)}</Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontFeatureSettings: '"tnum"', flexShrink: 0 }}>
+                    {formatTime(event.occurredAt)}
+                  </Typography>
+                </Stack>
+              ))}
+              {demoEvents.length === 0 && <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: '0.85rem' }}>模拟分支已创建，等待流水线事件推送...</Box>}
             </Paper>
           </>}
         </Box>
@@ -189,20 +304,60 @@ export function ResearchPage({ initialQuestion, initialLaunch }: { initialQuesti
 }
 
 function ResearchProcessPreview() {
-  return <Box>
-    <SectionTitle title="流程预览" />
-    <Box sx={{ pl: 1 }}>
-      {previewStages.map((stage, index) => <Stack key={stage} direction="row" spacing={1.5} alignItems="stretch">
-        <Stack alignItems="center" sx={{ width: 28, flexShrink: 0 }}>
-          <Box sx={{ width: 26, height: 26, display: 'grid', placeItems: 'center', border: '1px solid', borderColor: index === 0 ? 'primary.main' : 'divider', bgcolor: index === 0 ? 'primary.main' : 'background.paper', color: index === 0 ? 'primary.contrastText' : 'text.secondary', borderRadius: 1, fontSize: 12, fontWeight: 700 }}>{index + 1}</Box>
-          {index < previewStages.length - 1 && <Box sx={{ width: 1, flex: 1, minHeight: 16, bgcolor: 'divider' }} />}
-        </Stack>
-        <Box sx={{ flex: 1, minWidth: 0, pb: index < previewStages.length - 1 ? 1.5 : 0, pt: .25, borderBottom: index < previewStages.length - 1 ? '1px solid' : 0, borderColor: 'divider' }}>
-          <Typography variant="body2" fontWeight={700}>{stage}</Typography>
+  return (
+    <Box>
+      <SectionTitle title="投研流水线架构" />
+      <Paper variant="outlined" sx={{ p: 2.5, borderRadius: '10px' }}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)', lg: 'repeat(7, 1fr)' },
+            gap: 1.5,
+          }}
+        >
+          {previewStages.map((stage, index) => (
+            <Box
+              key={stage}
+              sx={{
+                p: 1.5,
+                borderRadius: '8px',
+                bgcolor: index === 0 ? 'rgba(29, 78, 216, 0.05)' : 'surfaceMuted',
+                border: '1px solid',
+                borderColor: index === 0 ? 'rgba(29, 78, 216, 0.3)' : 'divider',
+                position: 'relative',
+              }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
+                <Box
+                  sx={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    bgcolor: index === 0 ? 'primary.main' : 'rgba(15, 23, 42, 0.1)',
+                    color: index === 0 ? '#ffffff' : 'text.secondary',
+                    fontFeatureSettings: '"tnum"',
+                  }}
+                >
+                  {index + 1}
+                </Box>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: index === 0 ? 'primary.main' : 'text.secondary', letterSpacing: '0.04em' }}>
+                  STAGE 0{index + 1}
+                </Typography>
+              </Stack>
+              <Typography variant="body2" fontWeight={700} sx={{ color: index === 0 ? 'primary.main' : 'text.primary' }}>
+                {stage}
+              </Typography>
+            </Box>
+          ))}
         </Box>
-      </Stack>)}
+      </Paper>
     </Box>
-  </Box>;
+  );
 }
 
 function ResearchResult({ detail, demoDetail, automation, forecast, demoForecast }: { detail: ResearchHistoryDetail; demoDetail: ResearchHistoryDetail | null; automation: TradeAutomationDetail | null; forecast: ResearchForecast | null; demoForecast: ResearchForecast | null }) {

@@ -8,12 +8,12 @@ import SaveIcon from '@mui/icons-material/Save';
 import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 import { Background, Controls, ReactFlow, addEdge, useEdgesState, useNodesState } from '@xyflow/react';
 import type { Connection, Edge, Node } from '@xyflow/react';
-import { Alert, Box, Button, Chip, FormControlLabel, MenuItem, Paper, Stack, Switch, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Divider, FormControlLabel, MenuItem, Paper, Stack, Switch, TextField, Typography } from '@mui/material';
 import { useEffect, useMemo, useState } from 'react';
 
 import { api } from './api';
 import type { AgentRole, AiModel, AiModelBinding, AiProvider, ConfigurationSnapshot, ReasoningEffort, ResearchSummary, WorkflowCondition, WorkflowConditionOperandType, WorkflowDefinitionSummary, WorkflowEdge, WorkflowEstimate, WorkflowExecutionPlan, WorkflowFailurePolicy, WorkflowLearning, WorkflowNode, WorkflowNodeTestResult, WorkflowNodeType, WorkflowOutputContract, WorkflowSchema, WorkflowVersion } from './types';
-import { ErrorBlock, LoadingBlock, SectionTitle, formatTime, statusColor, statusLabel } from './ui';
+import { CopyableText, ErrorBlock, LoadingBlock, SectionTitle, StatusBadge, formatTime, statusColor, statusLabel } from './ui';
 
 interface CanvasData extends Record<string, unknown> { label: string; workflowNode: WorkflowNode }
 type CanvasNode = Node<CanvasData>;
@@ -214,56 +214,338 @@ export function WorkflowPage() {
 
   if (error !== null && (!version || !schema || !config || !definition)) return <ErrorBlock error={error} />;
   if (!version || !schema || !config || !definition) return <LoadingBlock label="正在加载工作流定义" />;
-  return <Stack spacing={2}>
-    {error !== null && <ErrorBlock error={error} />}{message && <Alert severity="success">{message}</Alert>}
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ md: 'center' }} flexWrap={{ md: 'wrap' }} useFlexGap>
-      <TextField select label="工作流" value={definition.definitionId} onChange={(event) => void selectDefinition(event.target.value)} sx={{ minWidth: 240 }}>{definitions.map((item) => <MenuItem key={item.definitionId} value={item.definitionId}>{item.name}{item.active ? '（调度中）' : ''}</MenuItem>)}</TextField>
-      <TextField select label="版本" value={version.versionId} onChange={(event) => { const selectedVersion = versions.find((item) => item.versionId === event.target.value); if (selectedVersion) applyVersion(selectedVersion); }} sx={{ minWidth: 180 }}>{versions.map((item) => <MenuItem key={item.versionId} value={item.versionId}>v{item.versionNumber} · {item.status}</MenuItem>)}</TextField>
-      <Chip label={`${version.status} v${version.versionNumber}`} color={version.status === 'PUBLISHED' ? 'success' : 'warning'} />
-      <FormControlLabel control={<Switch checked={definition.active} disabled={saving || definition.publishedVersionId === null} onChange={(event) => void setActive(event.target.checked)} />} label="参与定时调度" />
-      <Box sx={{ flex: 1 }} />
-      <Button onClick={() => void cloneWorkflow()}>复制为新工作流</Button>
-      <Button onClick={() => void loadPlan()}>执行计划</Button>
-      <Button startIcon={<CalculateOutlinedIcon />} onClick={() => void loadEstimate()}>估算</Button>
-      <Button startIcon={<ScienceOutlinedIcon />} onClick={() => void loadLearning()}>学习统计</Button>
-      <TextField select size="small" label="节点类型" value={newNodeType} onChange={(event) => setNewNodeType(event.target.value as WorkflowNodeType)} sx={{ minWidth: 170 }}>{schema.nodeTypes.map((type) => <MenuItem key={type} value={type}>{nodeTypeLabel(type)}</MenuItem>)}</TextField>
-      <Button startIcon={<AddIcon />} onClick={addNode}>添加节点</Button>
-      <Button variant="contained" startIcon={<SaveIcon />} disabled={saving} onClick={() => void save()}>保存草稿</Button>
-      <Button color="success" variant="contained" startIcon={<PublishIcon />} disabled={saving || version.status !== 'DRAFT'} onClick={() => void publish()}>发布</Button>
-    </Stack>
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <SectionTitle title="工作流运行约束" />
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25 }}>
-        <TextField label="工作流名称" value={definition.name} onChange={(event) => setDefinition({ ...definition, name: event.target.value })} />
-        <TextField label="用途说明" value={definition.description} onChange={(event) => setDefinition({ ...definition, description: event.target.value })} />
-        <TextField label={version.debateProtocol.protocol === 'SDB_SCA_V1' ? '协议周期' : '辩论轮次'} type="number" value={version.defaultDebateRounds} disabled={version.debateProtocol.protocol === 'SDB_SCA_V1'} onChange={(event) => setVersion({ ...version, defaultDebateRounds: Number(event.target.value) })} inputProps={{ min: 1, max: 8 }} helperText={version.debateProtocol.protocol === 'SDB_SCA_V1' ? 'V1 固定执行一次完整四阶段周期' : undefined} />
-        <TextField select label="失败策略" value={version.failurePolicy} onChange={(event) => setVersion({ ...version, failurePolicy: event.target.value as WorkflowFailurePolicy })}>{schema.failurePolicies.map((policy) => <MenuItem key={policy} value={policy}>{failurePolicyLabel(policy)}</MenuItem>)}</TextField>
-        <TextField label="最大步骤" type="number" value={version.maximumSteps} onChange={(event) => setVersion({ ...version, maximumSteps: Number(event.target.value) })} inputProps={{ min: 1, max: 1000 }} />
-        <TextField label="最大时长（秒）" type="number" value={version.maximumDurationSeconds} onChange={(event) => setVersion({ ...version, maximumDurationSeconds: Number(event.target.value) })} inputProps={{ min: 10, max: 86400 }} />
-        <TextField label="最大 Token" type="number" value={version.maximumTokens} onChange={(event) => setVersion({ ...version, maximumTokens: Number(event.target.value) })} inputProps={{ min: 1000, max: 10000000 }} />
-        <TextField label="最大成本（USD）" type="number" value={version.maximumCostUsd} onChange={(event) => setVersion({ ...version, maximumCostUsd: Number(event.target.value) })} inputProps={{ min: 0, step: 0.1 }} />
-      </Box>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(5, minmax(0, 1fr))' }, gap: 1.25, mt: 1.25 }}>
-        <TextField select label="辩论协议" value={version.debateProtocol.protocol} onChange={(event) => { const protocol = event.target.value as typeof version.debateProtocol.protocol; setVersion({ ...version, defaultDebateRounds: protocol === 'SDB_SCA_V1' ? 1 : version.defaultDebateRounds, debateProtocol: { ...version.debateProtocol, protocol, critiqueAssignmentPolicy: protocol === 'LEGACY_CHAIR_V1' ? 'FULL_MATRIX' : version.debateProtocol.critiqueAssignmentPolicy } }); }}><MenuItem value="SDB_SCA_V1">SDB-SCA 双盲同时博弈</MenuItem><MenuItem value="LEGACY_CHAIR_V1">Legacy 主席辩论</MenuItem></TextField>
-        <TextField label="最低参与席位" type="number" value={version.debateProtocol.minimumParticipantSeats} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, minimumParticipantSeats: Number(event.target.value) } })} inputProps={{ min: 2, max: 32 }} />
-        <TextField label="最低逻辑角色" type="number" value={version.debateProtocol.minimumQuorumRoles} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, minimumQuorumRoles: Number(event.target.value) } })} inputProps={{ min: 2, max: 32 }} />
-        <TextField label="阶段超时（秒）" type="number" value={version.debateProtocol.stageTimeoutSeconds} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, stageTimeoutSeconds: Number(event.target.value) } })} inputProps={{ min: 30, max: 7200 }} />
-        <TextField select label="交叉评审分配" value={version.debateProtocol.critiqueAssignmentPolicy} disabled={version.debateProtocol.protocol === 'LEGACY_CHAIR_V1'} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, critiqueAssignmentPolicy: event.target.value as typeof version.debateProtocol.critiqueAssignmentPolicy } })}><MenuItem value="FULL_MATRIX">全矩阵</MenuItem><MenuItem value="BALANCED_INCOMPLETE">均衡不完全矩阵</MenuItem></TextField>
-      </Box>
-    </Paper>
-    <Paper variant="outlined" sx={{ p: 1.5 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ md: 'center' }}><TextField select size="small" label="回滚目标" value={rollbackVersionId} onChange={(event) => setRollbackVersionId(event.target.value)} sx={{ minWidth: 220 }}><MenuItem value="">选择历史版本</MenuItem>{versions.filter((item) => item.versionId !== version.versionId).map((item) => <MenuItem key={item.versionId} value={item.versionId}>v{item.versionNumber} · {item.status}</MenuItem>)}</TextField><Button startIcon={<RestoreIcon />} disabled={!rollbackVersionId || saving} onClick={() => void rollback()}>复制并发布回滚版本</Button><Box sx={{ flex: 1 }} />{selected && isLlmBacked(selected.data.workflowNode.nodeType) && <><TextField size="small" label="节点测试输入" value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} fullWidth inputProps={{ maxLength: 20000 }} /><Button variant="outlined" startIcon={<ScienceOutlinedIcon />} disabled={saving || !testPrompt.trim()} onClick={() => void testSelectedNode()}>实测节点</Button></>}</Stack></Paper>
-    {estimate && <Paper variant="outlined" sx={{ p: 2 }}><SectionTitle title="运行估算" /><Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(5, minmax(0, 1fr))' }, gap: 1.25 }}><EstimateMetric label="模型调用" value={String(estimate.estimatedCalls)} /><EstimateMetric label="输入 Token" value={estimate.estimatedInputTokens.toLocaleString()} /><EstimateMetric label="最大输出" value={estimate.maximumOutputTokens.toLocaleString()} /><EstimateMetric label="主模型成本" value={`$${Number(estimate.primaryCostUsd).toFixed(4)}`} /><EstimateMetric label="含兜底最坏成本" value={`$${Number(estimate.fallbackWorstCaseCostUsd).toFixed(4)}`} /></Box>{estimate.warnings.map((warning) => <Alert key={warning} severity="warning" sx={{ mt: 1 }}>{warning}</Alert>)}</Paper>}
-    {executionPlan && <Paper variant="outlined" sx={{ p: 2 }}><SectionTitle title="执行计划" />{executionPlan.warnings.map((warning) => <Alert key={warning} severity="warning" sx={{ mb: 1 }}>{warning}</Alert>)}<Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>基础 {executionPlan.defaultDebateRounds} 轮，条件循环最多 {executionPlan.maximumDebateRounds} 轮 · {executionPlan.maximumSteps} 步 · {executionPlan.maximumTokens.toLocaleString()} tokens · ${executionPlan.maximumCostUsd}</Typography><Stack spacing={.75}>{executionPlan.nodes.map((node) => <Stack key={node.nodeId} direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ md: 'center' }} sx={{ py: 1, borderTop: '1px solid', borderColor: 'divider', opacity: node.enabled ? 1 : .5 }}><Chip size="small" label={node.sequence} /><Box sx={{ minWidth: { md: 220 }, flex: 1 }}><Typography fontWeight={700}>{node.displayName}</Typography><Typography variant="caption" color="text.secondary">{node.nodeType} · {node.runtimeHandler}</Typography></Box><Typography variant="body2" sx={{ minWidth: { md: 180 } }}>{node.invocationPolicy}</Typography><Typography variant="caption" color="text.secondary" sx={{ minWidth: { md: 240 } }}>{node.modelName ? `${node.providerProfileId} / ${node.modelName} / ${node.reasoningEffort}` : `上游 ${node.upstreamNodeIds.join(', ') || '-'}`}</Typography></Stack>)}</Stack></Paper>}
-    {learning && <Paper variant="outlined" sx={{ p: 2 }}><SectionTitle title="运行与学习统计" /><Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}><EstimateMetric label="运行" value={String(learning.runCount)} /><EstimateMetric label="完成" value={String(learning.completedRunCount)} /><EstimateMetric label="失败" value={String(learning.failedRunCount)} /><EstimateMetric label="累计成本" value={`$${Number(learning.totalCostUsd).toFixed(4)}`} /></Stack><Stack spacing={.75} sx={{ mt: 1.5 }}>{learning.nodes.map((node) => <Stack key={node.nodeId} direction={{ xs: 'column', md: 'row' }} spacing={1.25} sx={{ py: 1, borderTop: '1px solid', borderColor: 'divider' }}><Typography fontWeight={700} sx={{ width: { md: 220 } }}>{node.displayName}</Typography><Typography variant="body2">调用 {node.invocationCount} · 成功 {node.successfulInvocationCount} · 失败 {node.failedInvocationCount}</Typography><Typography variant="body2">{node.inputTokens + node.outputTokens} tokens · ${Number(node.costUsd).toFixed(4)} · {node.averageLatencyMilliseconds ?? '-'} ms</Typography></Stack>)}</Stack></Paper>}
-    {nodeTest && <Alert severity={nodeTest.status === 'COMPLETED' ? 'success' : 'error'}><Typography fontWeight={700}>节点测试 {nodeTest.status} · {nodeTest.runId}</Typography><Typography component="pre" variant="body2" sx={{ whiteSpace: 'pre-wrap', m: 0 }}>{nodeTest.output || `${nodeTest.errorCode}: ${nodeTest.errorMessage}`}</Typography></Alert>}
-    <Paper variant="outlined" sx={{ p: 2 }}><SectionTitle title="该版本最近运行" action={<Button href="#review">进入复核与效果</Button>} />{versionRuns.length === 0 ? <Typography color="text.secondary">该版本尚无研究运行；节点实测不会进入正式研究样本。</Typography> : <Stack spacing={.75}>{versionRuns.map((run) => <Stack key={run.runId} direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ md: 'center' }} sx={{ py: .75, borderTop: '1px solid', borderColor: 'divider' }}><Chip size="small" color={statusColor(run.status)} label={statusLabel(run.status)} /><Typography variant="body2" fontWeight={700} sx={{ flex: 1 }}>{run.requestSummary}</Typography><Typography variant="caption" color="text.secondary">{run.inputTokens + run.outputTokens} tokens · ${Number(run.costUsd).toFixed(4)} · {formatTime(run.updatedAt)}</Typography><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{run.runId}</Typography></Stack>)}</Stack>}</Paper>
-    <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.5} alignItems="stretch">
-      <Paper variant="outlined" sx={{ height: { xs: 560, xl: 'calc(100vh - 235px)' }, minHeight: 560, flex: 1, overflow: 'hidden' }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_event, node) => { setSelectedId(node.id); setSelectedEdgeId(null); }} onEdgeClick={(_event, edge) => { setSelectedEdgeId(edge.id); setSelectedId(null); }} onPaneClick={() => { setSelectedId(null); setSelectedEdgeId(null); }} fitView minZoom={0.2} maxZoom={1.5} snapToGrid snapGrid={[20, 20]}><Background gap={20} size={1} /><Controls /></ReactFlow></Paper>
-      <Paper variant="outlined" sx={{ width: { xs: '100%', xl: 390 }, p: 2, overflow: 'auto', maxHeight: { xl: 'calc(100vh - 235px)' } }}>
-        {selected ? <NodeEditor node={selected.data.workflowNode} schema={schema} providers={config.providers} models={config.models} roles={roles} update={updateSelected} duplicateSeat={duplicateSelectedSeat} remove={removeSelected} /> : selectedEdge ? <EdgeEditor edge={selectedEdge.data?.workflowEdge as WorkflowEdge} schema={schema} update={updateSelectedEdge} remove={removeSelectedEdge} /> : <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}><Typography>选择节点或连线后在这里配置</Typography></Box>}
+  return (
+    <Stack spacing={2}>
+      {error !== null && <ErrorBlock error={error} />}
+      {message && <Alert severity="success" sx={{ borderRadius: '8px' }}>{message}</Alert>}
+
+      <Paper variant="outlined" sx={{ p: 2.25, borderRadius: '10px' }}>
+        <Stack spacing={2}>
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }} justifyContent="space-between" flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
+              <TextField
+                select
+                size="small"
+                label="工作流"
+                value={definition.definitionId}
+                onChange={(event) => void selectDefinition(event.target.value)}
+                sx={{ minWidth: 220 }}
+              >
+                {definitions.map((item) => (
+                  <MenuItem key={item.definitionId} value={item.definitionId}>
+                    {item.name}{item.active ? '（调度中）' : ''}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                size="small"
+                label="版本"
+                value={version.versionId}
+                onChange={(event) => {
+                  const selectedVersion = versions.find((item) => item.versionId === event.target.value);
+                  if (selectedVersion) applyVersion(selectedVersion);
+                }}
+                sx={{ minWidth: 160 }}
+              >
+                {versions.map((item) => (
+                  <MenuItem key={item.versionId} value={item.versionId}>
+                    v{item.versionNumber} · {item.status}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <StatusBadge status={version.status} label={`${version.status} v${version.versionNumber}`} />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={definition.active}
+                    disabled={saving || definition.publishedVersionId === null}
+                    onChange={(event) => void setActive(event.target.checked)}
+                  />
+                }
+                label="参与定时调度"
+                sx={{ ml: 0.5 }}
+              />
+            </Stack>
+
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Button size="small" variant="text" onClick={() => void cloneWorkflow()}>复制新流</Button>
+              <Button size="small" variant="text" onClick={() => void loadPlan()}>计划</Button>
+              <Button size="small" variant="text" startIcon={<CalculateOutlinedIcon />} onClick={() => void loadEstimate()}>估算</Button>
+              <Button size="small" variant="text" startIcon={<ScienceOutlinedIcon />} onClick={() => void loadLearning()}>统计</Button>
+              <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+              <TextField
+                select
+                size="small"
+                label="节点类型"
+                value={newNodeType}
+                onChange={(event) => setNewNodeType(event.target.value as WorkflowNodeType)}
+                sx={{ minWidth: 160 }}
+              >
+                {schema.nodeTypes.map((type) => (
+                  <MenuItem key={type} value={type}>{nodeTypeLabel(type)}</MenuItem>
+                ))}
+              </TextField>
+              <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={addNode}>添加节点</Button>
+              <Button size="small" variant="contained" startIcon={<SaveIcon />} disabled={saving} onClick={() => void save()}>保存草稿</Button>
+              <Button size="small" color="success" variant="contained" startIcon={<PublishIcon />} disabled={saving || version.status !== 'DRAFT'} onClick={() => void publish()}>发布</Button>
+            </Stack>
+          </Stack>
+        </Stack>
       </Paper>
+
+      <Paper variant="outlined" sx={{ p: 2.25, borderRadius: '10px' }}>
+        <SectionTitle title="工作流运行约束" />
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25 }}>
+          <TextField label="工作流名称" value={definition.name} onChange={(event) => setDefinition({ ...definition, name: event.target.value })} />
+          <TextField label="用途说明" value={definition.description} onChange={(event) => setDefinition({ ...definition, description: event.target.value })} />
+          <TextField label={version.debateProtocol.protocol === 'SDB_SCA_V1' ? '协议周期' : '辩论轮次'} type="number" value={version.defaultDebateRounds} disabled={version.debateProtocol.protocol === 'SDB_SCA_V1'} onChange={(event) => setVersion({ ...version, defaultDebateRounds: Number(event.target.value) })} inputProps={{ min: 1, max: 8 }} helperText={version.debateProtocol.protocol === 'SDB_SCA_V1' ? 'V1 固定执行一次完整四阶段周期' : undefined} />
+          <TextField select label="失败策略" value={version.failurePolicy} onChange={(event) => setVersion({ ...version, failurePolicy: event.target.value as WorkflowFailurePolicy })}>{schema.failurePolicies.map((policy) => <MenuItem key={policy} value={policy}>{failurePolicyLabel(policy)}</MenuItem>)}</TextField>
+          <TextField label="最大步骤" type="number" value={version.maximumSteps} onChange={(event) => setVersion({ ...version, maximumSteps: Number(event.target.value) })} inputProps={{ min: 1, max: 1000 }} />
+          <TextField label="最大时长（秒）" type="number" value={version.maximumDurationSeconds} onChange={(event) => setVersion({ ...version, maximumDurationSeconds: Number(event.target.value) })} inputProps={{ min: 10, max: 86400 }} />
+          <TextField label="最大 Token" type="number" value={version.maximumTokens} onChange={(event) => setVersion({ ...version, maximumTokens: Number(event.target.value) })} inputProps={{ min: 1000, max: 10000000 }} />
+          <TextField label="最大成本（USD）" type="number" value={version.maximumCostUsd} onChange={(event) => setVersion({ ...version, maximumCostUsd: Number(event.target.value) })} inputProps={{ min: 0, step: 0.1 }} />
+        </Box>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(5, minmax(0, 1fr))' }, gap: 1.25, mt: 1.25 }}>
+          <TextField select label="辩论协议" value={version.debateProtocol.protocol} onChange={(event) => { const protocol = event.target.value as typeof version.debateProtocol.protocol; setVersion({ ...version, defaultDebateRounds: protocol === 'SDB_SCA_V1' ? 1 : version.defaultDebateRounds, debateProtocol: { ...version.debateProtocol, protocol, critiqueAssignmentPolicy: protocol === 'LEGACY_CHAIR_V1' ? 'FULL_MATRIX' : version.debateProtocol.critiqueAssignmentPolicy } }); }}><MenuItem value="SDB_SCA_V1">SDB-SCA 双盲同时博弈</MenuItem><MenuItem value="LEGACY_CHAIR_V1">Legacy 主席辩论</MenuItem></TextField>
+          <TextField label="最低参与席位" type="number" value={version.debateProtocol.minimumParticipantSeats} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, minimumParticipantSeats: Number(event.target.value) } })} inputProps={{ min: 2, max: 32 }} />
+          <TextField label="最低逻辑角色" type="number" value={version.debateProtocol.minimumQuorumRoles} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, minimumQuorumRoles: Number(event.target.value) } })} inputProps={{ min: 2, max: 32 }} />
+          <TextField label="阶段超时（秒）" type="number" value={version.debateProtocol.stageTimeoutSeconds} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, stageTimeoutSeconds: Number(event.target.value) } })} inputProps={{ min: 30, max: 7200 }} />
+          <TextField select label="交叉评审分配" value={version.debateProtocol.critiqueAssignmentPolicy} disabled={version.debateProtocol.protocol === 'LEGACY_CHAIR_V1'} onChange={(event) => setVersion({ ...version, debateProtocol: { ...version.debateProtocol, critiqueAssignmentPolicy: event.target.value as typeof version.debateProtocol.critiqueAssignmentPolicy } })}><MenuItem value="FULL_MATRIX">全矩阵</MenuItem><MenuItem value="BALANCED_INCOMPLETE">均衡不完全矩阵</MenuItem></TextField>
+        </Box>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: '10px' }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
+          <TextField select size="small" label="回滚目标" value={rollbackVersionId} onChange={(event) => setRollbackVersionId(event.target.value)} sx={{ minWidth: 220 }}>
+            <MenuItem value="">选择历史版本</MenuItem>
+            {versions.filter((item) => item.versionId !== version.versionId).map((item) => (
+              <MenuItem key={item.versionId} value={item.versionId}>
+                v{item.versionNumber} · {item.status}
+              </MenuItem>
+            ))}
+          </TextField>
+          <Button startIcon={<RestoreIcon />} disabled={!rollbackVersionId || saving} onClick={() => void rollback()}>
+            复制并发布回滚版本
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          {selected && isLlmBacked(selected.data.workflowNode.nodeType) && (
+            <>
+              <TextField size="small" label="节点测试输入" value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} fullWidth inputProps={{ maxLength: 20000 }} />
+              <Button variant="outlined" startIcon={<ScienceOutlinedIcon />} disabled={saving || !testPrompt.trim()} onClick={() => void testSelectedNode()} sx={{ whiteSpace: 'nowrap' }}>
+                实测节点
+              </Button>
+            </>
+          )}
+        </Stack>
+      </Paper>
+
+      {estimate && (
+        <Paper variant="outlined" sx={{ p: 2.25, borderRadius: '10px' }}>
+          <SectionTitle title="运行估算" />
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(5, minmax(0, 1fr))' }, gap: 1.5 }}>
+            <EstimateMetric label="模型调用" value={String(estimate.estimatedCalls)} />
+            <EstimateMetric label="输入 Token" value={estimate.estimatedInputTokens.toLocaleString()} />
+            <EstimateMetric label="最大输出" value={estimate.maximumOutputTokens.toLocaleString()} />
+            <EstimateMetric label="主模型成本" value={`$${Number(estimate.primaryCostUsd).toFixed(4)}`} />
+            <EstimateMetric label="含兜底最坏成本" value={`$${Number(estimate.fallbackWorstCaseCostUsd).toFixed(4)}`} />
+          </Box>
+          {estimate.warnings.map((warning) => (
+            <Alert key={warning} severity="warning" sx={{ mt: 1.25, borderRadius: '8px' }}>{warning}</Alert>
+          ))}
+        </Paper>
+      )}
+
+      {executionPlan && (
+        <Paper variant="outlined" sx={{ p: 2.25, borderRadius: '10px' }}>
+          <SectionTitle title="执行计划" />
+          {executionPlan.warnings.map((warning) => (
+            <Alert key={warning} severity="warning" sx={{ mb: 1, borderRadius: '8px' }}>{warning}</Alert>
+          ))}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontFeatureSettings: '"tnum"' }}>
+            基础 {executionPlan.defaultDebateRounds} 轮，条件循环最多 {executionPlan.maximumDebateRounds} 轮 · {executionPlan.maximumSteps} 步 · {executionPlan.maximumTokens.toLocaleString()} tokens · ${executionPlan.maximumCostUsd}
+          </Typography>
+          <Stack spacing={0.75}>
+            {executionPlan.nodes.map((node) => (
+              <Stack
+                key={node.nodeId}
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.5}
+                alignItems={{ md: 'center' }}
+                sx={{
+                  py: 1,
+                  px: 1,
+                  borderRadius: '6px',
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                  opacity: node.enabled ? 1 : 0.5,
+                  '&:hover': { bgcolor: 'rgba(15, 23, 42, 0.015)' },
+                }}
+              >
+                <Chip size="small" label={node.sequence} sx={{ fontWeight: 700, fontFeatureSettings: '"tnum"' }} />
+                <Box sx={{ minWidth: { md: 220 }, flex: 1 }}>
+                  <Typography fontWeight={700} sx={{ fontSize: '0.88rem' }}>{node.displayName}</Typography>
+                  <Typography variant="caption" color="text.secondary">{node.nodeType} · {node.runtimeHandler}</Typography>
+                </Box>
+                <Typography variant="body2" sx={{ minWidth: { md: 180 }, fontSize: '0.82rem' }}>{node.invocationPolicy}</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ minWidth: { md: 240 } }}>
+                  {node.modelName ? `${node.providerProfileId} / ${node.modelName} / ${node.reasoningEffort}` : `上游 ${node.upstreamNodeIds.join(', ') || '-'}`}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Paper>
+      )}
+
+      {learning && (
+        <Paper variant="outlined" sx={{ p: 2.25, borderRadius: '10px' }}>
+          <SectionTitle title="运行与学习统计" />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <EstimateMetric label="运行次数" value={String(learning.runCount)} />
+            <EstimateMetric label="完成运行" value={String(learning.completedRunCount)} />
+            <EstimateMetric label="失败运行" value={String(learning.failedRunCount)} />
+            <EstimateMetric label="累计消耗成本" value={`$${Number(learning.totalCostUsd).toFixed(4)}`} />
+          </Stack>
+          <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+            {learning.nodes.map((node) => (
+              <Stack
+                key={node.nodeId}
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.5}
+                alignItems={{ md: 'center' }}
+                sx={{
+                  py: 1,
+                  px: 1,
+                  borderRadius: '6px',
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                  '&:hover': { bgcolor: 'rgba(15, 23, 42, 0.015)' },
+                }}
+              >
+                <Typography fontWeight={700} sx={{ width: { md: 220 }, fontSize: '0.88rem' }}>{node.displayName}</Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.82rem', fontFeatureSettings: '"tnum"' }}>
+                  调用 {node.invocationCount} · 成功 {node.successfulInvocationCount} · 失败 {node.failedInvocationCount}
+                </Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.82rem', fontFeatureSettings: '"tnum"', color: 'text.secondary' }}>
+                  {node.inputTokens + node.outputTokens} tokens · ${Number(node.costUsd).toFixed(4)} · {node.averageLatencyMilliseconds ?? '-'} ms
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Paper>
+      )}
+
+      {nodeTest && (
+        <Alert severity={nodeTest.status === 'COMPLETED' ? 'success' : 'error'} sx={{ borderRadius: '8px' }}>
+          <Typography fontWeight={700}>节点测试 {nodeTest.status} · {nodeTest.runId}</Typography>
+          <Typography component="pre" variant="body2" sx={{ whiteSpace: 'pre-wrap', m: 0, mt: 0.5, fontFeatureSettings: '"tnum"', fontFamily: 'Roboto Mono, monospace' }}>
+            {nodeTest.output || `${nodeTest.errorCode}: ${nodeTest.errorMessage}`}
+          </Typography>
+        </Alert>
+      )}
+
+      <Paper variant="outlined" sx={{ p: 2.25, borderRadius: '10px' }}>
+        <SectionTitle title="该版本最近运行" action={<Button size="small" href="#review">进入复核与效果</Button>} />
+        {versionRuns.length === 0 ? (
+          <Typography color="text.secondary" sx={{ py: 1 }}>该版本尚无研究运行；节点实测不会进入正式研究样本。</Typography>
+        ) : (
+          <Stack spacing={0.75}>
+            {versionRuns.map((run) => (
+              <Stack
+                key={run.runId}
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.5}
+                alignItems={{ md: 'center' }}
+                sx={{
+                  py: 1,
+                  px: 1,
+                  borderRadius: '6px',
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                  transition: 'background-color 0.15s ease',
+                  '&:hover': { bgcolor: 'rgba(15, 23, 42, 0.015)' },
+                }}
+              >
+                <StatusBadge status={run.status} size="small" />
+                <Typography variant="body2" fontWeight={700} sx={{ flex: 1 }}>{run.requestSummary}</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontFeatureSettings: '"tnum"' }}>
+                  {run.inputTokens + run.outputTokens} tokens · ${Number(run.costUsd).toFixed(4)} · {formatTime(run.updatedAt)}
+                </Typography>
+                <CopyableText text={run.runId} />
+              </Stack>
+            ))}
+          </Stack>
+        )}
+      </Paper>
+
+      <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.5} alignItems="stretch">
+        <Paper
+          variant="outlined"
+          sx={{
+            height: { xs: 560, xl: 'calc(100vh - 235px)' },
+            minHeight: 560,
+            flex: 1,
+            overflow: 'hidden',
+            borderRadius: '10px',
+          }}
+        >
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={(_event, node) => { setSelectedId(node.id); setSelectedEdgeId(null); }}
+            onEdgeClick={(_event, edge) => { setSelectedEdgeId(edge.id); setSelectedId(null); }}
+            onPaneClick={() => { setSelectedId(null); setSelectedEdgeId(null); }}
+            fitView
+            minZoom={0.2}
+            maxZoom={1.5}
+            snapToGrid
+            snapGrid={[20, 20]}
+          >
+            <Background gap={20} size={1} />
+            <Controls />
+          </ReactFlow>
+        </Paper>
+        <Paper
+          variant="outlined"
+          sx={{
+            width: { xs: '100%', xl: 400 },
+            p: 2.25,
+            overflow: 'auto',
+            borderRadius: '10px',
+            maxHeight: { xl: 'calc(100vh - 235px)' },
+          }}
+        >
+          {selected ? (
+            <NodeEditor
+              node={selected.data.workflowNode}
+              schema={schema}
+              providers={config.providers}
+              models={config.models}
+              roles={roles}
+              update={updateSelected}
+              duplicateSeat={duplicateSelectedSeat}
+              remove={removeSelected}
+            />
+          ) : selectedEdge ? (
+            <EdgeEditor
+              edge={selectedEdge.data?.workflowEdge as WorkflowEdge}
+              schema={schema}
+              update={updateSelectedEdge}
+              remove={removeSelectedEdge}
+            />
+          ) : (
+            <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
+              <Typography fontWeight={600} sx={{ mb: 0.5 }}>未选定任何对象</Typography>
+              <Typography variant="body2" color="text.secondary">在画布中点击节点或连线可在此处检查与配置参数</Typography>
+            </Box>
+          )}
+        </Paper>
+      </Stack>
     </Stack>
-  </Stack>;
+  );
 }
 
 function NodeEditor({ node, schema, providers, models, roles, update, duplicateSeat, remove }: { node: WorkflowNode; schema: WorkflowSchema; providers: AiProvider[]; models: AiModel[]; roles: AgentRole[]; update: (patch: Partial<WorkflowNode>) => void; duplicateSeat: () => void; remove: () => void }) {
@@ -453,5 +735,15 @@ export function defaultAiBinding(providers: AiProvider[], models: AiModel[]): Ai
 }
 
 function EstimateMetric({ label, value }: { label: string; value: string }) {
-  return <Box><Typography variant="caption" color="text.secondary">{label}</Typography><Typography fontWeight={800}>{value}</Typography></Box>;
+  return (
+    <Box sx={{ p: 1.5, borderRadius: '8px', bgcolor: 'surfaceMuted', border: '1px solid', borderColor: 'divider' }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
+        {label}
+      </Typography>
+      <Typography fontWeight={800} sx={{ fontFeatureSettings: '"tnum"', fontSize: '0.95rem' }}>
+        {value}
+      </Typography>
+    </Box>
+  );
 }
+

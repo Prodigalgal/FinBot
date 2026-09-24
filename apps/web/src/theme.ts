@@ -30,13 +30,14 @@ const semantic = {
 
 const borderSubtle = graphite[200];
 const borderStrong = graphite[300];
-const surfaceMuted = '#f5f7fb';
+const surfaceMuted = '#f8fafc';
 const focusRing = '0 0 0 2px rgba(29, 78, 216, 0.28)';
-const shadowCard = '0 1px 2px rgba(15, 23, 42, 0.04)';
+const shadowCard = '0 1px 3px 0 rgba(15, 23, 42, 0.05), 0 1px 2px -1px rgba(15, 23, 42, 0.03)';
+const shadowElevated = '0 4px 12px 0 rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04)';
 
 const tabularNumeric = {
   fontVariantNumeric: 'tabular-nums' as const,
-  fontFeatureSettings: '"tnum"',
+  fontFeatureSettings: '"tnum", "cv02", "cv03", "cv04", "cv11"',
 };
 
 export const theme = createTheme({
@@ -83,16 +84,18 @@ export const theme = createTheme({
   typography: {
     fontFamily: [
       'Inter',
+      '-apple-system',
+      'BlinkMacSystemFont',
       'Segoe UI',
       'Roboto',
       'Helvetica Neue',
       'Arial',
       'sans-serif',
     ].join(','),
-    h1: { fontSize: 26, fontWeight: 700, lineHeight: 1.2, color: graphite[900], letterSpacing: 0 },
-    h2: { fontSize: 20, fontWeight: 700, lineHeight: 1.25, color: graphite[900], letterSpacing: 0 },
-    h3: { fontSize: 17, fontWeight: 700, lineHeight: 1.3, color: graphite[900] },
-    h4: { fontSize: 15, fontWeight: 700, lineHeight: 1.35, color: graphite[900] },
+    h1: { fontSize: 26, fontWeight: 700, lineHeight: 1.2, color: graphite[900], letterSpacing: '-0.02em' },
+    h2: { fontSize: 20, fontWeight: 700, lineHeight: 1.25, color: graphite[900], letterSpacing: '-0.015em' },
+    h3: { fontSize: 17, fontWeight: 700, lineHeight: 1.3, color: graphite[900], letterSpacing: '-0.01em' },
+    h4: { fontSize: 15, fontWeight: 700, lineHeight: 1.35, color: graphite[900], letterSpacing: '-0.005em' },
     h5: { fontSize: 14, fontWeight: 700, lineHeight: 1.4, color: graphite[900] },
     h6: { fontSize: 13, fontWeight: 700, lineHeight: 1.4, color: graphite[900] },
     subtitle1: { fontSize: 14, fontWeight: 600, lineHeight: 1.4, color: graphite[800] },
@@ -103,9 +106,9 @@ export const theme = createTheme({
     caption: { fontSize: 12, lineHeight: 1.35, color: graphite[600], ...tabularNumeric },
     overline: {
       fontSize: 11,
-      fontWeight: 600,
+      fontWeight: 700,
       lineHeight: 1.4,
-      letterSpacing: 0,
+      letterSpacing: '0.04em',
       textTransform: 'uppercase',
       color: graphite[500],
     },
@@ -115,6 +118,8 @@ export const theme = createTheme({
       styleOverrides: {
         html: {
           ...tabularNumeric,
+          WebkitFontSmoothing: 'antialiased',
+          MozOsxFontSmoothing: 'grayscale',
         },
         body: {
           backgroundColor: surfaceMuted,
@@ -123,6 +128,25 @@ export const theme = createTheme({
         },
         '*, *::before, *::after': {
           borderColor: borderSubtle,
+        },
+        '@keyframes finbotPulse': {
+          '0%': { transform: 'scale(0.92)', opacity: 0.75 },
+          '50%': { transform: 'scale(1.12)', opacity: 1 },
+          '100%': { transform: 'scale(0.92)', opacity: 0.75 },
+        },
+        '::-webkit-scrollbar': {
+          width: '6px',
+          height: '6px',
+        },
+        '::-webkit-scrollbar-track': {
+          background: 'transparent',
+        },
+        '::-webkit-scrollbar-thumb': {
+          background: 'rgba(148, 163, 184, 0.4)',
+          borderRadius: '4px',
+        },
+        '::-webkit-scrollbar-thumb:hover': {
+          background: 'rgba(100, 116, 139, 0.65)',
         },
       },
     },
@@ -138,6 +162,10 @@ export const theme = createTheme({
           fontWeight: 600,
           boxShadow: 'none',
           textTransform: 'none',
+          transition: 'all 0.16s cubic-bezier(0.16, 1, 0.3, 1)',
+          '&:active': {
+            transform: 'scale(0.985)',
+          },
           '&:hover': {
             boxShadow: 'none',
           },
@@ -237,6 +265,8 @@ export const theme = createTheme({
         outlined: {
           border: `1px solid ${borderSubtle}`,
           backgroundColor: '#ffffff',
+          boxShadow: shadowCard,
+          transition: 'border-color 0.16s ease, box-shadow 0.16s ease',
         },
         elevation1: {
           boxShadow: shadowCard,
@@ -252,10 +282,11 @@ export const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 6,
-          boxShadow: 'none',
+          boxShadow: shadowCard,
           border: `1px solid ${borderSubtle}`,
           backgroundColor: '#ffffff',
           backgroundImage: 'none',
+          transition: 'border-color 0.16s ease, box-shadow 0.16s ease',
         },
       },
     },
@@ -280,6 +311,7 @@ export const theme = createTheme({
           border: `1px solid ${borderSubtle}`,
           backgroundColor: graphite[50],
           color: graphite[800],
+          transition: 'all 0.15s ease',
           '&.Mui-disabled': {
             opacity: 0.55,
           },
@@ -350,9 +382,11 @@ export const theme = createTheme({
           backgroundColor: graphite[50],
           '& .MuiTableCell-root': {
             color: graphite[600],
-            fontWeight: 600,
-            fontSize: 12,
+            fontWeight: 700,
+            fontSize: 11,
             lineHeight: 1.35,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
             borderBottom: `1px solid ${borderSubtle}`,
             backgroundColor: graphite[50],
           },
@@ -371,10 +405,11 @@ export const theme = createTheme({
     MuiTableRow: {
       styleOverrides: {
         root: {
+          transition: 'background-color 0.12s ease',
           '&.Mui-selected': {
-            backgroundColor: 'rgba(29, 78, 216, 0.06)',
+            backgroundColor: 'rgba(29, 78, 216, 0.05)',
             '&:hover': {
-              backgroundColor: 'rgba(29, 78, 216, 0.09)',
+              backgroundColor: 'rgba(29, 78, 216, 0.08)',
             },
           },
         },
@@ -956,9 +991,9 @@ export const theme = createTheme({
     MuiDialog: {
       styleOverrides: {
         paper: {
-          borderRadius: 6,
+          borderRadius: 8,
           border: `1px solid ${borderSubtle}`,
-          boxShadow: '0 12px 40px rgba(15, 23, 42, 0.14)',
+          boxShadow: '0 20px 48px -10px rgba(15, 23, 42, 0.16), 0 1px 3px 0 rgba(15, 23, 42, 0.05)',
           backgroundImage: 'none',
         },
       },

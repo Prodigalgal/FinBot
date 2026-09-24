@@ -40,7 +40,7 @@ import { useTheme } from '@mui/material/styles';
 import { api } from './api';
 import { DashboardPage } from './DashboardPage';
 import type { OperationsOverview, ResearchLaunch } from './types';
-import { LoadingBlock, formatTime, statusColor } from './ui';
+import { LoadingBlock, StatusBadge, formatTime, statusColor } from './ui';
 
 const AutonomousPage = lazy(() => import('./AutonomousPage').then((module) => ({ default: module.AutonomousPage })));
 const CatalogPage = lazy(() => import('./CatalogPage').then((module) => ({ default: module.CatalogPage })));
@@ -198,18 +198,57 @@ export function App() {
       <Box
         sx={{
           px: 2,
-          py: 2,
+          py: 1.75,
           borderBottom: '1px solid',
           borderColor: 'divider',
           flexShrink: 0,
         }}
       >
-        <Typography variant="h2" sx={{ ...zeroTracking, fontSize: 18, lineHeight: 1.25 }}>
-          FinBot
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={zeroTracking}>
-          AI 研究与走势预测
-        </Typography>
+        <Stack direction="row" spacing={1.25} alignItems="center">
+          <Box
+            sx={{
+              width: 32,
+              height: 32,
+              borderRadius: '6px',
+              bgcolor: 'primary.main',
+              display: 'grid',
+              placeItems: 'center',
+              color: '#ffffff',
+              boxShadow: '0 2px 6px rgba(29, 78, 216, 0.28)',
+              flexShrink: 0,
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+              <polyline points="16 7 22 7 22 13" />
+            </svg>
+          </Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center">
+              <Typography variant="h2" sx={{ ...zeroTracking, fontSize: 16, fontWeight: 750, lineHeight: 1.2 }}>
+                FinBot
+              </Typography>
+              <Box
+                component="span"
+                sx={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  px: 0.6,
+                  py: 0.1,
+                  borderRadius: '3px',
+                  bgcolor: 'primary.light',
+                  color: 'primary.dark',
+                  letterSpacing: '0.03em',
+                }}
+              >
+                v2.0
+              </Box>
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ ...zeroTracking, fontSize: 11, display: 'block' }}>
+              AI 决策与量化终端
+            </Typography>
+          </Box>
+        </Stack>
       </Box>
       <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0, px: 1, py: 1.25 }}>
         {navigationGroups.map((group) => {
@@ -237,11 +276,11 @@ export function App() {
                     color="text.secondary"
                     display="block"
                     lineHeight={1.2}
-                    sx={zeroTracking}
+                    sx={{ ...zeroTracking, fontSize: 10.5, fontWeight: 750 }}
                   >
                     {group.label}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" noWrap sx={zeroTracking}>
+                  <Typography variant="caption" color="text.secondary" noWrap sx={{ ...zeroTracking, fontSize: 11 }}>
                     {group.description}
                   </Typography>
                 </Box>
@@ -266,33 +305,33 @@ export function App() {
                         onClick={() => (desktop ? navigate(item.id) : navigateFromMenu(item.id))}
                         sx={{
                           borderRadius: shellRadius,
-                          mb: 0.25,
-                          minHeight: 40,
+                          mb: 0.3,
+                          minHeight: 38,
                           pl: 1.25,
                           pr: 1,
-                          borderLeft: '3px solid',
-                          borderLeftColor: selected ? 'primary.main' : 'transparent',
-                          bgcolor: selected ? 'action.selected' : 'transparent',
+                          bgcolor: selected ? 'rgba(29, 78, 216, 0.08)' : 'transparent',
+                          color: selected ? 'primary.main' : 'text.primary',
+                          transition: 'all 0.14s ease',
                           '&.Mui-selected': {
-                            bgcolor: 'action.selected',
+                            bgcolor: 'rgba(29, 78, 216, 0.08)',
                             color: 'primary.dark',
-                            '&:hover': { bgcolor: 'action.selected' },
+                            '&:hover': { bgcolor: 'rgba(29, 78, 216, 0.12)' },
                             '& .MuiListItemIcon-root': { color: 'primary.main' },
                           },
                           '&:hover': {
-                            bgcolor: selected ? 'action.selected' : 'action.hover',
+                            bgcolor: selected ? 'rgba(29, 78, 216, 0.12)' : 'action.hover',
                           },
                         }}
                       >
-                        <ListItemIcon sx={{ minWidth: 34, color: selected ? 'primary.main' : 'text.secondary' }}>
+                        <ListItemIcon sx={{ minWidth: 32, color: selected ? 'primary.main' : 'text.secondary' }}>
                           {item.icon}
                         </ListItemIcon>
                         <ListItemText
                           primary={item.label}
                           primaryTypographyProps={{
                             fontSize: 13,
-                            fontWeight: selected ? 700 : 600,
-                            letterSpacing: 0,
+                            fontWeight: selected ? 700 : 500,
+                            letterSpacing: '0.01em',
                             noWrap: true,
                           }}
                         />
@@ -308,18 +347,31 @@ export function App() {
       <Box
         sx={{
           mt: 'auto',
-          p: 1.5,
+          p: 1.25,
           borderTop: '1px solid',
           borderColor: 'divider',
           flexShrink: 0,
         }}
       >
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Chip size="small" color={workerOnline ? 'success' : 'warning'} label={workerOnline ? 'Worker 在线' : 'Worker 离线'} />
-          <Typography variant="caption" color="text.secondary" sx={zeroTracking}>
-            常驻调度
+        <Box
+          sx={{
+            p: 1.25,
+            borderRadius: shellRadius,
+            bgcolor: 'action.hover',
+            border: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 11, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+              常驻调度
+            </Typography>
+            <StatusBadge status={workerOnline ? 'RUNNING' : 'FAILED'} label={workerOnline ? '在线' : '离线'} size="small" />
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, fontSize: 11 }}>
+            {operations ? `${operations.workers.filter((worker) => worker.status === 'RUNNING').length} 活跃 Worker · PostgreSQL 18` : '正在同步状态...'}
           </Typography>
-        </Stack>
+        </Box>
       </Box>
     </>
   );
@@ -380,7 +432,8 @@ export function App() {
           sx={{
             borderBottom: '1px solid',
             borderColor: 'divider',
-            bgcolor: 'background.paper',
+            bgcolor: 'rgba(255, 255, 255, 0.85)',
+            backdropFilter: 'blur(12px)',
             backgroundImage: 'none',
           }}
         >
@@ -420,7 +473,7 @@ export function App() {
                 variant="caption"
                 color="text.secondary"
                 noWrap
-                sx={{ ...zeroTracking, display: 'block', lineHeight: 1.2 }}
+                sx={{ ...zeroTracking, display: 'block', lineHeight: 1.2, fontSize: 11, fontWeight: 500 }}
               >
                 {currentGroupLabel} / {current.label}
               </Typography>
@@ -431,8 +484,8 @@ export function App() {
                 noWrap
                 sx={{
                   ...zeroTracking,
-                  fontSize: { xs: 16, sm: 18, md: 20 },
-                  fontWeight: 700,
+                  fontSize: { xs: 16, sm: 18, md: 19 },
+                  fontWeight: 750,
                   lineHeight: 1.25,
                   color: 'text.primary',
                 }}
@@ -443,9 +496,9 @@ export function App() {
                 variant="caption"
                 color="text.secondary"
                 noWrap
-                sx={{ ...zeroTracking, display: { xs: 'none', sm: 'block' }, lineHeight: 1.25 }}
+                sx={{ ...zeroTracking, display: { xs: 'none', sm: 'block' }, lineHeight: 1.25, fontSize: 11 }}
               >
-                Java 26 · PostgreSQL · Python Quant
+                Java 26 · PostgreSQL 18 · Python Quant
                 {operations && (
                   <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}>
                     {' '}
@@ -455,28 +508,48 @@ export function App() {
               </Typography>
             </Box>
 
-            <Chip
-              size="small"
-              color={statusColor(workerOnline ? 'RUNNING' : 'FAILED')}
-              label={workerOnline ? '常驻运行' : '需检查'}
-              sx={{ display: { xs: 'none', sm: 'inline-flex' }, flexShrink: 0 }}
-            />
+            <Box
+              sx={{
+                display: { xs: 'none', md: 'inline-flex' },
+                alignItems: 'center',
+                px: 1,
+                py: 0.35,
+                borderRadius: '4px',
+                bgcolor: 'rgba(217, 119, 6, 0.08)',
+                border: '1px solid rgba(217, 119, 6, 0.25)',
+                color: '#b45309',
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                flexShrink: 0,
+              }}
+            >
+              TESTNET / DEMO
+            </Box>
+
+            <Box sx={{ display: { xs: 'none', sm: 'block' }, flexShrink: 0 }}>
+              <StatusBadge
+                status={workerOnline ? 'RUNNING' : 'FAILED'}
+                label={workerOnline ? '常驻运行' : '需检查'}
+              />
+            </Box>
+
             <Tooltip title="刷新运行状态">
               <IconButton
                 aria-label="刷新运行状态"
                 onClick={() => void refreshStatus()}
-                sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: shellRadius }}
+                sx={{ width: 38, height: 38, flexShrink: 0, borderRadius: shellRadius }}
               >
-                <RefreshIcon />
+                <RefreshIcon fontSize="small" />
               </IconButton>
             </Tooltip>
             <Tooltip title="退出登录">
               <IconButton
                 aria-label="退出登录"
                 onClick={() => api.logout().finally(() => window.location.reload())}
-                sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: shellRadius }}
+                sx={{ width: 38, height: 38, flexShrink: 0, borderRadius: shellRadius }}
               >
-                <LogoutIcon />
+                <LogoutIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           </Toolbar>

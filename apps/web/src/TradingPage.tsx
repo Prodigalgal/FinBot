@@ -41,13 +41,56 @@ export function TradingPage() {
 
   return <Stack spacing={2}>
     {error !== null && <ErrorBlock error={error} />}
-    <Paper variant="outlined" sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, px: 1, minHeight: 52 }}>
-      <Box sx={{ px: 1, py: { xs: 1, sm: 0 }, minWidth: 190 }}><Typography variant="subtitle1">模拟账户与交易审计</Typography><Typography variant="caption" color="text.secondary">验证研究结论与永久保存交易事实</Typography></Box>
-      <Tabs value={view} onChange={(_event, value: TradingView) => changeView(value)} sx={{ flex: 1, minWidth: 0 }}>
+    <Paper
+      variant="outlined"
+      sx={{
+        display: 'flex',
+        alignItems: { xs: 'stretch', sm: 'center' },
+        flexDirection: { xs: 'column', sm: 'row' },
+        px: 1.5,
+        py: { xs: 1, sm: 0 },
+        minHeight: 56,
+        borderRadius: '10px',
+      }}
+    >
+      <Box sx={{ px: 1, py: { xs: 1, sm: 0.5 }, minWidth: 200 }}>
+        <Typography variant="subtitle1" fontWeight={800} sx={{ fontSize: '0.95rem' }}>
+          模拟账户与交易审计
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          验证研究结论与永久保存交易事实
+        </Typography>
+      </Box>
+      <Tabs
+        value={view}
+        onChange={(_event, value: TradingView) => changeView(value)}
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          '& .MuiTab-root': {
+            fontWeight: 700,
+            fontSize: '0.85rem',
+            minHeight: 48,
+          },
+        }}
+      >
         <Tab value="overview" label="账户概览" />
         <Tab value="activity" label="操作历史" />
       </Tabs>
-      <Button startIcon={<RefreshIcon />} onClick={() => void loadAccounts()} disabled={loading} sx={{ m: { xs: 1, sm: .5 }, alignSelf: { xs: 'stretch', sm: 'center' } }}>同步账户</Button>
+      <Button
+        size="small"
+        startIcon={<RefreshIcon />}
+        onClick={() => void loadAccounts()}
+        disabled={loading}
+        sx={{
+          m: { xs: 1, sm: 0.5 },
+          alignSelf: { xs: 'stretch', sm: 'center' },
+          whiteSpace: 'nowrap',
+          px: 2,
+        }}
+      >
+        同步账户
+      </Button>
     </Paper>
     {accounts && view === 'overview' && <TradingAccountOverview initialAccounts={accounts} onAccountsChanged={setAccounts} />}
     {accounts && view === 'activity' && <TradingActivityPanel accounts={accounts.accounts} />}

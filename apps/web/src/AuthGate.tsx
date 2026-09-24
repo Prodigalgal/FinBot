@@ -92,8 +92,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
         display: 'grid',
         placeItems: 'center',
         px: 2,
-        py: 3,
+        py: 4,
         bgcolor: 'background.default',
+        backgroundImage: 'radial-gradient(at 50% 20%, rgba(29, 78, 216, 0.04) 0px, transparent 60%)',
       }}
     >
       <Paper
@@ -102,46 +103,72 @@ export function AuthGate({ children }: { children: ReactNode }) {
         variant="outlined"
         sx={{
           width: '100%',
-          maxWidth: 390,
+          maxWidth: 410,
           p: 0,
           overflow: 'hidden',
+          borderRadius: 2,
+          boxShadow: '0 20px 48px -12px rgba(15, 23, 42, 0.1), 0 1px 3px 0 rgba(15, 23, 42, 0.04)',
+          borderColor: 'divider',
         }}
       >
         <Box
           sx={{
             px: 3,
             pt: 3,
-            pb: 2,
+            pb: 2.25,
             borderBottom: '1px solid',
             borderColor: 'divider',
+            bgcolor: 'rgba(248, 250, 252, 0.65)',
           }}
         >
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.75} alignItems="center">
             <Box
               sx={{
-                width: 40,
-                height: 40,
+                width: 42,
+                height: 42,
                 display: 'grid',
                 placeItems: 'center',
                 bgcolor: 'primary.main',
                 color: 'primary.contrastText',
-                borderRadius: 1,
+                borderRadius: '8px',
                 flexShrink: 0,
+                boxShadow: '0 2px 8px rgba(29, 78, 216, 0.28)',
               }}
             >
-              <LockOutlinedIcon sx={{ fontSize: 20 }} />
+              <LockOutlinedIcon sx={{ fontSize: 22 }} />
             </Box>
-            <Box>
-              <Typography variant="h2" sx={{ fontSize: 18, letterSpacing: 0, mb: 0.25 }}>FinBot</Typography>
-              <Typography variant="caption" color="text.secondary">管理员安全登录</Typography>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="h2" sx={{ fontSize: 18, fontWeight: 750, letterSpacing: '-0.01em' }}>
+                  FinBot
+                </Typography>
+                <Box
+                  component="span"
+                  sx={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    px: 0.6,
+                    py: 0.1,
+                    borderRadius: '3px',
+                    bgcolor: 'primary.light',
+                    color: 'primary.dark',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  SECURE VAULT
+                </Box>
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                管理员单点登录 · SHA-256 PoW 防护
+              </Typography>
             </Box>
           </Stack>
         </Box>
 
-        <Stack spacing={2.5} sx={{ px: 3, pt: 2.5, pb: 3 }}>
+        <Stack spacing={2.25} sx={{ px: 3, pt: 2.5, pb: 3.25 }}>
           {error && <Alert severity="error">{error}</Alert>}
 
-          <Stack spacing={2}>
+          <Stack spacing={1.75}>
             <TextField
               label="用户名"
               value={username}
@@ -151,7 +178,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
               disabled={busy}
               fullWidth
               size="small"
-              sx={{ '& .MuiOutlinedInput-root': { minHeight: 44 } }}
+              sx={{ '& .MuiOutlinedInput-root': { minHeight: 42 } }}
             />
 
             <SecretTextField
@@ -163,24 +190,33 @@ export function AuthGate({ children }: { children: ReactNode }) {
               disabled={busy}
               fullWidth
               size="small"
-              sx={{ '& .MuiOutlinedInput-root': { minHeight: 44 } }}
+              sx={{ '& .MuiOutlinedInput-root': { minHeight: 42 } }}
             />
           </Stack>
 
-          <Box>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-              <Typography variant="caption" color="text.secondary">数学验证码</Typography>
-              <Box sx={{ flex: 1 }} />
-              <Tooltip title="刷新验证码">
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: '6px',
+              bgcolor: 'action.hover',
+              border: '1px solid',
+              borderColor: 'divider',
+            }}
+          >
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.03em', fontSize: 11 }}>
+                数学验证码
+              </Typography>
+              <Tooltip title="刷新验证码" arrow>
                 <span>
                   <IconButton
                     aria-label="刷新验证码"
                     onClick={() => void loadChallenge()}
                     disabled={busy}
                     size="small"
-                    sx={{ width: 44, height: 44 }}
+                    sx={{ width: 28, height: 28 }}
                   >
-                    <RefreshIcon fontSize="small" />
+                    <RefreshIcon sx={{ fontSize: 16 }} />
                   </IconButton>
                 </span>
               </Tooltip>
@@ -190,16 +226,26 @@ export function AuthGate({ children }: { children: ReactNode }) {
               sx={{
                 border: '1px solid',
                 borderColor: 'divider',
-                borderRadius: 1,
+                borderRadius: '4px',
                 px: 2,
-                py: 1.5,
-                bgcolor: 'background.default',
-                minHeight: 44,
+                py: 1,
+                bgcolor: 'background.paper',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: 40,
               }}
             >
-              <Typography variant="subtitle1" data-testid="auth-math-question" sx={{ fontSize: 16 }}>
+              <Typography
+                data-testid="auth-math-question"
+                sx={{
+                  fontSize: 18,
+                  fontWeight: 750,
+                  fontFamily: 'monospace',
+                  letterSpacing: '0.05em',
+                  color: 'primary.dark',
+                }}
+              >
                 {challenge?.mathExpression || '正在获取'}
               </Typography>
             </Box>
@@ -214,7 +260,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
             disabled={busy || !challenge}
             fullWidth
             size="small"
-            sx={{ '& .MuiOutlinedInput-root': { minHeight: 44 } }}
+            sx={{ '& .MuiOutlinedInput-root': { minHeight: 42 } }}
           />
 
           <Button
@@ -222,9 +268,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
             variant="contained"
             disabled={busy || !challenge || !username.trim() || !password || !mathAnswer}
             fullWidth
-            sx={{ minHeight: 44 }}
+            sx={{
+              minHeight: 42,
+              fontWeight: 700,
+              fontSize: 14,
+              boxShadow: '0 2px 6px rgba(29, 78, 216, 0.25)',
+            }}
           >
-            {busy ? '正在完成安全校验' : '登录'}
+            {busy ? (
+              <Stack direction="row" spacing={1} alignItems="center">
+                <CircularProgress size={16} color="inherit" thickness={4.5} />
+                <span>正在完成安全校验...</span>
+              </Stack>
+            ) : (
+              '登录'
+            )}
           </Button>
         </Stack>
       </Paper>
