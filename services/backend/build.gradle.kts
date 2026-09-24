@@ -11,6 +11,7 @@ plugins {
 group = "io.omnnu.finbot"
 version = "2.0.0-SNAPSHOT"
 val postgresqlDriverVersion = "42.7.12"
+val tomcatVersion = "11.0.25"
 
 subprojects {
     apply(plugin = "java-library")
@@ -32,6 +33,24 @@ subprojects {
         add("testImplementation", "org.junit.jupiter:junit-jupiter")
         add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
         constraints {
+            add("implementation", "org.apache.tomcat.embed:tomcat-embed-core:$tomcatVersion") {
+                because("11.0.25 fixes CVE-2026-65182, CVE-2026-65905, and CVE-2026-68525")
+            }
+            add("implementation", "org.apache.tomcat.embed:tomcat-embed-el:$tomcatVersion") {
+                because("align embedded tomcat version")
+            }
+            add("implementation", "org.apache.tomcat.embed:tomcat-embed-websocket:$tomcatVersion") {
+                because("align embedded tomcat version")
+            }
+            add("runtimeOnly", "org.apache.tomcat.embed:tomcat-embed-core:$tomcatVersion") {
+                because("11.0.25 fixes CVE-2026-65182, CVE-2026-65905, and CVE-2026-68525")
+            }
+            add("runtimeOnly", "org.apache.tomcat.embed:tomcat-embed-el:$tomcatVersion") {
+                because("align embedded tomcat version")
+            }
+            add("runtimeOnly", "org.apache.tomcat.embed:tomcat-embed-websocket:$tomcatVersion") {
+                because("align embedded tomcat version")
+            }
             add("runtimeOnly", "org.postgresql:postgresql:$postgresqlDriverVersion") {
                 because("42.7.12 fixes CVE-2026-54291")
             }
