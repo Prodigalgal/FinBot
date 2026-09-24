@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import GavelIcon from '@mui/icons-material/Gavel';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
-import { Alert, Box, Chip, LinearProgress, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
+import { Alert, Box, Chip, LinearProgress, Paper, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, Typography } from '@mui/material';
 
 import type { DebateProtocolTrace } from './types';
 import { StatusBadge, formatTime } from './ui';
@@ -24,10 +25,77 @@ const decisionLabels: Record<NonNullable<DebateProtocolTrace['decision']>['statu
   NO_STRICT_WINNER: '没有严格胜者',
 };
 
-export function DebateProtocolPanel({ trace }: { trace: DebateProtocolTrace }) {
-  const decision = trace.decision;
+const panelPurposeTitles: Record<string, string> = {
+  RESEARCH: 'SDB-SCA 对称辩论 · 研究共识',
+  PRINCIPAL_REVIEW: 'SDB-SCA 对称辩论 · 主审独立审计',
+  EXECUTION: 'SDB-SCA 对称辩论 · 执行决策共识',
+  EVIDENCE: 'SDB-SCA 对称辩论 · 证据清洗互证',
+};
+
+const panelTabLabels: Record<string, string> = {
+  RESEARCH: '研究共识',
+  PRINCIPAL_REVIEW: '主审独立审计',
+  EXECUTION: '执行决策',
+  EVIDENCE: '证据清洗',
+};
+
+export interface DebateProtocolPanelProps {
+  trace?: DebateProtocolTrace | null;
+  panels?: DebateProtocolTrace[];
+}
+
+export function DebateProtocolPanel({ trace, panels }: DebateProtocolPanelProps) {
+  const panelList = panels && panels.length > 0 ? panels : trace ? [trace] : [];
+  const initialIndex = trace && panelList.length > 0
+    ? Math.max(0, panelList.findIndex(p => p.debateId === trace.debateId || (trace.panelKey && p.panelKey === trace.panelKey)))
+    : 0;
+
+  const [selectedIndex, setSelectedIndex] = useState<number>(initialIndex);
+
+  if (panelList.length === 0) {
+    return null;
+  }
+
+  const safeIndex = selectedIndex < panelList.length ? selectedIndex : 0;
+  const currentTrace = panelList[safeIndex];
+  const decision = currentTrace.decision;
+  const purposeTitle = currentTrace.panelPurpose
+    ? (panelPurposeTitles[currentTrace.panelPurpose] || `SDB-SCA 对称辩论 · ${currentTrace.panelPurpose}`)
+    : 'SDB-SCA 对称辩论';
+
   return (
     <Stack spacing={1.5}>
+      {panelList.length > 1 && (
+        <Paper variant="outlined" sx={{ borderRadius: '10px', bgcolor: 'surfaceMuted', px: 1, py: 0.5 }}>
+          <Tabs
+            value={safeIndex}
+            onChange={(_, newIndex) => setSelectedIndex(newIndex)}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{
+              minHeight: 38,
+              '& .MuiTab-root': {
+                minHeight: 38,
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                textTransform: 'none',
+                py: 0.75,
+                px: 2,
+              },
+            }}
+          >
+            {panelList.map((p, idx) => {
+              const tabLabel = p.panelPurpose
+                ? (panelTabLabels[p.panelPurpose] || p.panelPurpose)
+                : p.panelKey
+                  ? p.panelKey
+                  : `面板 ${idx + 1}`;
+              return <Tab key={p.debateId || idx} label={tabLabel} />;
+            })}
+          </Tabs>
+        </Paper>
+      )}
+
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: '10px' }}>
         <Stack
           direction={{ xs: 'column', md: 'row' }}
@@ -37,24 +105,41 @@ export function DebateProtocolPanel({ trace }: { trace: DebateProtocolTrace }) {
         >
           <AccountTreeIcon color="primary" />
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography fontWeight={800} sx={{ fontSize: '0.92rem' }}>SDB-SCA 对称辩论</Typography>
+            <Typography fontWeight={800} sx={{ fontSize: '0.92rem' }}>{purposeTitle}</Typography>
             <Typography variant="caption" color="text.secondary">
               同阶段封存后统一揭示，页面只展示匿名候选和确定性社会选择结果
             </Typography>
           </Box>
-          <Chip
-            size="small"
-            icon={<LockOutlinedIcon sx={{ fontSize: '0.9rem !important' }} />}
-            label="双盲隔离"
-            sx={{
-              height: 24,
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              bgcolor: 'background.paper',
-              border: '1px solid',
-              borderColor: 'divider',
-            }}
-          />
+          <Stack direction="row" spacing={1} alignItems="center">
+            {currentTrace.panelKey && (
+              <Chip
+                size="small"
+                label={currentTrace.panelKey}
+                sx={{
+                  height: 24,
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  bgcolor: 'background.paper',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  fontFamily: 'monospace',
+                }}
+              />
+            )}
+            <Chip
+              size="small"
+              icon={<LockOutlinedIcon sx={{ fontSize: '0.9rem !important' }} />}
+              label="双盲隔离"
+              sx={{
+                height: 24,
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                bgcolor: 'background.paper',
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            />
+          </Stack>
         </Stack>
         <Box sx={{ overflowX: 'auto' }}>
           <Table size="small">
@@ -68,8 +153,10 @@ export function DebateProtocolPanel({ trace }: { trace: DebateProtocolTrace }) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {trace.phases.map((phase) => {
-                const progress = Math.round((phase.terminalTasks / phase.requiredTasks) * 100);
+              {currentTrace.phases.map((phase) => {
+                const progress = phase.requiredTasks > 0
+                  ? Math.round((phase.terminalTasks / phase.requiredTasks) * 100)
+                  : 0;
                 return (
                   <TableRow
                     key={phase.phaseType}
@@ -266,4 +353,3 @@ function compactJson(value: string): string {
     return value;
   }
 }
-

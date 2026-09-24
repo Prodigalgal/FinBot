@@ -7,6 +7,7 @@ import io.omnnu.finbot.domain.oms.OrderStatus;
 import io.omnnu.finbot.domain.risk.RiskAssessmentStatus;
 import java.math.BigDecimal;
 import java.time.Instant;
+import io.omnnu.finbot.application.research.dto.DebateProtocolTrace;
 import java.util.List;
 
 public record TradeAutomationDetail(
@@ -15,7 +16,19 @@ public record TradeAutomationDetail(
         List<AiReview> aiReviews,
         List<RiskAssessment> riskAssessments,
         List<EstimatedTrade> estimatedTrades,
-        List<Order> orders) {
+        List<Order> orders,
+        DebateProtocolTrace executionDebate,
+        DebateProtocolTrace principalReviewDebate) {
+    public TradeAutomationDetail(
+            Summary summary,
+            Decision decision,
+            List<AiReview> aiReviews,
+            List<RiskAssessment> riskAssessments,
+            List<EstimatedTrade> estimatedTrades,
+            List<Order> orders) {
+        this(summary, decision, aiReviews, riskAssessments, estimatedTrades, orders, null, null);
+    }
+
     public TradeAutomationDetail {
         aiReviews = List.copyOf(aiReviews);
         riskAssessments = List.copyOf(riskAssessments);

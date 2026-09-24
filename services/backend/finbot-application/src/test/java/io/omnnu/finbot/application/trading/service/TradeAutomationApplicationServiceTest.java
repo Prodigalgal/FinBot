@@ -12,6 +12,7 @@ import io.omnnu.finbot.application.trading.service.TradeAutomationApplicationSer
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.omnnu.finbot.application.ai.port.out.AiBudgetReservationStore;
 import io.omnnu.finbot.application.ai.service.AiExecutionPolicyExecutor;
@@ -24,6 +25,8 @@ import io.omnnu.finbot.application.market.dto.ResearchMarketScope;
 import io.omnnu.finbot.application.shared.port.out.SortableIdGenerator;
 import io.omnnu.finbot.application.workflow.dto.DebateSession;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
+import io.omnnu.finbot.application.workflow.port.in.PrincipalReviewUseCase;
+import io.omnnu.finbot.application.workflow.port.in.ExecutionPanelUseCase;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowEventPublisher;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
@@ -278,6 +281,8 @@ class TradeAutomationApplicationServiceTest {
                 unused(PaperOrderExecutionUseCase.class),
                 new MarginRiskEngine(),
                 new EstimatedTradeEngine(),
+                unused(PrincipalReviewUseCase.class),
+                unused(ExecutionPanelUseCase.class),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Runnable::run);
 
@@ -288,6 +293,152 @@ class TradeAutomationApplicationServiceTest {
         var decision = (NonDirectionalTradeDecision) savedDecision.get();
         assertEquals(NonDirectionalAction.WATCH, decision.action());
         assertEquals("BTCUSDT", decision.symbol().value());
+    }
+
+    @Test
+    void principalReviewRejectionFailsClosedBeforeExecution() {
+        var savedDecision = new java.util.concurrent.atomic.AtomicReference<TradeDecision>();
+        var completedStatus = new java.util.concurrent.atomic.AtomicReference<TradeAutomationStatus>();
+        var tradeStore = proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
+            case "findTerminal" -> Optional.empty();
+            case "start" -> true;
+            case "saveDecision" -> {
+                savedDecision.set((TradeDecision) arguments[1]);
+                yield null;
+            }
+            case "complete" -> {
+                completedStatus.set((TradeAutomationStatus) arguments[1]);
+                yield null;
+            }
+            case "fail" -> null;
+            default -> throw new AssertionError(
+                    "Execution must not run if principal review rejects: " + method.getName());
+        });
+        var version = sdbVersion();
+        var context = new WorkflowExecutionContext(
+                RUN_ID,
+                WorkflowRunStatus.COMPLETED,
+                "Analyze BTCUSDT",
+                "{}",
+                version,
+                new ResearchMarketScope(
+                        new InstrumentId("instrument_btc_sdb_test"),
+                        ExchangeVenue.GATE,
+                        ExchangeEnvironment.TESTNET,
+                        "BTCUSDT",
+                        300,
+                        3600,
+                        new BigDecimal("60000")));
+        var debateId = new DebateId("debate_trade_sdb_test");
+        var session = new DebateSession(
+                debateId,
+                RUN_ID,
+                io.omnnu.finbot.domain.debate.DecisionPanelKey.RESEARCH,
+                io.omnnu.finbot.domain.debate.DecisionPanelPurpose.RESEARCH,
+                new io.omnnu.finbot.domain.debate.DecisionPanelInputHash("b".repeat(64)),
+                new io.omnnu.finbot.domain.debate.DecisionPanelFrozenInput("{}"),
+                DebateStatus.COMPLETED,
+                1,
+                1,
+                new WorkflowNodeId("node_decision"),
+                NOW,
+                NOW,
+                1);
+        var consensus = new AgentMessage(
+                new AgentMessageId("message_trade_sdb_consensus"),
+                debateId,
+                RUN_ID,
+                new WorkflowNodeId("node_decision"),
+                "对称社会选择",
+                0,
+                3,
+                AgentMessageType.CONSENSUS_RESULT,
+                AgentMessageStatus.COMPLETED,
+                new AgentMessageContent(
+                        "研究共识达成",
+                        "看涨趋势确立",
+                        new BigDecimal("0.85"),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        new ForecastSignal(
+                                ForecastDirection.UP,
+                                new BigDecimal("60000"),
+                                new BigDecimal("59000"),
+                                new BigDecimal("63000"),
+                                new BigDecimal("58000"),
+                                new BigDecimal("0.85"),
+                                "趋势看涨",
+                                List.of("ref_test"))),
+                List.of(),
+                NOW);
+        var workflowStore = proxy(WorkflowExecutionStore.class, (ignored, method, arguments) -> switch (method.getName()) {
+            case "load" -> Optional.of(context);
+            case "findDebate" -> Optional.of(session);
+            case "messages" -> List.of(consensus);
+            default -> throw new AssertionError("Unexpected workflow store call: " + method.getName());
+        });
+        var principalReviewUseCase = proxy(PrincipalReviewUseCase.class, (ignored, method, arguments) -> {
+            var rejectedDecision = new io.omnnu.finbot.domain.debate.PrincipalReviewDecision(
+                    io.omnnu.finbot.domain.debate.PrincipalReviewAction.REJECT,
+                    "驳回摘要",
+                    "链上大额异动导致反转风险严重，不可开多",
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    List.of("链上大额异动导致反转风险严重，不可开多"),
+                    List.of("流动性断崖反例"));
+            var dummyConsensus = new io.omnnu.finbot.domain.consensus.ConsensusDecision(
+                    new io.omnnu.finbot.domain.consensus.ConsensusDecisionId("decision_" + "0".repeat(40)),
+                    debateId,
+                    io.omnnu.finbot.domain.consensus.SchulzeOutcome.unsuccessful(io.omnnu.finbot.domain.consensus.ConsensusStatus.NO_STRICT_WINNER, List.of(), 0),
+                    null,
+                    "{}",
+                    "{}",
+                    "[]",
+                    null,
+                    "rejected",
+                    "0".repeat(64),
+                    NOW);
+            var reviewResult = new io.omnnu.finbot.application.workflow.dto.PrincipalReviewResult(
+                    session,
+                    consensus,
+                    dummyConsensus,
+                    rejectedDecision,
+                    false,
+                    false);
+            return reviewResult;
+        });
+        var aiInvoker = new WorkflowAiInvoker(
+                unused(AiCompletionGateway.class),
+                unused(AiRuntimeBindingResolver.class),
+                unused(AiInvocationAuditStore.class),
+                unused(AiBudgetReservationStore.class),
+                unused(WorkflowEventPublisher.class),
+                unused(SortableIdGenerator.class),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        var service = new TradeAutomationApplicationService(
+                workflowStore,
+                new AiExecutionPolicyExecutor(aiInvoker, Clock.fixed(NOW, ZoneOffset.UTC)),
+                unused(TradeDecisionOutputParser.class),
+                tradeStore,
+                unused(PaperOrderExecutionUseCase.class),
+                new MarginRiskEngine(),
+                new EstimatedTradeEngine(),
+                principalReviewUseCase,
+                unused(ExecutionPanelUseCase.class),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                Runnable::run);
+
+        var result = service.execute(RUN_ID).toCompletableFuture().join();
+
+        assertEquals(TradeAutomationStatus.NO_ACTION, result.status());
+        assertEquals(TradeAutomationStatus.NO_ACTION, completedStatus.get());
+        var decision = (NonDirectionalTradeDecision) savedDecision.get();
+        assertEquals(NonDirectionalAction.WATCH, decision.action());
+        assertTrue(decision.rationale().getFirst().contains("链上大额异动导致反转风险严重"));
     }
 
     private static TradeAutomationApplicationService service(TradeAutomationStore store) {
@@ -313,6 +464,8 @@ class TradeAutomationApplicationServiceTest {
                 unused(PaperOrderExecutionUseCase.class),
                 new MarginRiskEngine(),
                 new EstimatedTradeEngine(),
+                unused(PrincipalReviewUseCase.class),
+                unused(ExecutionPanelUseCase.class),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Runnable::run);
     }

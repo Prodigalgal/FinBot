@@ -78,6 +78,37 @@ class EstimatedTradeEngineTest {
         assertTrue(plan.reasons().stream().anyMatch(reason -> reason.contains("最新市场价格")));
     }
 
+    @Test
+    void realWorldModelDeductsFundingFeeAndAppliesNonlinearSlippage() {
+        var proposal = proposal(DirectionalAction.BUY, "100", "110", "95");
+        var instrument = instrument(Optional.of(new Price(new BigDecimal("100"))));
+        var linearPlan = new EstimatedTradeEngine().estimate(
+                proposal,
+                new Confidence(new BigDecimal("0.82")),
+                instrument,
+                policy("20"));
+
+        var realWorldModel = new RealWorldMarketModel(
+                new BigDecimal("500"), // Shallow depth creates visible nonlinear impact
+                new BigDecimal("0.001"), // 0.1% funding rate
+                1,
+                new BigDecimal("0.0002"),
+                new BigDecimal("0.05"));
+
+        var realWorldPlan = new EstimatedTradeEngine().estimate(
+                proposal,
+                new Confidence(new BigDecimal("0.82")),
+                instrument,
+                policy("20"),
+                realWorldModel);
+
+        assertEquals(EstimatedTradePlanStatus.ESTIMATED, realWorldPlan.status());
+        // Real-world net profit should be strictly lower due to funding fee and nonlinear slippage
+        assertTrue(realWorldPlan.estimatedProfitUsdt().compareTo(linearPlan.estimatedProfitUsdt()) < 0);
+        // Target exit cost should be strictly higher because it includes funding fee
+        assertTrue(realWorldPlan.estimatedTargetExitCostUsdt().compareTo(linearPlan.estimatedTargetExitCostUsdt()) > 0);
+    }
+
     private static TradeProposal proposal(
             DirectionalAction action,
             String entry,

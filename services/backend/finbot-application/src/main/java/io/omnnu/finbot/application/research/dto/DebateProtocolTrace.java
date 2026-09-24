@@ -6,6 +6,7 @@ import io.omnnu.finbot.domain.debate.DebateArtifactStatus;
 import io.omnnu.finbot.domain.debate.DebatePhaseStatus;
 import io.omnnu.finbot.domain.debate.DebatePhaseType;
 import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -14,13 +15,35 @@ import java.util.Objects;
 public record DebateProtocolTrace(
         String debateId,
         DebateProtocol protocol,
+        String panelKey,
+        DecisionPanelPurpose panelPurpose,
         List<Phase> phases,
         List<AnonymousArtifact> artifacts,
         List<AnonymousBallot> ballots,
         Decision decision) {
+    public DebateProtocolTrace(
+            String debateId,
+            DebateProtocol protocol,
+            List<Phase> phases,
+            List<AnonymousArtifact> artifacts,
+            List<AnonymousBallot> ballots,
+            Decision decision) {
+        this(
+                debateId,
+                protocol,
+                "research",
+                DecisionPanelPurpose.RESEARCH,
+                phases,
+                artifacts,
+                ballots,
+                decision);
+    }
+
     public DebateProtocolTrace {
         debateId = required(debateId, "debateId");
         Objects.requireNonNull(protocol, "protocol");
+        panelKey = panelKey == null ? "research" : panelKey.strip();
+        panelPurpose = panelPurpose == null ? DecisionPanelPurpose.RESEARCH : panelPurpose;
         phases = List.copyOf(Objects.requireNonNull(phases, "phases"));
         artifacts = List.copyOf(Objects.requireNonNull(artifacts, "artifacts"));
         ballots = List.copyOf(Objects.requireNonNull(ballots, "ballots"));

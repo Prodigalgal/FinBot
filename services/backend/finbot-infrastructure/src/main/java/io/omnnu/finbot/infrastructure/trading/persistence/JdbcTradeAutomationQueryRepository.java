@@ -1,11 +1,13 @@
 package io.omnnu.finbot.infrastructure.trading.persistence;
 
+import io.omnnu.finbot.application.research.port.out.ResearchHistoryRepository;
 import io.omnnu.finbot.application.trading.dto.TradeAutomationDetail;
 import io.omnnu.finbot.application.trading.port.out.TradeAutomationQueryRepository;
 import io.omnnu.finbot.application.trading.dto.TradeAutomationStatus;
 import io.omnnu.finbot.application.trading.dto.TradeExecutionAiStage;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.configuration.ReasoningEffort;
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.oms.OrderStatus;
 import io.omnnu.finbot.domain.risk.RiskAssessmentStatus;
@@ -43,9 +45,11 @@ public final class JdbcTradeAutomationQueryRepository implements TradeAutomation
             """;
 
     private final JdbcClient jdbcClient;
+    private final ResearchHistoryRepository researchHistory;
 
-    public JdbcTradeAutomationQueryRepository(JdbcClient jdbcClient) {
+    public JdbcTradeAutomationQueryRepository(JdbcClient jdbcClient, ResearchHistoryRepository researchHistory) {
         this.jdbcClient = Objects.requireNonNull(jdbcClient, "jdbcClient");
+        this.researchHistory = Objects.requireNonNull(researchHistory, "researchHistory");
     }
 
     @Override
@@ -73,7 +77,9 @@ public final class JdbcTradeAutomationQueryRepository implements TradeAutomation
                 reviews(workflowRunId),
                 assessments(workflowRunId),
                 estimatedTrades(workflowRunId),
-                orders(workflowRunId)));
+                orders(workflowRunId),
+                researchHistory.debatePanel(workflowRunId, DecisionPanelKey.EXECUTION).orElse(null),
+                researchHistory.debatePanel(workflowRunId, DecisionPanelKey.PRINCIPAL_REVIEW).orElse(null)));
     }
 
     private Optional<TradeAutomationDetail.Decision> decision(WorkflowRunId workflowRunId) {

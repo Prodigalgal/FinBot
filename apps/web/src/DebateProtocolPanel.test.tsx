@@ -53,3 +53,78 @@ it('shows barrier progress and a non-executable social-choice result without mod
   expect(screen.getAllByText('candidate_alpha').length).toBeGreaterThan(0);
   expect(screen.queryByText(/grok|gemini|provider_/i)).not.toBeInTheDocument();
 });
+
+it('supports switching across multiple debate panels', () => {
+  const researchTrace: DebateProtocolTrace = {
+    debateId: 'debate_research_test',
+    protocol: 'SDB_SCA_V1',
+    panelKey: 'research',
+    panelPurpose: 'RESEARCH',
+    phases: [{
+      phaseType: 'PROPOSAL',
+      status: 'COMPLETED',
+      requiredTasks: 3,
+      terminalTasks: 3,
+      pendingTasks: 0,
+      claimedTasks: 0,
+      completedTasks: 3,
+      failedTasks: 0,
+      timedOutTasks: 0,
+      cancelledTasks: 0,
+      deadline: '2026-07-22T14:30:00Z',
+      openedAt: '2026-07-22T14:00:00Z',
+      revealedAt: '2026-07-22T14:10:00Z',
+      completedAt: '2026-07-22T14:12:00Z',
+      recoveryPoint: true,
+    }],
+    artifacts: [],
+    ballots: [],
+    decision: null,
+  };
+
+  const executionTrace: DebateProtocolTrace = {
+    debateId: 'debate_execution_test',
+    protocol: 'SDB_SCA_V1',
+    panelKey: 'execution',
+    panelPurpose: 'EXECUTION',
+    phases: [{
+      phaseType: 'BALLOT',
+      status: 'COMPLETED',
+      requiredTasks: 2,
+      terminalTasks: 2,
+      pendingTasks: 0,
+      claimedTasks: 0,
+      completedTasks: 2,
+      failedTasks: 0,
+      timedOutTasks: 0,
+      cancelledTasks: 0,
+      deadline: '2026-07-22T15:30:00Z',
+      openedAt: '2026-07-22T15:00:00Z',
+      revealedAt: '2026-07-22T15:10:00Z',
+      completedAt: '2026-07-22T15:15:00Z',
+      recoveryPoint: true,
+    }],
+    artifacts: [],
+    ballots: [],
+    decision: {
+      status: 'SELECTED',
+      winnerCandidateAlias: 'exec_candidate_1',
+      contributingRoleCount: 2,
+      undefeatedCandidatesJson: '["exec_candidate_1"]',
+      pairwiseMatrixJson: '{"exec_candidate_1":{"exec_candidate_1":0}}',
+      strongestPathsJson: '{"exec_candidate_1":{"exec_candidate_1":0}}',
+      rankingJson: '["exec_candidate_1"]',
+      forecastJson: null,
+      explanation: '执行委员会确定性胜出',
+      decisionHash: 'b'.repeat(64),
+      decidedAt: '2026-07-22T15:16:00Z',
+    },
+  };
+
+  render(<DebateProtocolPanel panels={[researchTrace, executionTrace]} />);
+
+  expect(screen.getByText('研究共识')).toBeInTheDocument();
+  expect(screen.getByText('执行决策')).toBeInTheDocument();
+  expect(screen.getByText('SDB-SCA 对称辩论 · 研究共识')).toBeInTheDocument();
+  expect(screen.getByText('独立提案')).toBeInTheDocument();
+});

@@ -19,10 +19,20 @@ public final class EstimatedTradeEngine {
             Confidence confidence,
             ProjectionInstrumentSpec instrument,
             RiskPolicy policy) {
+        return estimate(proposal, confidence, instrument, policy, RealWorldMarketModel.linear());
+    }
+
+    public EstimatedTradePlan estimate(
+            TradeProposal proposal,
+            Confidence confidence,
+            ProjectionInstrumentSpec instrument,
+            RiskPolicy policy,
+            RealWorldMarketModel marketModel) {
         Objects.requireNonNull(proposal, "proposal");
         Objects.requireNonNull(confidence, "confidence");
         Objects.requireNonNull(instrument, "instrument");
         Objects.requireNonNull(policy, "policy");
+        Objects.requireNonNull(marketModel, "marketModel");
 
         var reasons = validate(proposal, confidence, instrument, policy);
         if (!reasons.isEmpty()) {
@@ -33,14 +43,15 @@ public final class EstimatedTradeEngine {
         var target = proposal.targetPrice().value();
         var stop = proposal.invalidationPrice().value();
         var contractSize = instrument.contractSize();
-        var sideCostRate = policy.takerFeeRate().add(policy.slippageRate());
+        var baseSlippageRate = policy.slippageRate();
+        var initialSideCostRate = policy.takerFeeRate().add(baseSlippageRate);
 
         var lossPerQuantity = entry.subtract(stop)
                 .abs()
                 .multiply(contractSize, CALCULATION)
                 .add(entry.add(stop)
                         .multiply(contractSize, CALCULATION)
-                        .multiply(sideCostRate, CALCULATION));
+                        .multiply(initialSideCostRate, CALCULATION));
         var quantityByRisk = policy.riskBudgetUsdt().divide(lossPerQuantity, CALCULATION);
         var quantityByNotional = policy.maximumNotionalUsdt()
                 .divide(entry.multiply(contractSize, CALCULATION), CALCULATION);
@@ -52,9 +63,26 @@ public final class EstimatedTradeEngine {
         var notional = quantity.multiply(entry, CALCULATION).multiply(contractSize, CALCULATION);
         var targetNotional = quantity.multiply(target, CALCULATION).multiply(contractSize, CALCULATION);
         var stopNotional = quantity.multiply(stop, CALCULATION).multiply(contractSize, CALCULATION);
-        var entryCost = notional.multiply(sideCostRate, CALCULATION);
-        var targetExitCost = targetNotional.multiply(sideCostRate, CALCULATION);
-        var stopExitCost = stopNotional.multiply(sideCostRate, CALCULATION);
+
+        // 盘口深度冲击非线性滑点
+        var effectiveSlippageRate = marketModel.isLinear()
+                ? baseSlippageRate
+                : baseSlippageRate.multiply(
+                        BigDecimal.ONE.add(notional.divide(marketModel.referenceDepthUsdt(), CALCULATION)
+                                .pow(2, CALCULATION)), CALCULATION);
+        if (effectiveSlippageRate.compareTo(marketModel.maxEffectiveSlippageRate()) > 0) {
+            return EstimatedTradePlan.blocked(List.of("预估名义本金超过盘口深度承载力，深度冲击滑点过大"));
+        }
+
+        // 周期资金费率计提
+        var fundingCost = notional.multiply(marketModel.fundingRate().abs(), CALCULATION)
+                .multiply(BigDecimal.valueOf(marketModel.fundingPeriods()), CALCULATION);
+
+        var entryCostRate = policy.takerFeeRate().add(effectiveSlippageRate);
+        var exitCostRate = policy.takerFeeRate().add(effectiveSlippageRate);
+        var entryCost = notional.multiply(entryCostRate, CALCULATION);
+        var targetExitCost = targetNotional.multiply(exitCostRate, CALCULATION).add(fundingCost, CALCULATION);
+        var stopExitCost = stopNotional.multiply(exitCostRate, CALCULATION).add(fundingCost, CALCULATION);
         var grossProfit = directionalDistance(proposal.action(), entry, target)
                 .multiply(quantity, CALCULATION)
                 .multiply(contractSize, CALCULATION);
@@ -65,14 +93,15 @@ public final class EstimatedTradeEngine {
         var estimatedProfit = grossProfit.subtract(entryCost, CALCULATION).subtract(targetExitCost, CALCULATION);
         var estimatedLoss = grossLoss.add(entryCost, CALCULATION).add(stopExitCost, CALCULATION);
         if (estimatedProfit.signum() <= 0) {
-            return EstimatedTradePlan.blocked(List.of("止盈空间不足以覆盖预估手续费与滑点"));
+            return EstimatedTradePlan.blocked(List.of("止盈空间不足以覆盖预估手续费、非线性滑点与资金费"));
         }
 
         var stopDistance = entry.subtract(stop).abs().divide(entry, CALCULATION);
         var safeLeverageDenominator = stopDistance
                 .add(policy.liquidationBufferRate())
                 .add(policy.takerFeeRate())
-                .add(policy.slippageRate());
+                .add(effectiveSlippageRate)
+                .add(marketModel.fundingRate().abs().multiply(BigDecimal.valueOf(marketModel.fundingPeriods()), CALCULATION));
         var riskDerivedMaximumLeverage = BigDecimal.ONE.divide(safeLeverageDenominator, CALCULATION)
                 .setScale(0, RoundingMode.FLOOR)
                 .min(policy.maximumLeverage())

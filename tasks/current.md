@@ -8,7 +8,7 @@
 - 需求：[`../docs/requirements/39-full-chain-sdb-sca.md`](../docs/requirements/39-full-chain-sdb-sca.md)。
 - 决策：[`../docs/decisions/036-full-chain-sdb-sca-panels.md`](../docs/decisions/036-full-chain-sdb-sca-panels.md)。
 - 任务：[`in-progress/TASK-20260804-full-chain-sdb-sca.md`](./in-progress/TASK-20260804-full-chain-sdb-sca.md)。
-- 状态：需求与 ADR 已完成；多 panel session、冻结输入哈希、复合唯一键和 CAS 基座已实现，正在提取通用 Panel Engine 并保持研究协议行为等价。
+- 状态：已完成 P0（多 panel CAS 基座与 Engine 提取）、P1a（主审独立审计面板与参数单调收紧）、P1b（执行共识面板与高真实感撮合/滑点/资金费率模型）、P2（全链路多面板轨迹投影、OpenAPI 契约一致性与前端多面板 UI/UX 现代化）；Java/Python/Web 测试与构建、OpenAPI 契约检查、Kustomize 渲染和 Secret scan 100% 绿灯。准备 CI/GitOps 部署与生产 TestNet 验收。
 
 ## P0：OpenAI-Compatible 模型能力发现与发布校验
 

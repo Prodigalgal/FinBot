@@ -1,23 +1,20 @@
 package io.omnnu.finbot.application.workflow.service;
 
-import io.omnnu.finbot.application.ai.service.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.workflow.dto.DebateSession;
 import io.omnnu.finbot.application.workflow.dto.DecisionPanelCandidateView;
-import io.omnnu.finbot.application.workflow.dto.SdbScaDebateResult;
+import io.omnnu.finbot.application.workflow.dto.PrincipalReviewResult;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
 import io.omnnu.finbot.application.workflow.exception.SdbScaExecutionException;
-import io.omnnu.finbot.application.workflow.port.in.SdbScaDebateRunner;
+import io.omnnu.finbot.application.workflow.port.in.PrincipalReviewUseCase;
 import io.omnnu.finbot.application.workflow.port.out.DebateProtocolStore;
+import io.omnnu.finbot.application.workflow.port.out.PrincipalReviewOutputParser;
 import io.omnnu.finbot.application.workflow.port.out.SdbScaDocumentCodec;
-import io.omnnu.finbot.application.workflow.port.out.SdbScaOutputParser;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
 import io.omnnu.finbot.domain.consensus.AnonymousCandidateId;
-import io.omnnu.finbot.domain.consensus.BallotOrientation;
 import io.omnnu.finbot.domain.consensus.AnonymousPreferenceBallot;
+import io.omnnu.finbot.domain.consensus.BallotOrientation;
 import io.omnnu.finbot.domain.consensus.ConsensusDecision;
 import io.omnnu.finbot.domain.consensus.ConsensusStatus;
-import io.omnnu.finbot.domain.consensus.RoleForecastSignal;
-import io.omnnu.finbot.domain.consensus.RoleNormalizedForecastAggregator;
 import io.omnnu.finbot.domain.consensus.SchulzeDetailedResult;
 import io.omnnu.finbot.domain.consensus.SchulzeOutcome;
 import io.omnnu.finbot.domain.debate.DebateArtifact;
@@ -25,7 +22,9 @@ import io.omnnu.finbot.domain.debate.DebateCandidate;
 import io.omnnu.finbot.domain.debate.DebateTaskVariant;
 import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
-import io.omnnu.finbot.domain.research.ForecastSignal;
+import io.omnnu.finbot.domain.debate.PrincipalReviewAction;
+import io.omnnu.finbot.domain.debate.PrincipalReviewDecision;
+import io.omnnu.finbot.domain.workflow.AgentClaim;
 import io.omnnu.finbot.domain.workflow.AgentMessage;
 import io.omnnu.finbot.domain.workflow.AgentMessageContent;
 import io.omnnu.finbot.domain.workflow.AgentMessageStatus;
@@ -34,52 +33,27 @@ import io.omnnu.finbot.domain.workflow.DebateStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeType;
 import java.time.Clock;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.Executor;
 
-public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
+public final class PrincipalReviewService implements PrincipalReviewUseCase {
     private final WorkflowExecutionStore executionStore;
     private final DebateProtocolStore protocolStore;
-    private final SdbScaOutputParser outputParser;
+    private final PrincipalReviewOutputParser outputParser;
     private final SdbScaDocumentCodec documentCodec;
     private final Clock clock;
     private final DecisionPanelEngine panelEngine;
-    private final SdbScaPromptComposer promptComposer = new SdbScaPromptComposer();
-    private final RoleNormalizedForecastAggregator forecastAggregator =
-            new RoleNormalizedForecastAggregator();
+    private final PrincipalReviewPromptComposer promptComposer;
+    private final DecisionPanelSessionService panelSessions;
 
-    public SdbScaDebateExecutionService(
+    public PrincipalReviewService(
             WorkflowExecutionStore executionStore,
             DebateProtocolStore protocolStore,
-            AiExecutionPolicyExecutor aiExecution,
-            SdbScaOutputParser outputParser,
-            SdbScaDocumentCodec documentCodec,
-            Clock clock,
-            Executor executor) {
-        this(
-                executionStore,
-                protocolStore,
-                outputParser,
-                documentCodec,
-                clock,
-                new DecisionPanelEngine(
-                        executionStore,
-                        protocolStore,
-                        aiExecution,
-                        clock,
-                        executor));
-    }
-
-    public SdbScaDebateExecutionService(
-            WorkflowExecutionStore executionStore,
-            DebateProtocolStore protocolStore,
-            SdbScaOutputParser outputParser,
+            PrincipalReviewOutputParser outputParser,
             SdbScaDocumentCodec documentCodec,
             Clock clock,
             DecisionPanelEngine panelEngine) {
@@ -89,44 +63,157 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
         this.documentCodec = Objects.requireNonNull(documentCodec, "documentCodec");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.panelEngine = Objects.requireNonNull(panelEngine, "panelEngine");
+        this.promptComposer = new PrincipalReviewPromptComposer();
+        this.panelSessions = new DecisionPanelSessionService(executionStore, clock);
     }
 
     @Override
-    public SdbScaDebateResult run(WorkflowExecutionContext execution) {
+    public PrincipalReviewResult run(WorkflowExecutionContext execution) {
         Objects.requireNonNull(execution, "execution");
         var version = execution.definitionVersion();
         var decisionNode = version.decisionNode();
         if (decisionNode.nodeType() != WorkflowNodeType.SOCIAL_CHOICE || !decisionNode.enabled()) {
             throw new SdbScaExecutionException(
-                    "SDB_DECISION_NODE_INVALID",
-                    "SDB-SCA requires one enabled SOCIAL_CHOICE node",
+                    "PRINCIPAL_REVIEW_DECISION_NODE_INVALID",
+                    "Principal review requires one enabled SOCIAL_CHOICE node",
                     false);
         }
-        var driver = new ResearchDecisionPanelDriver();
+
+        var researchDebateOpt = executionStore.findDebate(execution.runId(), DecisionPanelKey.RESEARCH);
+        String researchConsensusSummary;
+        if (researchDebateOpt.isPresent()) {
+            var researchSession = researchDebateOpt.get();
+            var researchDecisionOpt = protocolStore.decision(researchSession.debateId());
+            if (researchDecisionOpt.isEmpty()
+                    || researchDecisionOpt.get().outcome().status() != ConsensusStatus.SELECTED) {
+                return failClosedDueToUpstreamResearch(
+                        execution,
+                        decisionNode,
+                        researchDecisionOpt.map(d -> d.outcome().status().name()).orElse("MISSING"));
+            }
+            var researchMessage = executionStore.messages(researchSession.debateId()).stream()
+                    .filter(m -> m.messageType() == AgentMessageType.CONSENSUS_RESULT)
+                    .findFirst();
+            researchConsensusSummary = researchMessage
+                    .map(m -> m.content().summary() + "\n" + m.content().argument())
+                    .orElseGet(() -> researchDecisionOpt.get().explanation());
+        } else {
+            researchConsensusSummary = execution.requestSummary();
+        }
+
+        var driver = createDriver(researchConsensusSummary);
         return panelEngine.execute(execution, decisionNode, version.topologicalNodes(), driver);
     }
 
-    private final class ResearchDecisionPanelDriver implements DecisionPanelProtocolDriver<SdbScaDebateResult> {
+    DecisionPanelProtocolDriver<PrincipalReviewResult> createDriver(String researchConsensusSummary) {
+        return new PrincipalReviewDecisionPanelDriver(researchConsensusSummary);
+    }
+
+    private PrincipalReviewResult failClosedDueToUpstreamResearch(
+            WorkflowExecutionContext execution,
+            WorkflowNodeDefinition decisionNode,
+            String upstreamStatus) {
+        var session = panelSessions.ensure(
+                execution,
+                DecisionPanelKey.PRINCIPAL_REVIEW,
+                DecisionPanelPurpose.PRINCIPAL_REVIEW,
+                decisionNode.nodeId(),
+                1);
+
+        var existingMessage = executionStore.messages(session.debateId()).stream()
+                .filter(m -> m.messageType() == AgentMessageType.CONSENSUS_RESULT)
+                .findFirst();
+        var existingDecision = protocolStore.decision(session.debateId());
+        if (existingMessage.isPresent() && existingDecision.isPresent()) {
+            return new PrincipalReviewResult(
+                    session,
+                    existingMessage.get(),
+                    existingDecision.get(),
+                    null,
+                    false,
+                    session.status() == DebateStatus.PARTIAL);
+        }
+
+        var explanation = "上游研究未达成严格共识（状态为 " + upstreamStatus + "），主审面板触发安全关闭（fail-closed），不进入投票，输出 NO_ACTION。";
+        var outcome = SchulzeOutcome.unsuccessful(ConsensusStatus.NO_STRICT_WINNER, List.of(), 0);
+        var rankingJson = documentCodec.encodeCandidateRanking(List.of());
+        var decisionHash = WorkflowExecutionIds.sha256(
+                outcome.status().name(),
+                "",
+                "{}",
+                "{}",
+                rankingJson,
+                "");
+        var decision = new ConsensusDecision(
+                WorkflowExecutionIds.decision(session.debateId()),
+                session.debateId(),
+                outcome,
+                null,
+                "{}",
+                "{}",
+                rankingJson,
+                null,
+                explanation,
+                decisionHash,
+                clock.instant());
+        protocolStore.saveDecision(decision);
+
+        var content = new AgentMessageContent(
+                "主审独立审计驳回: 上游研究未达成共识",
+                explanation,
+                null,
+                List.of(),
+                List.of("Upstream research consensus status: " + upstreamStatus),
+                List.of("Fail-closed triggered due to absent or non-selected research consensus"),
+                List.of());
+        var message = new AgentMessage(
+                WorkflowExecutionIds.message(session, decisionNode.nodeId(), 0),
+                session.debateId(),
+                execution.runId(),
+                decisionNode.nodeId(),
+                "主审独立审计",
+                0,
+                0,
+                AgentMessageType.CONSENSUS_RESULT,
+                AgentMessageStatus.COMPLETED,
+                content,
+                List.of(),
+                clock.instant());
+        executionStore.saveMessage(message);
+
+        executionStore.transitionDebate(session.debateId(), session.version(), DebateStatus.COMPLETED, 1, clock.instant());
+
+        return new PrincipalReviewResult(session, message, decision, null, false, false);
+    }
+
+    private final class PrincipalReviewDecisionPanelDriver
+            implements DecisionPanelProtocolDriver<PrincipalReviewResult> {
+        private final String researchConsensusSummary;
+
+        PrincipalReviewDecisionPanelDriver(String researchConsensusSummary) {
+            this.researchConsensusSummary = researchConsensusSummary;
+        }
+
         @Override
         public DecisionPanelKey panelKey() {
-            return DecisionPanelKey.RESEARCH;
+            return DecisionPanelKey.PRINCIPAL_REVIEW;
         }
 
         @Override
         public DecisionPanelPurpose purpose() {
-            return DecisionPanelPurpose.RESEARCH;
+            return DecisionPanelPurpose.PRINCIPAL_REVIEW;
         }
 
         @Override
         public SdbScaPhaseExecutor.TaskCommand proposalCommand(
-                WorkflowExecutionContext execution,
-                WorkflowNodeDefinition node,
-                SdbScaIdentityDisclosureGuard identityGuard) {
+            WorkflowExecutionContext execution,
+            WorkflowNodeDefinition node,
+            SdbScaIdentityDisclosureGuard identityGuard) {
             return new SdbScaPhaseExecutor.TaskCommand(
                     node,
                     null,
                     DebateTaskVariant.PRIMARY,
-                    promptComposer.proposal(execution, node),
+                    promptComposer.proposal(execution, node, researchConsensusSummary),
                     output -> identityGuard.requireAnonymous(
                             outputParser.parseProposal(output).canonicalJson()));
         }
@@ -144,7 +231,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                     DebateTaskVariant.PRIMARY,
                     promptComposer.critique(execution, node, targetView),
                     output -> identityGuard.requireAnonymous(
-                            outputParser.parseCritique(output).canonicalJson()));
+                            outputParser.parseCritique(output)));
         }
 
         @Override
@@ -201,7 +288,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
         }
 
         @Override
-        public SdbScaDebateResult reduce(
+        public PrincipalReviewResult reduce(
                 WorkflowExecutionContext execution,
                 DebateSession session,
                 WorkflowNodeDefinition decisionNode,
@@ -222,7 +309,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
         }
 
         @Override
-        public SdbScaDebateResult lowQuorumResult(
+        public PrincipalReviewResult lowQuorumResult(
                 WorkflowExecutionContext execution,
                 DebateSession session,
                 WorkflowNodeDefinition decisionNode,
@@ -244,21 +331,39 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
         }
 
         @Override
-        public Optional<SdbScaDebateResult> recoverCompletedResult(
+        public Optional<PrincipalReviewResult> recoverCompletedResult(
                 DebateSession session,
                 WorkflowNodeDefinition decisionNode) {
-            return executionStore.messages(session.debateId()).stream()
+            var messageOpt = executionStore.messages(session.debateId()).stream()
                     .filter(message -> message.messageType() == AgentMessageType.CONSENSUS_RESULT)
                     .filter(message -> message.status() == AgentMessageStatus.COMPLETED)
-                    .findFirst()
-                    .map(message -> new SdbScaDebateResult(
-                            session,
-                            message,
-                            session.status() == DebateStatus.PARTIAL));
+                    .findFirst();
+            var decisionOpt = protocolStore.decision(session.debateId());
+            if (messageOpt.isPresent() && decisionOpt.isPresent()) {
+                var decision = decisionOpt.get();
+                PrincipalReviewDecision reviewDecision = null;
+                boolean approved = false;
+                if (decision.forecastJson() != null && !decision.forecastJson().isBlank()) {
+                    try {
+                        var parsed = outputParser.parseRevision(decision.forecastJson());
+                        reviewDecision = parsed.decision();
+                        approved = reviewDecision.action() != PrincipalReviewAction.REJECT;
+                    } catch (Exception ignored) {
+                    }
+                }
+                return Optional.of(new PrincipalReviewResult(
+                        session,
+                        messageOpt.get(),
+                        decision,
+                        reviewDecision,
+                        approved,
+                        session.status() == DebateStatus.PARTIAL));
+            }
+            return Optional.empty();
         }
     }
 
-    private SdbScaDebateResult completeResult(
+    private PrincipalReviewResult completeResult(
             WorkflowExecutionContext execution,
             DebateSession session,
             WorkflowNodeDefinition decisionNode,
@@ -272,27 +377,20 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                         .filter(candidate -> candidate.anonymousCandidateId().equals(alias))
                         .findFirst())
                 .orElse(null);
-        var roleForecasts = new ArrayList<RoleForecastSignal>();
-        AgentMessageContent winnerContent = null;
-        for (var candidate : candidates) {
-            if (candidate.revisionArtifactId() == null) {
-                continue;
-            }
-            var artifact = revisionArtifactsById.get(candidate.revisionArtifactId().value());
-            if (artifact == null) {
-                continue;
-            }
-            var content = outputParser.parseRevision(artifact.content()).messageContent();
-            if (content.forecast() != null) {
-                roleForecasts.add(new RoleForecastSignal(candidate.logicalRoleKey(), content.forecast()));
-            }
-            if (winner != null && winner.candidateId().equals(candidate.candidateId())) {
-                winnerContent = content;
+
+        PrincipalReviewDecision winningDecision = null;
+        String winningJson = null;
+        if (winner != null && winner.revisionArtifactId() != null) {
+            var artifact = revisionArtifactsById.get(winner.revisionArtifactId().value());
+            if (artifact != null) {
+                var parsed = outputParser.parseRevision(artifact.content());
+                winningDecision = parsed.decision();
+                winningJson = parsed.canonicalJson();
             }
         }
-        var forecast = aggregateForecast(execution, outcome, roleForecasts);
-        var forecastJson = documentCodec.encodeForecast(forecast);
-        var explanation = explanation(outcome);
+
+        boolean approved = winningDecision != null && winningDecision.action() != PrincipalReviewAction.REJECT;
+        var explanation = explanation(outcome, winningDecision);
         var pairwiseMatrixJson = detailed == null
                 ? "{}"
                 : documentCodec.encodePairwiseMatrix(detailed);
@@ -305,7 +403,8 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                 pairwiseMatrixJson,
                 strongestPathsJson,
                 documentCodec.encodeCandidateRanking(ranking),
-                Objects.requireNonNullElse(forecastJson, ""));
+                Objects.requireNonNullElse(winningJson, ""));
+
         var decision = new ConsensusDecision(
                 WorkflowExecutionIds.decision(session.debateId()),
                 session.debateId(),
@@ -314,7 +413,7 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                 pairwiseMatrixJson,
                 strongestPathsJson,
                 documentCodec.encodeCandidateRanking(ranking),
-                forecastJson,
+                winningJson,
                 explanation,
                 decisionHash,
                 clock.instant());
@@ -325,15 +424,22 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                         WorkflowExecutionIds.message(session, decisionNode.nodeId(), 0)))
                 .findFirst();
         if (existingMessage.isPresent()) {
-            return new SdbScaDebateResult(session, existingMessage.orElseThrow(), partial);
+            return new PrincipalReviewResult(
+                    session,
+                    existingMessage.orElseThrow(),
+                    decision,
+                    winningDecision,
+                    approved,
+                    partial);
         }
-        var content = consensusMessageContent(outcome, winnerContent, forecast, explanation);
+
+        var content = reviewMessageContent(outcome, winningDecision, explanation);
         var message = new AgentMessage(
                 WorkflowExecutionIds.message(session, decisionNode.nodeId(), 0),
                 session.debateId(),
                 execution.runId(),
                 decisionNode.nodeId(),
-                "对称社会选择",
+                "主审独立审计",
                 0,
                 candidates.size() + 1,
                 AgentMessageType.CONSENSUS_RESULT,
@@ -342,47 +448,8 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
                 List.of(),
                 clock.instant());
         executionStore.saveMessage(message);
-        return new SdbScaDebateResult(session, message, partial);
-    }
 
-    private ForecastSignal aggregateForecast(
-            WorkflowExecutionContext execution,
-            SchulzeOutcome outcome,
-            List<RoleForecastSignal> roleForecasts) {
-        if (execution.marketScope() == null) {
-            return null;
-        }
-        return forecastAggregator.resolve(
-                roleForecasts,
-                execution.marketScope().marketReferencePrice(),
-                outcome.status() == ConsensusStatus.SELECTED);
-    }
-
-    private static AgentMessageContent consensusMessageContent(
-            SchulzeOutcome outcome,
-            AgentMessageContent winnerContent,
-            ForecastSignal forecast,
-            String explanation) {
-        if (outcome.status() != ConsensusStatus.SELECTED || winnerContent == null) {
-            return new AgentMessageContent(
-                    "SDB-SCA 未形成可执行共识",
-                    explanation,
-                    forecast == null ? null : forecast.confidence(),
-                    List.of(),
-                    forecast == null ? List.of() : forecast.evidenceReferences(),
-                    List.of(explanation),
-                    List.of(),
-                    forecast);
-        }
-        return new AgentMessageContent(
-                "SDB-SCA 已通过对称社会选择形成共识",
-                winnerContent.argument(),
-                forecast == null ? winnerContent.confidence() : forecast.confidence(),
-                winnerContent.claims(),
-                winnerContent.evidenceReferences(),
-                winnerContent.challenges(),
-                winnerContent.revisionNotes(),
-                forecast);
+        return new PrincipalReviewResult(session, message, decision, winningDecision, approved, partial);
     }
 
     private static List<AnonymousCandidateId> ranking(
@@ -398,14 +465,52 @@ public final class SdbScaDebateExecutionService implements SdbScaDebateRunner {
         return List.copyOf(ordered);
     }
 
-    private static String explanation(SchulzeOutcome outcome) {
+    private static String explanation(SchulzeOutcome outcome, PrincipalReviewDecision decision) {
+        if (outcome.status() == ConsensusStatus.SELECTED) {
+            if (decision != null) {
+                return "主审审计决议: " + decision.action().name() + " - " + decision.summary();
+            }
+            return "主审通过对称社会选择产生唯一优胜方案。";
+        }
         return switch (outcome.status()) {
-            case SELECTED -> "正序与逆序匿名选票得到同一唯一严格 Schulze 胜者。";
-            case TIED -> "Schulze 最强路径存在多个不败候选，结果并列。";
-            case LOW_QUORUM -> "有效逻辑角色数低于工作流配置的法定人数。";
-            case ORDER_SENSITIVE -> "正序与逆序展示产生不同胜者，结果具有顺序敏感性。";
-            case NO_VALID_BALLOTS -> "没有同时具备正序与逆序的有效完整选票。";
-            case NO_STRICT_WINNER -> "不存在严格击败所有其他候选的唯一胜者。";
+            case TIED -> "主审候选票数并列且无法消解，根据单向安全原则不予放行（NO_ACTION）。";
+            case LOW_QUORUM -> "主审法定有效席位不足，未能达到仲裁法定人数（Quorum不足）。";
+            case ORDER_SENSITIVE -> "主审方案在正反向排序下结论敏感，未能通过双盲稳定性检验。";
+            case NO_VALID_BALLOTS -> "主审选票未通过完整性验证。";
+            case NO_STRICT_WINNER -> "主审投票未产生满足多数偏好的唯一严格胜者。";
+            default -> "主审未形成可执行共识。";
         };
+    }
+
+    private static AgentMessageContent reviewMessageContent(
+            SchulzeOutcome outcome,
+            PrincipalReviewDecision decision,
+            String explanation) {
+        if (outcome.status() != ConsensusStatus.SELECTED || decision == null) {
+            return new AgentMessageContent(
+                    "主审未形成可执行共识",
+                    explanation,
+                    null,
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of());
+        }
+        var title = switch (decision.action()) {
+            case CONFIRM -> "主审独立审计通过 (CONFIRM)";
+            case TIGHTEN -> "主审独立审计单调收紧通过 (TIGHTEN)";
+            case REJECT -> "主审独立审计驳回 (REJECT)";
+        };
+        var claims = decision.auditedClaims().stream()
+                .map(c -> new AgentClaim(c, List.of()))
+                .toList();
+        return new AgentMessageContent(
+                title,
+                decision.auditRationale(),
+                decision.tightenedConfidence(),
+                claims,
+                decision.counterexamples(),
+                decision.riskWarnings(),
+                List.of());
     }
 }

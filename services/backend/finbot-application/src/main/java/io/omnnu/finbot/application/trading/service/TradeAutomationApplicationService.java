@@ -21,6 +21,7 @@ import io.omnnu.finbot.application.operations.service.TaskCancellationContext;
 import io.omnnu.finbot.application.exchange.dto.ExchangeSubmissionStatus;
 import io.omnnu.finbot.application.exchange.port.in.PaperOrderExecutionUseCase;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
+import io.omnnu.finbot.application.workflow.port.in.PrincipalReviewUseCase;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
 import io.omnnu.finbot.domain.debate.DebateProtocol;
 import io.omnnu.finbot.domain.debate.DecisionPanelKey;
@@ -86,6 +87,8 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
     private final PaperOrderExecutionUseCase orderExecution;
     private final MarginRiskEngine riskEngine;
     private final EstimatedTradeEngine estimatedTradeEngine;
+    private final PrincipalReviewUseCase principalReviewUseCase;
+    private final io.omnnu.finbot.application.workflow.port.in.ExecutionPanelUseCase executionPanelUseCase;
     private final Clock clock;
     private final Executor executor;
 
@@ -97,6 +100,8 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             PaperOrderExecutionUseCase orderExecution,
             MarginRiskEngine riskEngine,
             EstimatedTradeEngine estimatedTradeEngine,
+            PrincipalReviewUseCase principalReviewUseCase,
+            io.omnnu.finbot.application.workflow.port.in.ExecutionPanelUseCase executionPanelUseCase,
             Clock clock,
             Executor executor) {
         this.workflowStore = Objects.requireNonNull(workflowStore, "workflowStore");
@@ -106,6 +111,8 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         this.orderExecution = Objects.requireNonNull(orderExecution, "orderExecution");
         this.riskEngine = Objects.requireNonNull(riskEngine, "riskEngine");
         this.estimatedTradeEngine = Objects.requireNonNull(estimatedTradeEngine, "estimatedTradeEngine");
+        this.principalReviewUseCase = Objects.requireNonNull(principalReviewUseCase, "principalReviewUseCase");
+        this.executionPanelUseCase = Objects.requireNonNull(executionPanelUseCase, "executionPanelUseCase");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.executor = Objects.requireNonNull(executor, "executor");
     }
@@ -142,37 +149,82 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                         workflow,
                         chair);
             }
-            var stages = executionAiStages(workflow, store.executionAiStages());
-            var draftStage = requiredStage(stages, TradeExecutionAiStage.DRAFT);
-            var reflectionStage = requiredStage(stages, TradeExecutionAiStage.REFLECTION);
+            io.omnnu.finbot.application.workflow.dto.PrincipalReviewResult principalReview = null;
+            if (workflow.definitionVersion().debateProtocolConfiguration().protocol() == DebateProtocol.SDB_SCA_V1) {
+                // 1. 全链路 SDB-SCA: 主审独立审计 (PRINCIPAL_REVIEW)
+                principalReview = principalReviewUseCase.run(workflow);
+                if (!principalReview.approved()
+                        || principalReview.reviewDecision() == null
+                        || principalReview.reviewDecision().action() == io.omnnu.finbot.domain.debate.PrincipalReviewAction.REJECT) {
+                    var rejectReason = principalReview.reviewDecision() != null
+                            && !principalReview.reviewDecision().counterexamples().isEmpty()
+                            ? "主审独立审计驳回: " + principalReview.reviewDecision().counterexamples().getFirst()
+                            : (principalReview.reviewDecision() != null && !principalReview.reviewDecision().auditRationale().isBlank()
+                                    ? "主审独立审计驳回: " + principalReview.reviewDecision().auditRationale()
+                                    : "主审独立审计未通过严格检验，模拟交易安全关闭");
+                    return completePrincipalReviewRejected(
+                            automationRunId,
+                            workflowRunId,
+                            workflow,
+                            rejectReason);
+                }
+            }
 
-            var draftAttempt = invokeAndParse(
-                    workflow,
-                    draftStage,
-                    draftPrompt(workflow, chair),
-                    outputParser::parseDraft);
-            var parsedDraft = draftAttempt.value();
-            saveReview(
-                    automationRunId,
-                    workflowRunId,
-                    draftStage.stage(),
-                    draftAttempt.invocation(),
-                    parsedDraft.canonicalJson());
+            TradeDecisionDraft finalDraft;
+            // 2. 全链路 SDB-SCA: 执行决策共识 (EXECUTION panel)
+            var hasExecutionPanel = workflow.definitionVersion().nodes().stream()
+                    .anyMatch(node -> node.enabled()
+                            && node.nodeType() == WorkflowNodeType.SOCIAL_CHOICE
+                            && node.operation() != null
+                            && node.operation().toUpperCase(Locale.ROOT).contains("EXECUTION"));
 
-            var reflectionAttempt = invokeAndParse(
-                    workflow,
-                    reflectionStage,
-                    reflectionPrompt(workflow, chair, parsedDraft.canonicalJson()),
-                    outputParser::parseReflection);
-            var parsedReflection = reflectionAttempt.value();
-            saveReview(
-                    automationRunId,
-                    workflowRunId,
-                    reflectionStage.stage(),
-                    reflectionAttempt.invocation(),
-                    parsedReflection.canonicalJson());
+            if (principalReview != null && hasExecutionPanel) {
+                var executionPanelResult = executionPanelUseCase.execute(workflowRunId, principalReview)
+                        .toCompletableFuture()
+                        .join();
+                if (!executionPanelResult.approved() || executionPanelResult.decisionDraft() == null) {
+                    return completePrincipalReviewRejected(
+                            automationRunId,
+                            workflowRunId,
+                            workflow,
+                            "执行面板未达成可执行严格共识");
+                }
+                finalDraft = executionPanelResult.decisionDraft();
+            } else {
+                var stages = executionAiStages(workflow, store.executionAiStages());
+                var draftStage = requiredStage(stages, TradeExecutionAiStage.DRAFT);
+                var reflectionStage = requiredStage(stages, TradeExecutionAiStage.REFLECTION);
 
-            var finalDraft = reflectedDecision(parsedDraft.decision(), parsedReflection.reflection());
+                var draftAttempt = invokeAndParse(
+                        workflow,
+                        draftStage,
+                        draftPrompt(workflow, chair),
+                        outputParser::parseDraft);
+                var parsedDraft = draftAttempt.value();
+                saveReview(
+                        automationRunId,
+                        workflowRunId,
+                        draftStage.stage(),
+                        draftAttempt.invocation(),
+                        parsedDraft.canonicalJson());
+
+                var reflectionAttempt = invokeAndParse(
+                        workflow,
+                        reflectionStage,
+                        reflectionPrompt(workflow, chair, parsedDraft.canonicalJson()),
+                        outputParser::parseReflection);
+                var parsedReflection = reflectionAttempt.value();
+                saveReview(
+                        automationRunId,
+                        workflowRunId,
+                        reflectionStage.stage(),
+                        reflectionAttempt.invocation(),
+                        parsedReflection.canonicalJson());
+
+                var unconstrainedDraft = reflectedDecision(parsedDraft.decision(), parsedReflection.reflection());
+                finalDraft = applyPrincipalReviewTightening(unconstrainedDraft, principalReview);
+            }
+
             var decision = toDecision(workflowRunId, finalDraft);
             TaskCancellationContext.throwIfCancelled();
             store.saveDecision(workflowRunId, decision);
@@ -190,7 +242,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                         clock.instant());
                 return result(automationRunId, TradeAutomationStatus.NO_ACTION, decision, List.of(), reasons);
             }
-            return submitPlanned(planOrders(automationRunId, workflowRunId, directional));
+            return submitPlanned(planOrders(automationRunId, workflowRunId, directional, principalReview));
         } catch (RuntimeException exception) {
             store.fail(
                     automationRunId,
@@ -237,7 +289,8 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
     private TradeAutomationResult planOrders(
             String automationRunId,
             WorkflowRunId workflowRunId,
-            DirectionalTradeDecision decision) {
+            DirectionalTradeDecision decision,
+            io.omnnu.finbot.application.workflow.dto.PrincipalReviewResult principalReview) {
         var proposal = TradeProposal.from(
                 new TradeProposalId(deterministicId("proposal_", decision.id().value())),
                 decision,
@@ -245,6 +298,23 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         TaskCancellationContext.throwIfCancelled();
         store.saveProposal(proposal);
         var policy = store.activeRiskPolicy();
+        if (principalReview != null && principalReview.reviewDecision() != null
+                && principalReview.reviewDecision().tightenedMaxLeverage() != null) {
+            var tightened = principalReview.reviewDecision().tightenedMaxLeverage();
+            policy = new RiskPolicy(
+                    policy.version(),
+                    policy.testEnvironmentOnly(),
+                    policy.minimumConfidence(),
+                    policy.riskBudgetUsdt(),
+                    policy.maximumNotionalUsdt(),
+                    policy.preferredLeverage().min(tightened),
+                    policy.maximumLeverage().min(tightened),
+                    policy.maximumOpenPositions(),
+                    policy.maximumStopDistance(),
+                    policy.takerFeeRate(),
+                    policy.slippageRate(),
+                    policy.liquidationBufferRate());
+        }
         var normalizedSymbol = normalizeSymbol(decision.symbol().value());
         var candidates = store.executionCandidates(normalizedSymbol);
         if (candidates.isEmpty()) {
@@ -531,6 +601,68 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 decision,
                 List.of(),
                 decision.rationale());
+    }
+
+    private TradeAutomationResult completePrincipalReviewRejected(
+            String automationRunId,
+            WorkflowRunId workflowRunId,
+            WorkflowExecutionContext workflow,
+            String reason) {
+        var marketScope = Objects.requireNonNull(
+                workflow.marketScope(),
+                "SDB-SCA trade automation requires a persisted market scope");
+        var decision = new NonDirectionalTradeDecision(
+                new TradeDecisionId(deterministicId(
+                        "decision_",
+                        workflowRunId.value() + ":principal-rejected")),
+                new InstrumentSymbol(marketScope.symbol()),
+                NonDirectionalAction.WATCH,
+                new Confidence(BigDecimal.ZERO),
+                List.of(reason),
+                clock.instant());
+        TaskCancellationContext.throwIfCancelled();
+        store.saveDecision(workflowRunId, decision);
+        store.complete(
+                automationRunId,
+                TradeAutomationStatus.NO_ACTION,
+                decision,
+                null,
+                List.of(),
+                List.of(),
+                decision.rationale(),
+                clock.instant());
+        return result(
+                automationRunId,
+                TradeAutomationStatus.NO_ACTION,
+                decision,
+                List.of(),
+                decision.rationale());
+    }
+
+    private static TradeDecisionDraft applyPrincipalReviewTightening(
+            TradeDecisionDraft draft,
+            io.omnnu.finbot.application.workflow.dto.PrincipalReviewResult review) {
+        if (review == null || review.reviewDecision() == null
+                || review.reviewDecision().action() != io.omnnu.finbot.domain.debate.PrincipalReviewAction.TIGHTEN) {
+            return draft;
+        }
+        var tightening = review.reviewDecision();
+        var rationale = new ArrayList<>(draft.rationale());
+        var confidenceVal = draft.confidence().value();
+        if (tightening.tightenedConfidence() != null
+                && confidenceVal.compareTo(tightening.tightenedConfidence()) > 0) {
+            confidenceVal = tightening.tightenedConfidence();
+            rationale.add("[主审审计强制收紧置信度至: " + tightening.tightenedConfidence() + "]");
+        }
+        return new TradeDecisionDraft(
+                draft.action(),
+                draft.symbol(),
+                new Confidence(confidenceVal),
+                draft.entryReference(),
+                draft.targetPrice(),
+                draft.invalidationPrice(),
+                rationale,
+                draft.evidenceReferences());
     }
 
     private static TradeExecutionAiStageConfig requiredStage(

@@ -16,7 +16,29 @@ public record ResearchHistoryDetail(
         List<AiInvocation> aiInvocations,
         List<Artifact> artifacts,
         List<QuantRun> quantRuns,
-        DebateProtocolTrace debateProtocol) {
+        DebateProtocolTrace debateProtocol,
+        List<DebateProtocolTrace> debatePanels) {
+    public ResearchHistoryDetail(
+            Summary summary,
+            List<Event> events,
+            List<Checkpoint> checkpoints,
+            List<AgentTurn> agentTurns,
+            List<AiInvocation> aiInvocations,
+            List<Artifact> artifacts,
+            List<QuantRun> quantRuns,
+            DebateProtocolTrace debateProtocol) {
+        this(
+                summary,
+                events,
+                checkpoints,
+                agentTurns,
+                aiInvocations,
+                artifacts,
+                quantRuns,
+                debateProtocol,
+                debateProtocol == null ? List.of() : List.of(debateProtocol));
+    }
+
     public ResearchHistoryDetail {
         events = List.copyOf(events);
         checkpoints = List.copyOf(checkpoints);
@@ -24,6 +46,7 @@ public record ResearchHistoryDetail(
         aiInvocations = List.copyOf(aiInvocations);
         artifacts = List.copyOf(artifacts);
         quantRuns = List.copyOf(quantRuns);
+        debatePanels = debatePanels == null ? List.of() : List.copyOf(debatePanels);
     }
 
     public record Summary(

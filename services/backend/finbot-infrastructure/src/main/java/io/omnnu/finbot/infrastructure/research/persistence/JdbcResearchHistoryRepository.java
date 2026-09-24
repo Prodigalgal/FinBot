@@ -11,6 +11,7 @@ import io.omnnu.finbot.domain.debate.DebateArtifactStatus;
 import io.omnnu.finbot.domain.debate.DebatePhaseStatus;
 import io.omnnu.finbot.domain.debate.DebatePhaseType;
 import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.DecisionPanelPurpose;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowTrigger;
@@ -66,6 +67,11 @@ public final class JdbcResearchHistoryRepository implements ResearchHistoryRepos
         if (summary.isEmpty()) {
             return Optional.empty();
         }
+        var panels = debatePanels(runId);
+        var researchTrace = panels.stream()
+                .filter(trace -> trace.panelPurpose() == DecisionPanelPurpose.RESEARCH)
+                .findFirst()
+                .orElse(null);
         return Optional.of(new ResearchHistoryDetail(
                 summary.orElseThrow(),
                 events(runId),
@@ -74,7 +80,8 @@ public final class JdbcResearchHistoryRepository implements ResearchHistoryRepos
                 aiInvocations(runId),
                 artifacts(runId),
                 quantRuns(runId),
-                debateProtocol(runId).orElse(null)));
+                researchTrace,
+                panels));
     }
 
     @Override
@@ -247,33 +254,43 @@ public final class JdbcResearchHistoryRepository implements ResearchHistoryRepos
                 .list();
     }
 
-    private Optional<DebateProtocolTrace> debateProtocol(WorkflowRunId runId) {
-        var debate = jdbcClient.sql("""
-                select session.debate_id, version.debate_protocol
+    @Override
+    @Transactional(readOnly = true)
+    public List<DebateProtocolTrace> debatePanels(WorkflowRunId runId) {
+        var debates = jdbcClient.sql("""
+                select session.debate_id, session.panel_key, session.panel_purpose, version.debate_protocol
                 from debate_session session
                 join workflow_run run on run.run_id = session.run_id
                 join workflow_definition_version version on version.version_id = run.workflow_version_id
                 where session.run_id = :runId
-                  and session.panel_key = 'research'
-                  and session.panel_purpose = 'RESEARCH'
                   and version.debate_protocol = 'SDB_SCA_V1'
+                order by session.started_at asc
                 """)
                 .param("runId", runId.value())
                 .query((resultSet, rowNumber) -> new DebateIdentity(
                         resultSet.getString("debate_id"),
-                        DebateProtocol.valueOf(resultSet.getString("debate_protocol"))))
-                .optional();
-        if (debate.isEmpty()) {
-            return Optional.empty();
-        }
-        var identity = debate.orElseThrow();
-        return Optional.of(new DebateProtocolTrace(
-                identity.debateId(),
-                identity.protocol(),
-                debatePhases(identity.debateId()),
-                debateArtifacts(identity.debateId()),
-                debateBallots(identity.debateId()),
-                debateDecision(identity.debateId()).orElse(null)));
+                        DebateProtocol.valueOf(resultSet.getString("debate_protocol")),
+                        resultSet.getString("panel_key"),
+                        DecisionPanelPurpose.valueOf(resultSet.getString("panel_purpose"))))
+                .list();
+
+        return debates.stream()
+                .map(identity -> new DebateProtocolTrace(
+                        identity.debateId(),
+                        identity.protocol(),
+                        identity.panelKey(),
+                        identity.panelPurpose(),
+                        debatePhases(identity.debateId()),
+                        debateArtifacts(identity.debateId()),
+                        debateBallots(identity.debateId()),
+                        debateDecision(identity.debateId()).orElse(null)))
+                .toList();
+    }
+
+    private Optional<DebateProtocolTrace> debateProtocol(WorkflowRunId runId) {
+        return debatePanels(runId).stream()
+                .filter(trace -> trace.panelPurpose() == DecisionPanelPurpose.RESEARCH)
+                .findFirst();
     }
 
     private List<DebateProtocolTrace.Phase> debatePhases(String debateId) {
@@ -421,6 +438,10 @@ public final class JdbcResearchHistoryRepository implements ResearchHistoryRepos
         return value == null ? null : value.toInstant();
     }
 
-    private record DebateIdentity(String debateId, DebateProtocol protocol) {
+    private record DebateIdentity(
+            String debateId,
+            DebateProtocol protocol,
+            String panelKey,
+            DecisionPanelPurpose panelPurpose) {
     }
 }

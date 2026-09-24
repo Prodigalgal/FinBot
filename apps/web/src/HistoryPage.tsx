@@ -207,12 +207,17 @@ export function HistoryPage({ onOpenRun }: { onOpenRun?: (launch: ResearchLaunch
 
         {researchCase && <ResearchCasePanel researchCase={researchCase} />}
         {forecast && <ForecastPanel forecast={forecast} />}
-        {detail.debateProtocol && (
+        {(detail.debatePanels && detail.debatePanels.length > 0) ? (
+          <>
+            <SectionTitle title="多面板辩论协议 (SDB-SCA)" />
+            <DebateProtocolPanel panels={detail.debatePanels} trace={detail.debateProtocol} />
+          </>
+        ) : detail.debateProtocol ? (
           <>
             <SectionTitle title="双盲辩论协议" />
             <DebateProtocolPanel trace={detail.debateProtocol} />
           </>
-        )}
+        ) : null}
         {detail.summary.status === 'FAILED' && (
           <TextField
             select

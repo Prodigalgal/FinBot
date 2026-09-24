@@ -1,5 +1,6 @@
 package io.omnnu.finbot.application.workflow.service;
 
+import io.omnnu.finbot.application.workflow.dto.DecisionPanelCandidateView;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
 import io.omnnu.finbot.domain.consensus.AnonymousCandidateId;
 import io.omnnu.finbot.domain.consensus.BallotOrientation;
@@ -46,7 +47,7 @@ final class SdbScaPromptComposer {
     String critique(
             WorkflowExecutionContext execution,
             WorkflowNodeDefinition node,
-            CandidateView candidate) {
+            DecisionPanelCandidateView candidate) {
         return """
                 你正在参加 SDB-SCA 双盲交叉评审。候选来源已永久脱敏。
                 仅审阅给定匿名方案，指出证据缺口、逻辑错误、风险与可执行改进；不得推测作者身份。
@@ -71,7 +72,7 @@ final class SdbScaPromptComposer {
     String revision(
             WorkflowExecutionContext execution,
             WorkflowNodeDefinition node,
-            CandidateView ownCandidate,
+            DecisionPanelCandidateView ownCandidate,
             List<String> anonymousCritiques) {
         var critiqueContext = new StringBuilder();
         for (var index = 0; index < anonymousCritiques.size(); index++) {
@@ -109,7 +110,7 @@ final class SdbScaPromptComposer {
     String ballot(
             WorkflowExecutionContext execution,
             WorkflowNodeDefinition node,
-            List<CandidateView> candidates,
+            List<DecisionPanelCandidateView> candidates,
             BallotOrientation orientation) {
         var ordered = orientation == BallotOrientation.FORWARD
                 ? candidates
@@ -189,15 +190,5 @@ final class SdbScaPromptComposer {
         return source.length() <= maximumCharacters
                 ? source
                 : source.substring(0, maximumCharacters) + " [truncated]";
-    }
-
-    record CandidateView(AnonymousCandidateId alias, String content) {
-        CandidateView {
-            Objects.requireNonNull(alias, "alias");
-            content = Objects.requireNonNull(content, "content").strip();
-            if (content.isEmpty()) {
-                throw new IllegalArgumentException("candidate content must not be blank");
-            }
-        }
     }
 }

@@ -117,10 +117,12 @@ import io.omnnu.finbot.application.trading.service.TradeAutomationApplicationSer
 import io.omnnu.finbot.application.workflow.port.in.StartWorkflowUseCase;
 import io.omnnu.finbot.application.workflow.port.in.SdbScaDebateRunner;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowDiagnosticsUseCase;
+import io.omnnu.finbot.application.workflow.port.in.PrincipalReviewUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowExecutionUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowManagementUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowRunFailureUseCase;
 import io.omnnu.finbot.application.workflow.port.in.WorkflowRunResumeUseCase;
+import io.omnnu.finbot.application.workflow.port.out.PrincipalReviewOutputParser;
 import io.omnnu.finbot.application.workflow.port.out.StructuredAiOutputParser;
 import io.omnnu.finbot.application.workflow.port.out.DebateProtocolStore;
 import io.omnnu.finbot.application.workflow.port.out.SdbScaDocumentCodec;
@@ -131,7 +133,9 @@ import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowManagementRepository;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowRunQuery;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowRunResumeStore;
+import io.omnnu.finbot.application.workflow.service.DecisionPanelEngine;
 import io.omnnu.finbot.application.workflow.service.WorkflowDiagnosticsService;
+import io.omnnu.finbot.application.workflow.service.PrincipalReviewService;
 import io.omnnu.finbot.application.workflow.service.SdbScaDebateExecutionService;
 import io.omnnu.finbot.application.workflow.service.WorkflowExecutionService;
 import io.omnnu.finbot.application.workflow.service.WorkflowManagementService;
@@ -447,22 +451,52 @@ public class RuntimeConfiguration {
     }
 
     @Bean
-    SdbScaDebateRunner sdbScaDebateRunner(
+    DecisionPanelEngine decisionPanelEngine(
             WorkflowExecutionStore executionStore,
             DebateProtocolStore protocolStore,
             AiExecutionPolicyExecutor aiExecution,
-            SdbScaOutputParser outputParser,
-            SdbScaDocumentCodec documentCodec,
             Clock clock,
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
-        return new SdbScaDebateExecutionService(
+        return new DecisionPanelEngine(
                 executionStore,
                 protocolStore,
                 aiExecution,
+                clock,
+                executor);
+    }
+
+    @Bean
+    SdbScaDebateRunner sdbScaDebateRunner(
+            WorkflowExecutionStore executionStore,
+            DebateProtocolStore protocolStore,
+            SdbScaOutputParser outputParser,
+            SdbScaDocumentCodec documentCodec,
+            Clock clock,
+            DecisionPanelEngine decisionPanelEngine) {
+        return new SdbScaDebateExecutionService(
+                executionStore,
+                protocolStore,
                 outputParser,
                 documentCodec,
                 clock,
-                executor);
+                decisionPanelEngine);
+    }
+
+    @Bean
+    PrincipalReviewUseCase principalReviewUseCase(
+            WorkflowExecutionStore executionStore,
+            DebateProtocolStore protocolStore,
+            PrincipalReviewOutputParser principalReviewOutputParser,
+            SdbScaDocumentCodec documentCodec,
+            Clock clock,
+            DecisionPanelEngine decisionPanelEngine) {
+        return new PrincipalReviewService(
+                executionStore,
+                protocolStore,
+                principalReviewOutputParser,
+                documentCodec,
+                clock,
+                decisionPanelEngine);
     }
 
     @Bean
@@ -661,12 +695,33 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    io.omnnu.finbot.application.workflow.port.in.ExecutionPanelUseCase executionPanelUseCase(
+            WorkflowExecutionStore executionStore,
+            DebateProtocolStore protocolStore,
+            io.omnnu.finbot.application.workflow.port.out.ExecutionPanelOutputParser executionPanelOutputParser,
+            SdbScaDocumentCodec documentCodec,
+            Clock clock,
+            @Qualifier("workflowVirtualThreadExecutor") Executor executor,
+            DecisionPanelEngine decisionPanelEngine) {
+        return new io.omnnu.finbot.application.workflow.service.ExecutionPanelService(
+                executionStore,
+                protocolStore,
+                executionPanelOutputParser,
+                documentCodec,
+                clock,
+                executor,
+                decisionPanelEngine);
+    }
+
+    @Bean
     TradeAutomationUseCase tradeAutomationUseCase(
             WorkflowExecutionStore workflowStore,
             AiExecutionPolicyExecutor aiExecution,
             TradeDecisionOutputParser outputParser,
             TradeAutomationStore store,
             PaperOrderExecutionUseCase orderExecution,
+            PrincipalReviewUseCase principalReviewUseCase,
+            io.omnnu.finbot.application.workflow.port.in.ExecutionPanelUseCase executionPanelUseCase,
             Clock clock,
             @Qualifier("workflowVirtualThreadExecutor") Executor executor) {
         return new TradeAutomationApplicationService(
@@ -677,6 +732,8 @@ public class RuntimeConfiguration {
                 orderExecution,
                 new MarginRiskEngine(),
                 new EstimatedTradeEngine(),
+                principalReviewUseCase,
+                executionPanelUseCase,
                 clock,
                 executor);
     }

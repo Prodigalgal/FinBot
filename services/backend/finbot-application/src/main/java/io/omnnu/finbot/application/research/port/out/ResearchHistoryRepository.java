@@ -1,8 +1,9 @@
 package io.omnnu.finbot.application.research.port.out;
 
+import io.omnnu.finbot.application.research.dto.DebateProtocolTrace;
 import io.omnnu.finbot.application.research.dto.ResearchHistoryDetail;
 import io.omnnu.finbot.application.research.dto.ResearchReplaySource;
-
+import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
 import io.omnnu.finbot.domain.workflow.WorkflowRunStatus;
 import java.util.List;
@@ -14,4 +15,12 @@ public interface ResearchHistoryRepository {
     Optional<ResearchHistoryDetail> find(WorkflowRunId runId);
 
     Optional<ResearchReplaySource> replaySource(WorkflowRunId runId);
+
+    List<DebateProtocolTrace> debatePanels(WorkflowRunId runId);
+
+    default Optional<DebateProtocolTrace> debatePanel(WorkflowRunId runId, DecisionPanelKey panelKey) {
+        return debatePanels(runId).stream()
+                .filter(panel -> panel.panelKey().equalsIgnoreCase(panelKey.value()))
+                .findFirst();
+    }
 }

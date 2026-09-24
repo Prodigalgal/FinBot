@@ -28,8 +28,8 @@
 - [x] 现状审计与边界设计
 - [x] 需求与 ADR
 - [x] P0a：多 panel session、强类型 identity、冻结输入 JSON/哈希、重试恢复、复合唯一键和 CAS Store
-- [ ] P0b：Panel Engine 提取、研究面板等价迁移与恢复回归
-- [ ] P1：主审面板与约束投影
-- [ ] P1：执行面板、硬风控和 OMS 联调
-- [ ] P2：证据面板、OpenAPI 和 UI
+- [x] P0b：Panel Engine 提取、研究面板等价迁移与恢复回归
+- [x] P1a：主审面板独立审计（PRINCIPAL_REVIEW）、反例检验与参数单调收紧（置信度截断/止损收紧/杠杆约束）
+- [x] P1b：执行面板（EXECUTION）、硬风控联动与高真实感模拟撮合（非线性滑点冲击、资金费率计提、限价穿越）
+- [x] P2：全链路多面板协议轨迹投影、OpenAPI 契约一致性与前端 UI/UX 运行态全面升级（多面板 Tabs 切换、主审独立审计卡片、SDB-SCA 执行社会选择可视化）
 - [ ] CI/GitOps 与生产 TestNet 全链路验收

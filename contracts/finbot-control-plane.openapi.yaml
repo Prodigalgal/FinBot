@@ -3767,6 +3767,11 @@ components:
         protocol:
           enum: [LEGACY_CHAIR_V1, SDB_SCA_V1]
           type: string
+        panelKey:
+          type: string
+        panelPurpose:
+          enum: [EVIDENCE, RESEARCH, PRINCIPAL_REVIEW, EXECUTION]
+          type: string
       required: [debateId, protocol, phases, artifacts, ballots, decision]
       type: object
     WorkflowOutputContract:
@@ -6556,6 +6561,10 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DebateProtocolTrace"
             - type: "null"
+        debatePanels:
+          items:
+            $ref: "#/components/schemas/DebateProtocolTrace"
+          type: array
         events:
           items:
             additionalProperties: false
@@ -7670,6 +7679,14 @@ components:
           type: array
         summary:
           $ref: "#/components/schemas/TradeAutomationSummary"
+        executionDebate:
+          oneOf:
+            - $ref: "#/components/schemas/DebateProtocolTrace"
+            - type: "null"
+        principalReviewDebate:
+          oneOf:
+            - $ref: "#/components/schemas/DebateProtocolTrace"
+            - type: "null"
       required:
         - summary
         - decision

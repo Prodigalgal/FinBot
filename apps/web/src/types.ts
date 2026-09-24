@@ -18,6 +18,8 @@ export interface DebateProtocolConfiguration {
 export interface DebateProtocolTrace {
   debateId: string;
   protocol: DebateProtocol;
+  panelKey?: string;
+  panelPurpose?: 'EVIDENCE' | 'RESEARCH' | 'PRINCIPAL_REVIEW' | 'EXECUTION';
   phases: Array<{
     phaseType: 'PROPOSAL' | 'CRITIQUE' | 'REVISION' | 'BALLOT' | 'AGGREGATION';
     status: 'PENDING' | 'OPEN' | 'REVEALING' | 'REVEALED' | 'COMPLETED' | 'FAILED';
@@ -455,6 +457,7 @@ export interface ResearchHistoryDetail {
     errorCode: string | null; errorMessage: string | null; requestedAt: string; completedAt: string | null;
   }>;
   debateProtocol: DebateProtocolTrace | null;
+  debatePanels?: DebateProtocolTrace[];
 }
 
 export interface WorkflowEvent {
@@ -521,6 +524,8 @@ export interface TradeAutomationDetail {
       errorCode: string | null; errorMessage: string | null; startedAt: string; completedAt: string | null;
     }>;
   }>;
+  executionDebate?: DebateProtocolTrace | null;
+  principalReviewDebate?: DebateProtocolTrace | null;
 }
 
 export interface RiskPolicy {
