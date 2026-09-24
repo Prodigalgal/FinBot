@@ -32,4 +32,4 @@
 - [x] P1a：主审面板独立审计（PRINCIPAL_REVIEW）、反例检验与参数单调收紧（置信度截断/止损收紧/杠杆约束）
 - [x] P1b：执行面板（EXECUTION）、硬风控联动与高真实感模拟撮合（非线性滑点冲击、资金费率计提、限价穿越）
 - [x] P2：全链路多面板协议轨迹投影、OpenAPI 契约一致性与前端 UI/UX 运行态全面升级（多面板 Tabs 切换、主审独立审计卡片、SDB-SCA 执行社会选择可视化）
-- [ ] CI/GitOps 与生产 TestNet 全链路验收
+- [x] CI/GitOps 与生产 TestNet 全链路验收（GitHub Actions 全绿、Docker 镜像签名推送、Argo CD 生产集群自动化同步上线）
