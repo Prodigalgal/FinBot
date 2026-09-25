@@ -34,3 +34,10 @@
 ## 回滚
 
 常规 FULL 任务继续使用旧 JSON 形状；新应用能读取旧任务。回退应用前先完成或取消分析聊天任务，旧 Worker 会拒绝包含 `ANALYSIS_ONLY` 的任务字段，避免误走交易路径。新增会话表为加法迁移，已发布 changeset 不回写。
+
+## 发布记录（2026-09-25）
+
+- 应用提交 `fbcf8e7dd1a7d26614bc3b8384216b5dc245e033`，CI Run `36149841568` 验证、四个 Core 镜像构建/扫描/签名及 GitOps 更新全部成功。
+- GitOps revision `1564501cdb2257abe9df28a19e0b11fdd3e109d2` 已同步；Argo CD `Synced/Healthy`，Backend、Web、Quant、Browser Worker 均运行本次镜像，Pod 就绪且无重启。
+- 生产 `finbot_v2` 已执行 `069-analysis-chat`，两张聊天表存在；首页与认证状态接口返回 200，未认证聊天列表返回 401。
+- 仍待管理员会话完成创建、发送、逐 AI 输出和刷新恢复的生产端到端验收；发布核查没有发起聊天任务或交易。
