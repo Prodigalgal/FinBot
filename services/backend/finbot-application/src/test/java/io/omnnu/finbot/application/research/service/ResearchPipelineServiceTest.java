@@ -3,6 +3,7 @@ package io.omnnu.finbot.application.research.service;
 import io.omnnu.finbot.application.research.dto.CompressionBatchResult;
 import io.omnnu.finbot.application.research.dto.ResearchCaseView;
 import io.omnnu.finbot.application.research.dto.ResearchPipelineRequest;
+import io.omnnu.finbot.application.research.dto.ResearchExecutionScope;
 import io.omnnu.finbot.application.research.dto.ResearchWorkflowPlan;
 import io.omnnu.finbot.application.research.port.in.CompressionUseCase;
 import io.omnnu.finbot.application.research.port.out.ResearchSegmentationStore;
@@ -256,6 +257,45 @@ final class ResearchPipelineServiceTest {
         demoCompletion.complete(null);
         assertEquals(RUN_ID, result.join().runId());
         assertTrue(segmentation.demoRegistered);
+    }
+
+    @Test
+    void analysisOnlyRunsResearchWithoutDemoOrTradeAutomation() {
+        var startCount = new AtomicInteger();
+        var executionCount = new AtomicInteger();
+        var segmentation = new SnapshotSegmentationStore();
+        var service = new ResearchPipelineService(
+                command -> {
+                    startCount.incrementAndGet();
+                    return CompletableFuture.completedFuture(new StartWorkflowResult(
+                            RUN_ID, new WorkflowEventId("event_pipeline_analysis001"), NOW));
+                },
+                runId -> new ResearchWorkflowPlan(true, true, true, true),
+                successfulIngestion(),
+                runId -> CompletableFuture.completedFuture(new CompressionBatchResult(
+                        new ResearchArtifactId("artifact_compression_analysis001"), 1, 0, 0)),
+                runId -> CompletableFuture.completedFuture(null),
+                (runId, prepared) -> CompletableFuture.completedFuture(null),
+                runId -> {
+                    executionCount.incrementAndGet();
+                    return CompletableFuture.completedFuture(null);
+                },
+                (runId, code, message, retryable, failedAt) -> true,
+                workflowRuns(WorkflowRunStatus.ACCEPTED),
+                runId -> CompletableFuture.failedStage(new AssertionError("Trading must not start")),
+                new ResearchSegmentationService(segmentation),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        var result = service.execute(new ResearchPipelineRequest(
+                        command(), ResearchTaskMode.STANDARD, 1, 3,
+                        null, null, ResearchExecutionScope.ANALYSIS_ONLY))
+                .toCompletableFuture()
+                .join();
+
+        assertEquals(RUN_ID, result.runId());
+        assertEquals(1, startCount.get());
+        assertEquals(1, executionCount.get());
+        assertFalse(segmentation.demoRegistered);
     }
 
     @Test

@@ -134,6 +134,36 @@ export interface InstantResearchRequest {
   demoWorkflowVersionId: string | null;
 }
 
+export interface AnalysisChatSession {
+  chatId: string;
+  title: string;
+  workflowVersionId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnalysisChatTurn {
+  turnId: string;
+  chatId: string;
+  turnNumber: number;
+  userMessage: string;
+  workflowRunId: string | null;
+  taskId: string | null;
+  workflowStatus: WorkflowRunStatus | null;
+  taskStatus: BackgroundTaskStatus | null;
+  answerSummary: string | null;
+  answer: string | null;
+  createdAt: string;
+}
+
+export interface CreateAnalysisChatRequest {
+  workflowVersionId: string;
+}
+
+export interface SendAnalysisChatMessageRequest {
+  message: string;
+}
+
 export interface CollectSourceRequest {
   query: string;
   workflowRunId: string | null;

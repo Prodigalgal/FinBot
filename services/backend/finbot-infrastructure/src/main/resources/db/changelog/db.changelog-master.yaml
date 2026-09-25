@@ -135,3 +135,5 @@ databaseChangeLog:
       file: db/changelog/releases/067-full-chain-decision-panels.sql
   - include:
       file: db/changelog/releases/068-decision-panel-frozen-input.sql
+  - include:
+      file: db/changelog/releases/069-analysis-chat.sql

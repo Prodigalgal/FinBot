@@ -1,5 +1,5 @@
 import type {
-  AccountsOverview, ActivateRiskPolicyRequest, ActivityPage, AdminApiToken, AgentRole, AgentRoleMutation, AiExperiment, AiExperimentMutation, AiModel, AiProvider, ControlPlaneRequestPath,
+  AccountsOverview, ActivateRiskPolicyRequest, ActivityPage, AdminApiToken, AgentRole, AgentRoleMutation, AiExperiment, AiExperimentMutation, AiModel, AiProvider, AnalysisChatSession, AnalysisChatTurn, CreateAnalysisChatRequest, SendAnalysisChatMessageRequest, ControlPlaneRequestPath,
   AuthChallenge, AuthStatus, AutonomousStatus, ConfigurationSnapshot, EvidenceDocument,
   CollectSourceRequest, CreateWatchlistRequest, ExecutionAiStage, ExchangeAccountControl, ExchangeAccountSyncResult, IngestionWorkspace, InstantResearchRequest, LoginRequest, NetworkDiagnostic, NetworkWorkspace,
   OperationsOverview, OperationsReport, PlatformReadiness, PositionRecord, ProxyGatewayRuntimeStatus,
@@ -106,6 +106,21 @@ export const api = {
   instantResearch: (question: string, workflowVersionId: string | null, demoWorkflowVersionId: string | null, key: string) => {
     const body: InstantResearchRequest = { question, workflowVersionId, demoWorkflowVersionId };
     return request<ResearchLaunch>('/api/v2/research/instant', { method: 'POST', headers: idempotency(key), body: JSON.stringify(body) });
+  },
+  analysisChats: (limit = 50, beforeChatId?: string, search?: string) =>
+    request<AnalysisChatSession[]>(`/api/v2/analysis-chats${query({ limit, beforeChatId, search })}`),
+  createAnalysisChat: (workflowVersionId: string) => {
+    const body: CreateAnalysisChatRequest = { workflowVersionId };
+    return request<AnalysisChatSession>('/api/v2/analysis-chats', { method: 'POST', body: JSON.stringify(body) });
+  },
+  analysisChat: (chatId: string) => request<AnalysisChatSession>(`/api/v2/analysis-chats/${encodeURIComponent(chatId)}`),
+  analysisChatTurns: (chatId: string, beforeTurnNumber?: number, limit = 50) =>
+    request<AnalysisChatTurn[]>(`/api/v2/analysis-chats/${encodeURIComponent(chatId)}/turns${query({ beforeTurnNumber, limit })}`),
+  sendAnalysisChatMessage: (chatId: string, message: string, key: string) => {
+    const body: SendAnalysisChatMessageRequest = { message };
+    return request<AnalysisChatTurn>(`/api/v2/analysis-chats/${encodeURIComponent(chatId)}/turns`, {
+      method: 'POST', headers: idempotency(key), body: JSON.stringify(body),
+    });
   },
   workflow: (runId: string) => request<WorkflowRun>(`/api/v2/workflows/${encodeURIComponent(runId)}`),
   workflowEventsUrl: (runId: string) => `${API_BASE}/api/v2/workflows/${encodeURIComponent(runId)}/events`,

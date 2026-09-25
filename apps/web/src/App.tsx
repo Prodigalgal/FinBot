@@ -2,6 +2,7 @@ import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalance
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
@@ -43,6 +44,7 @@ import type { OperationsOverview, ResearchLaunch } from './types';
 import { LoadingBlock, StatusBadge, formatTime, statusColor } from './ui';
 
 const AutonomousPage = lazy(() => import('./AutonomousPage').then((module) => ({ default: module.AutonomousPage })));
+const AnalysisChatPage = lazy(() => import('./AnalysisChatPage').then((module) => ({ default: module.AnalysisChatPage })));
 const CatalogPage = lazy(() => import('./CatalogPage').then((module) => ({ default: module.CatalogPage })));
 const HistoryPage = lazy(() => import('./HistoryPage').then((module) => ({ default: module.HistoryPage })));
 const IngestionPage = lazy(() => import('./IngestionPage').then((module) => ({ default: module.IngestionPage })));
@@ -61,7 +63,7 @@ const commandBarHeight = { xs: 60, sm: 64 } as const;
 const shellRadius = 1; // theme shape max 6px
 const zeroTracking = { letterSpacing: 0 } as const;
 
-type PageId = 'dashboard' | 'catalog' | 'research' | 'autonomous' | 'review' | 'market' | 'quant' | 'trading' | 'ingestion' | 'reports' | 'settings' | 'workflow' | 'network';
+type PageId = 'dashboard' | 'chat' | 'catalog' | 'research' | 'autonomous' | 'review' | 'market' | 'quant' | 'trading' | 'ingestion' | 'reports' | 'settings' | 'workflow' | 'network';
 interface PageDefinition { id: PageId; group: string; label: string; title: string; icon: ReactElement }
 interface NavigationGroupDefinition {
   key: string;
@@ -72,6 +74,7 @@ interface NavigationGroupDefinition {
 
 const pages: PageDefinition[] = [
   { id: 'dashboard', group: '工作台', label: '研究决策工作台', title: '研究决策工作台', icon: <DashboardOutlinedIcon /> },
+  { id: 'chat', group: '研究决策', label: '分析聊天', title: '分析工作流聊天', icon: <ChatBubbleOutlineIcon /> },
   { id: 'catalog', group: '研究决策', label: '产品与自选', title: '产品库与自选列表', icon: <Inventory2OutlinedIcon /> },
   { id: 'research', group: '研究决策', label: '发起研究', title: '即时研究流水线', icon: <PlayCircleOutlineIcon /> },
   { id: 'autonomous', group: '研究决策', label: '自动研究', title: '自动研究循环', icon: <AutorenewIcon /> },
@@ -176,6 +179,7 @@ export function App() {
   const content = (() => {
     switch (page) {
       case 'dashboard': return <DashboardPage onNavigate={navigate} />;
+      case 'chat': return <AnalysisChatPage />;
       case 'catalog': return <CatalogPage onResearch={openResearch} />;
       case 'research': return <ResearchPage initialQuestion={researchQuestion} initialLaunch={researchLaunch} />;
       case 'autonomous': return <AutonomousPage />;

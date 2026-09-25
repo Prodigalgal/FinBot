@@ -15,6 +15,12 @@ public interface ResearchLaunchUseCase {
             String taskIdempotencyKey,
             ResearchTaskMode taskMode);
 
+    default CompletionStage<ResearchLaunchResult> launchAnalysis(
+            StartWorkflowCommand workflowCommand,
+            String taskIdempotencyKey) {
+        throw new UnsupportedOperationException("Analysis-only research is not supported by this launcher");
+    }
+
     default CompletionStage<ResearchLaunchResult> launch(
             StartWorkflowCommand workflowCommand,
             String taskIdempotencyKey,

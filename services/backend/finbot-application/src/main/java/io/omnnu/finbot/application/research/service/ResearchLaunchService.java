@@ -1,6 +1,7 @@
 package io.omnnu.finbot.application.research.service;
 
 import io.omnnu.finbot.application.research.dto.ResearchLaunchResult;
+import io.omnnu.finbot.application.research.dto.ResearchExecutionScope;
 import io.omnnu.finbot.application.research.port.in.ResearchLaunchUseCase;
 
 import io.omnnu.finbot.application.market.dto.MarketAnalysisScope;
@@ -38,7 +39,8 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
             StartWorkflowCommand workflowCommand,
             String taskIdempotencyKey,
             ResearchTaskMode taskMode) {
-        return launch(workflowCommand, taskIdempotencyKey, taskMode, null, null);
+        return launch(workflowCommand, taskIdempotencyKey, taskMode, null, null,
+                ResearchExecutionScope.FULL);
     }
 
     @Override
@@ -47,7 +49,8 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
             String taskIdempotencyKey,
             ResearchTaskMode taskMode,
             MarketAnalysisScope marketAnalysisScope) {
-        return launch(workflowCommand, taskIdempotencyKey, taskMode, marketAnalysisScope, null);
+        return launch(workflowCommand, taskIdempotencyKey, taskMode, marketAnalysisScope, null,
+                ResearchExecutionScope.FULL);
     }
 
     @Override
@@ -57,6 +60,25 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
             ResearchTaskMode taskMode,
             MarketAnalysisScope marketAnalysisScope,
             WorkflowVersionId demoWorkflowVersionId) {
+        return launch(workflowCommand, taskIdempotencyKey, taskMode, marketAnalysisScope,
+                demoWorkflowVersionId, ResearchExecutionScope.FULL);
+    }
+
+    @Override
+    public CompletionStage<ResearchLaunchResult> launchAnalysis(
+            StartWorkflowCommand workflowCommand,
+            String taskIdempotencyKey) {
+        return launch(workflowCommand, taskIdempotencyKey, ResearchTaskMode.STANDARD,
+                null, null, ResearchExecutionScope.ANALYSIS_ONLY);
+    }
+
+    private CompletionStage<ResearchLaunchResult> launch(
+            StartWorkflowCommand workflowCommand,
+            String taskIdempotencyKey,
+            ResearchTaskMode taskMode,
+            MarketAnalysisScope marketAnalysisScope,
+            WorkflowVersionId demoWorkflowVersionId,
+            ResearchExecutionScope executionScope) {
         Objects.requireNonNull(workflowCommand, "workflowCommand");
         Objects.requireNonNull(taskMode, "taskMode");
         return startWorkflow.start(workflowCommand).thenApply(started -> {
@@ -75,7 +97,8 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
                             demoWorkflowVersionId,
                             workflowCommand.idempotencyKey(),
                             taskMode,
-                            marketAnalysisScope),
+                            marketAnalysisScope,
+                            executionScope),
                     RESEARCH_PRIORITY,
                     MAXIMUM_ATTEMPTS,
                     null));

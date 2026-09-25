@@ -1,6 +1,8 @@
 package io.omnnu.finbot.api.controller;
 
 import io.omnnu.finbot.application.identity.exception.AuthenticationRejectedException;
+import io.omnnu.finbot.application.chat.exception.AnalysisChatConflictException;
+import io.omnnu.finbot.application.chat.exception.AnalysisChatNotFoundException;
 import io.omnnu.finbot.application.identity.exception.AdminApiTokenConflictException;
 import io.omnnu.finbot.application.configuration.exception.ConfigurationConflictException;
 import io.omnnu.finbot.application.catalog.exception.CatalogConflictException;
@@ -32,6 +34,7 @@ public final class ApiExceptionHandler {
         TradeAutomationConfigurationConflictException.class,
         ScheduleConfigurationConflictException.class,
         AdminApiTokenConflictException.class,
+        AnalysisChatConflictException.class,
         DataIntegrityViolationException.class
     })
     ProblemDetail handleCatalogConflict(RuntimeException exception) {
@@ -48,7 +51,8 @@ public final class ApiExceptionHandler {
         CatalogNotFoundException.class,
         ExchangeAccountNotFoundException.class,
         TaskNotFoundException.class,
-        WorkflowNotFoundException.class
+        WorkflowNotFoundException.class,
+        AnalysisChatNotFoundException.class
     })
     ProblemDetail handleResourceNotFound(RuntimeException exception) {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());

@@ -3,12 +3,15 @@ package io.omnnu.finbot.infrastructure.operations.persistence;
 import io.omnnu.finbot.infrastructure.operations.persistence.TaskPayloadCodec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.omnnu.finbot.application.market.dto.MarketAnalysisScope;
 import io.omnnu.finbot.application.operations.dto.InstantResearchTaskPayload;
 import io.omnnu.finbot.application.operations.dto.ResearchTaskMode;
+import io.omnnu.finbot.application.research.dto.ResearchExecutionScope;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
@@ -39,6 +42,7 @@ class TaskPayloadCodecTest {
 
         assertEquals(payload, decoded);
         assertTrue(encoded.contains("\"taskMode\":\"RESUME_FAILED\""));
+        assertFalse(encoded.contains("executionScope"));
     }
 
     @Test
@@ -65,5 +69,31 @@ class TaskPayloadCodecTest {
                 codec.encode(payload));
 
         assertEquals(payload, decoded);
+    }
+
+    @Test
+    void analysisScopeSurvivesQueueRoundTripAndOldTasksDefaultToFull() throws Exception {
+        var payload = new InstantResearchTaskPayload(
+                "run_01j0000000003",
+                "Analyze without trading",
+                WorkflowType.INSTANT_RESEARCH,
+                WorkflowTrigger.API,
+                new WorkflowVersionId("workflowversion_01j0000000001"),
+                null,
+                "analysis-chat:01j0000000003",
+                ResearchTaskMode.STANDARD,
+                null,
+                ResearchExecutionScope.ANALYSIS_ONLY);
+
+        var encoded = codec.encode(payload);
+        assertEquals(payload, codec.decode(BackgroundTaskType.INSTANT_RESEARCH, encoded));
+        assertTrue(encoded.contains("\"executionScope\":\"ANALYSIS_ONLY\""));
+
+        var mapper = new ObjectMapper();
+        var legacyNode = (ObjectNode) mapper.readTree(encoded);
+        legacyNode.remove("executionScope");
+        var legacyJson = mapper.writeValueAsString(legacyNode);
+        var legacy = (InstantResearchTaskPayload) codec.decode(BackgroundTaskType.INSTANT_RESEARCH, legacyJson);
+        assertEquals(ResearchExecutionScope.FULL, legacy.executionScope());
     }
 }

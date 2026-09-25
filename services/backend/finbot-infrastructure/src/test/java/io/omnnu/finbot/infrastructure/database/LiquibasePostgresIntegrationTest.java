@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.configuration.dto.AiModelProfile;
+import io.omnnu.finbot.application.chat.dto.AnalysisChatSession;
+import io.omnnu.finbot.application.chat.exception.AnalysisChatConflictException;
 import io.omnnu.finbot.application.configuration.dto.AiProviderProfile;
 import io.omnnu.finbot.domain.operations.WorkerId;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
@@ -25,6 +27,7 @@ import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.infrastructure.exchange.persistence.JdbcExchangeAccountControlRepository;
+import io.omnnu.finbot.infrastructure.chat.persistence.JdbcAnalysisChatStore;
 import io.omnnu.finbot.infrastructure.catalog.persistence.JdbcProductCatalogSyncStore;
 import io.omnnu.finbot.infrastructure.ingestion.persistence.JdbcIngestionRepository;
 import io.omnnu.finbot.infrastructure.ai.persistence.JdbcAiRuntimeProfileResolver;
@@ -431,6 +434,38 @@ class LiquibasePostgresIntegrationTest {
     @AfterAll
     static void stopPostgres() {
         POSTGRES.stop();
+    }
+
+    @Test
+    void savesAndPagesAnalysisChatsWhileRejectingConcurrentTurns() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var store = new JdbcAnalysisChatStore(JdbcClient.create(dataSource));
+        var transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        var suffix = UUID.randomUUID().toString().replace("-", "");
+        var firstId = "chat_" + suffix;
+        var secondId = "chat_" + UUID.randomUUID().toString().replace("-", "");
+        var firstTurnId = "chatturn_" + suffix;
+        var now = Instant.parse("2026-09-25T00:00:00Z");
+        var versionId = "workflowversion_standard_v11";
+        store.create(new AnalysisChatSession(firstId, "新对话", versionId, now, now));
+
+        var firstTurn = transactions.execute(ignored -> store.reserve(
+                firstId, firstTurnId, "key_first", "分析行情", "分析行情", now.plusSeconds(1)));
+        var repeated = transactions.execute(ignored -> store.reserve(
+                firstId, "chatturn_unused", "key_first", "分析行情", "分析行情", now.plusSeconds(2)));
+
+        assertEquals(firstTurn, repeated);
+        assertEquals("分析行情", store.find(firstId).orElseThrow().title());
+        assertEquals(List.of(firstTurn), store.turns(firstId, null, 50));
+        assertThrows(AnalysisChatConflictException.class, () -> transactions.execute(ignored ->
+                store.reserve(firstId, "chatturn_conflict", "key_second", "新问题", "新问题", now.plusSeconds(3))));
+
+        store.create(new AnalysisChatSession(secondId, "第二个会话", versionId,
+                now.plusSeconds(4), now.plusSeconds(4)));
+        assertEquals(secondId, store.list(null, "", 50).getFirst().chatId());
+        assertEquals(firstId, store.list(secondId, "分析", 50).getFirst().chatId());
     }
 
     @Test
@@ -1141,7 +1176,7 @@ class LiquibasePostgresIntegrationTest {
                             """)) {
                 try (var result = statement.executeQuery()) {
                     result.next();
-                    assertEquals(72, result.getInt("changeset_count"));
+                    assertEquals(73, result.getInt("changeset_count"));
                     assertEquals(10, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));

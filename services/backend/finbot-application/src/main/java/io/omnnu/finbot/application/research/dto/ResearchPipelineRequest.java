@@ -12,13 +12,15 @@ public record ResearchPipelineRequest(
         int attemptNumber,
         int maximumAttempts,
         MarketAnalysisScope marketAnalysisScope,
-        WorkflowVersionId demoWorkflowVersionId) {
+        WorkflowVersionId demoWorkflowVersionId,
+        ResearchExecutionScope executionScope) {
     public ResearchPipelineRequest(
             StartWorkflowCommand workflowCommand,
             ResearchTaskMode taskMode,
             int attemptNumber,
             int maximumAttempts) {
-        this(workflowCommand, taskMode, attemptNumber, maximumAttempts, null, null);
+        this(workflowCommand, taskMode, attemptNumber, maximumAttempts, null, null,
+                ResearchExecutionScope.FULL);
     }
 
     public ResearchPipelineRequest(
@@ -27,12 +29,28 @@ public record ResearchPipelineRequest(
             int attemptNumber,
             int maximumAttempts,
             MarketAnalysisScope marketAnalysisScope) {
-        this(workflowCommand, taskMode, attemptNumber, maximumAttempts, marketAnalysisScope, null);
+        this(workflowCommand, taskMode, attemptNumber, maximumAttempts, marketAnalysisScope, null,
+                ResearchExecutionScope.FULL);
+    }
+
+    public ResearchPipelineRequest(
+            StartWorkflowCommand workflowCommand,
+            ResearchTaskMode taskMode,
+            int attemptNumber,
+            int maximumAttempts,
+            MarketAnalysisScope marketAnalysisScope,
+            WorkflowVersionId demoWorkflowVersionId) {
+        this(workflowCommand, taskMode, attemptNumber, maximumAttempts, marketAnalysisScope,
+                demoWorkflowVersionId, ResearchExecutionScope.FULL);
     }
 
     public ResearchPipelineRequest {
         Objects.requireNonNull(workflowCommand, "workflowCommand");
         Objects.requireNonNull(taskMode, "taskMode");
+        Objects.requireNonNull(executionScope, "executionScope");
+        if (executionScope == ResearchExecutionScope.ANALYSIS_ONLY && demoWorkflowVersionId != null) {
+            throw new IllegalArgumentException("Analysis-only research cannot select a demo workflow");
+        }
         if (attemptNumber < 1 || maximumAttempts < 1 || attemptNumber > maximumAttempts) {
             throw new IllegalArgumentException("Invalid research pipeline attempt counters");
         }

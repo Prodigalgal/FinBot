@@ -13,6 +13,7 @@ import io.omnnu.finbot.application.operations.dto.IngestionTaskPayload;
 import io.omnnu.finbot.application.operations.dto.InstantResearchTaskPayload;
 import io.omnnu.finbot.application.operations.dto.MarketDataTaskPayload;
 import io.omnnu.finbot.application.operations.dto.ResearchTaskMode;
+import io.omnnu.finbot.application.research.dto.ResearchExecutionScope;
 import io.omnnu.finbot.application.operations.dto.ScheduledResearchTaskPayload;
 import io.omnnu.finbot.domain.catalog.InstrumentId;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
@@ -35,8 +36,8 @@ public final class TaskPayloadCodec {
         var node = objectMapper.createObjectNode();
         switch (payload) {
             case ScheduledResearchTaskPayload scheduled -> node.put("requestSummary", scheduled.requestSummary());
-            case InstantResearchTaskPayload instant -> node
-                    .put("requestId", instant.requestId())
+            case InstantResearchTaskPayload instant -> {
+                node.put("requestId", instant.requestId())
                     .put("question", instant.question())
                     .put("workflowType", instant.workflowType().name())
                     .put("trigger", instant.trigger().name())
@@ -66,6 +67,10 @@ public final class TaskPayloadCodec {
                     .put("forecastHorizonSeconds", instant.marketAnalysisScope() == null
                             ? null
                             : instant.marketAnalysisScope().forecastHorizonSeconds());
+                if (instant.executionScope() == ResearchExecutionScope.ANALYSIS_ONLY) {
+                    node.put("executionScope", instant.executionScope().name());
+                }
+            }
             case AccountTaskPayload account -> node.put("accountId", account.accountId().value());
             case MarketDataTaskPayload marketData -> node.put("instrumentId", marketData.instrumentId().value());
             case IngestionTaskPayload ingestion -> node
@@ -90,11 +95,16 @@ public final class TaskPayloadCodec {
                 yield new ScheduledResearchTaskPayload(requiredText(node, "requestSummary"));
             }
             case INSTANT_RESEARCH -> {
-                requireOnlyFields(node, Set.of(
+                var instantFields = new HashSet<>(Set.of(
                         "requestId", "question", "workflowType", "trigger",
                         "workflowVersionId", "demoWorkflowVersionId", "workflowIdempotencyKey", "taskMode",
+                        "executionScope",
                         "marketInstrumentId", "marketSymbol", "marketExchange", "marketEnvironment", "marketIntervalSeconds",
                         "forecastHorizonSeconds"));
+                if (!node.has("executionScope")) {
+                    instantFields.remove("executionScope");
+                }
+                requireOnlyFields(node, instantFields);
                 var marketInstrumentId = nullableText(node, "marketInstrumentId");
                 var marketSymbol = nullableText(node, "marketSymbol");
                 var marketExchange = nullableText(node, "marketExchange");
@@ -130,7 +140,11 @@ public final class TaskPayloadCodec {
                                         nullableText(node, "demoWorkflowVersionId")),
                         requiredText(node, "workflowIdempotencyKey"),
                         ResearchTaskMode.valueOf(requiredText(node, "taskMode")),
-                        marketScope);
+                        marketScope,
+                        nullableText(node, "executionScope") == null
+                                ? io.omnnu.finbot.application.research.dto.ResearchExecutionScope.FULL
+                                : io.omnnu.finbot.application.research.dto.ResearchExecutionScope.valueOf(
+                                        nullableText(node, "executionScope")));
             }
             case ACCOUNT_SYNC, ORDER_RECONCILIATION -> {
                 requireOnlyFields(node, Set.of("accountId"));

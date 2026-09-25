@@ -1,6 +1,7 @@
 package io.omnnu.finbot.application.operations.dto;
 
 import io.omnnu.finbot.application.market.dto.MarketAnalysisScope;
+import io.omnnu.finbot.application.research.dto.ResearchExecutionScope;
 import java.util.Objects;
 import io.omnnu.finbot.domain.workflow.WorkflowTrigger;
 import io.omnnu.finbot.domain.workflow.WorkflowType;
@@ -15,7 +16,22 @@ public record InstantResearchTaskPayload(
         WorkflowVersionId demoWorkflowVersionId,
         String workflowIdempotencyKey,
         ResearchTaskMode taskMode,
-        MarketAnalysisScope marketAnalysisScope) implements BackgroundTaskPayload {
+        MarketAnalysisScope marketAnalysisScope,
+        ResearchExecutionScope executionScope) implements BackgroundTaskPayload {
+    public InstantResearchTaskPayload(
+            String requestId,
+            String question,
+            WorkflowType workflowType,
+            WorkflowTrigger trigger,
+            WorkflowVersionId workflowVersionId,
+            WorkflowVersionId demoWorkflowVersionId,
+            String workflowIdempotencyKey,
+            ResearchTaskMode taskMode,
+            MarketAnalysisScope marketAnalysisScope) {
+        this(requestId, question, workflowType, trigger, workflowVersionId, demoWorkflowVersionId,
+                workflowIdempotencyKey, taskMode, marketAnalysisScope, ResearchExecutionScope.FULL);
+    }
+
     public InstantResearchTaskPayload {
         requestId = requireText(requestId, "requestId", 80);
         question = requireText(question, "question", 2000);
@@ -23,6 +39,7 @@ public record InstantResearchTaskPayload(
         Objects.requireNonNull(trigger, "trigger");
         workflowIdempotencyKey = requireText(workflowIdempotencyKey, "workflowIdempotencyKey", 200);
         Objects.requireNonNull(taskMode, "taskMode");
+        Objects.requireNonNull(executionScope, "executionScope");
     }
 
     private static String requireText(String value, String fieldName, int maximumLength) {

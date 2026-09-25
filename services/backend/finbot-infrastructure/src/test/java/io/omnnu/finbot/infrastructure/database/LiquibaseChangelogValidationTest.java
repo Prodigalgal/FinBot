@@ -23,7 +23,7 @@ class LiquibaseChangelogValidationTest {
         try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, database)) {
             liquibase.validate();
             var changeSets = liquibase.getDatabaseChangeLog().getChangeSets();
-            assertEquals(72, changeSets.size());
+            assertEquals(73, changeSets.size());
             assertEquals("001-foundation", changeSets.getFirst().getId());
             assertEquals("002-platform-foundation", changeSets.get(1).getId());
             assertEquals("003-background-operations", changeSets.get(2).getId());
@@ -81,7 +81,8 @@ class LiquibaseChangelogValidationTest {
             assertEquals("065-ai-model-token-limit-capability", changeSets.get(68).getId());
             assertEquals("066-any2api-reasoning-capability", changeSets.get(69).getId());
             assertEquals("067-full-chain-decision-panels", changeSets.get(70).getId());
-            assertEquals("068-decision-panel-frozen-input", changeSets.getLast().getId());
+            assertEquals("068-decision-panel-frozen-input", changeSets.get(71).getId());
+            assertEquals("069-analysis-chat", changeSets.getLast().getId());
             assertTrue(changeSets.getFirst().getChanges().size() >= 1);
         }
     }

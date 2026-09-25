@@ -8,6 +8,9 @@ import io.omnnu.finbot.application.ai.service.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.ai.service.WorkflowAiInvoker;
 import io.omnnu.finbot.application.autonomous.port.in.AutonomousResearchUseCase;
 import io.omnnu.finbot.application.autonomous.service.AutonomousResearchService;
+import io.omnnu.finbot.application.chat.port.in.AnalysisChatUseCase;
+import io.omnnu.finbot.application.chat.port.out.AnalysisChatStore;
+import io.omnnu.finbot.application.chat.service.AnalysisChatService;
 import io.omnnu.finbot.application.catalog.port.in.CatalogUseCase;
 import io.omnnu.finbot.application.catalog.port.in.ProductCatalogSyncUseCase;
 import io.omnnu.finbot.application.catalog.port.out.CatalogRepository;
@@ -407,6 +410,16 @@ public class RuntimeConfiguration {
             BackgroundTaskCoordinator tasks,
             WorkflowRunResumeUseCase workflowResume) {
         return new ResearchLaunchService(startWorkflow, tasks, workflowResume);
+    }
+
+    @Bean
+    AnalysisChatUseCase analysisChatUseCase(
+            AnalysisChatStore store,
+            ResearchLaunchUseCase researchLaunch,
+            WorkflowManagementUseCase workflows,
+            SortableIdGenerator idGenerator,
+            Clock clock) {
+        return new AnalysisChatService(store, researchLaunch, workflows, idGenerator, clock);
     }
 
     @Bean

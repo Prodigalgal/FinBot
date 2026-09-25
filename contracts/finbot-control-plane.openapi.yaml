@@ -9,6 +9,146 @@ security:
   - adminSession: []
   - adminApiToken: []
 paths:
+  /analysis-chats:
+    get:
+      operationId: getAnalysisChats
+      parameters:
+        - name: beforeChatId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 160
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Saved analysis chats.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisChatSession"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AnalysisChatSession[]
+      x-finbot-java-response-type: List<AnalysisChatSession>
+    post:
+      operationId: postAnalysisChats
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAnalysisChatRequest"
+      responses:
+        "201":
+          description: Created analysis chat.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisChatSession"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AnalysisChatSession
+      x-finbot-java-response-type: ResponseEntity<AnalysisChatSession>
+      x-finbot-java-request-type: CreateAnalysisChatRequest
+  /analysis-chats/{chatId}:
+    get:
+      operationId: getAnalysisChat
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Analysis chat metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisChatSession"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AnalysisChatSession
+      x-finbot-java-response-type: AnalysisChatSession
+  /analysis-chats/{chatId}/turns:
+    get:
+      operationId: getAnalysisChatTurns
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: beforeTurnNumber
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Chronological page of analysis chat turns.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisChatTurn"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AnalysisChatTurn[]
+      x-finbot-java-response-type: List<AnalysisChatTurnResponse>
+    post:
+      operationId: postAnalysisChatTurns
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendAnalysisChatMessageRequest"
+      responses:
+        "202":
+          description: Analysis workflow accepted for the chat turn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisChatTurn"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: AnalysisChatTurn
+      x-finbot-java-response-type: CompletionStage<ResponseEntity<AnalysisChatTurnResponse>>
+      x-finbot-java-request-type: SendAnalysisChatMessageRequest
   /agent-roles:
     get:
       operationId: getAgentRoles
@@ -2466,6 +2606,65 @@ components:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
   schemas:
+    AnalysisChatSession:
+      type: object
+      additionalProperties: false
+      required: [chatId, title, workflowVersionId, createdAt, updatedAt]
+      properties:
+        chatId:
+          type: string
+        title:
+          type: string
+        workflowVersionId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AnalysisChatTurn:
+      type: object
+      additionalProperties: false
+      required: [turnId, chatId, turnNumber, userMessage, workflowRunId, taskId, workflowStatus, taskStatus, answerSummary, answer, createdAt]
+      properties:
+        turnId:
+          type: string
+        chatId:
+          type: string
+        turnNumber:
+          type: integer
+        userMessage:
+          type: string
+        workflowRunId:
+          type: [string, "null"]
+        taskId:
+          type: [string, "null"]
+        workflowStatus:
+          type: [string, "null"]
+        taskStatus:
+          type: [string, "null"]
+        answerSummary:
+          type: [string, "null"]
+        answer:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateAnalysisChatRequest:
+      type: object
+      additionalProperties: false
+      required: [workflowVersionId]
+      properties:
+        workflowVersionId:
+          type: string
+    SendAnalysisChatMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message:
+          type: string
     AdminApiToken:
       type: object
       additionalProperties: false

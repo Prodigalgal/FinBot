@@ -1,5 +1,11 @@
 # 当前任务
 
+## P1：分析工作流聊天
+
+- 目标：持久化多轮分析聊天，逐 AI 展示工作流输出；聊天入口严格不触发交易。
+- 任务：[`in-progress/TASK-20260925-analysis-chat.md`](./in-progress/TASK-20260925-analysis-chat.md)。
+- 状态：本地实现、Java/Web 测试、契约检查与桌面/移动浏览器模拟 smoke 已通过；真实 PostgreSQL 集成测试因本机无 Docker/测试库跳过，尚未经过 CI/GitOps 或生产验收。
+
 > 2026-07-23 以 `main@e714266`、Liquibase `67/67`、FinBot GitOps 发布提交 `b59aad1` 和生产 K8S 为事实基线。共享 GitOps 仓库后续 revision 可能因其他应用前进，应以 FinBot 镜像与资源差异判断实际发布。完成任务只保留索引，不再在本页重复流水账。
 
 ## P0：全链路 SDB-SCA 决策面板

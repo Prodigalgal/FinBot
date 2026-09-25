@@ -1,6 +1,7 @@
 package io.omnnu.finbot.application.research.service;
 
 import io.omnnu.finbot.application.research.dto.ResearchCaseView;
+import io.omnnu.finbot.application.research.dto.ResearchExecutionScope;
 import io.omnnu.finbot.application.research.dto.ResearchPipelineRequest;
 import io.omnnu.finbot.application.research.port.in.CompressionUseCase;
 import io.omnnu.finbot.application.research.port.in.ResearchPipelineUseCase;
@@ -122,6 +123,9 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
     private CompletionStage<StartWorkflowResult> executeIndependentBranches(
             StartWorkflowResult liveStarted,
             ResearchPipelineRequest request) {
+        if (request.executionScope() == ResearchExecutionScope.ANALYSIS_ONLY) {
+            return continueAfterEvidence(liveStarted, request, ResearchBranch.LIVE_RESEARCH);
+        }
         var live = continueAfterEvidence(liveStarted, request, ResearchBranch.LIVE_RESEARCH)
                 .handle(BranchOutcome::from);
         var demo = launchDemoBranch(liveStarted, request)
