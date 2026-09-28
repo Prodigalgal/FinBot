@@ -259,6 +259,7 @@ jobs:
 
   build-core-images:
     needs: verify
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
