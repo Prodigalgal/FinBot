@@ -154,6 +154,9 @@ class SdbScaPhaseExecutorTest {
         assertTrue(first.tasks().stream().allMatch(task -> task.status() == DebateTaskStatus.COMPLETED));
         assertTrue(first.artifacts().stream()
                 .allMatch(artifact -> artifact.status() == DebateArtifactStatus.REVEALED));
+        assertTrue(first.artifacts().stream()
+                .allMatch(artifact -> artifact.contentHash().equals(
+                        DebateArtifact.contentHashFor(artifact.content()))));
         assertFalse(protocolStore.prematureRevealAttempt());
 
         var replay = phaseExecutor.execute(

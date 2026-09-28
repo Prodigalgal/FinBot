@@ -1,6 +1,10 @@
 package io.omnnu.finbot.domain.debate;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
@@ -34,6 +38,16 @@ public record DebateArtifact(
         }
         if (status == DebateArtifactStatus.SEALED && revealedAt != null) {
             throw new IllegalArgumentException("A sealed artifact must not have revealedAt");
+        }
+    }
+
+    public static String contentHashFor(String content) {
+        Objects.requireNonNull(content, "content");
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(content.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
     }
 }
