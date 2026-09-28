@@ -9,6 +9,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.configuration.dto.AiModelProfile;
 import io.omnnu.finbot.application.chat.dto.AnalysisChatSession;
 import io.omnnu.finbot.application.chat.exception.AnalysisChatConflictException;
+import io.omnnu.finbot.application.market.dto.ResearchMarketScope;
+import io.omnnu.finbot.application.trading.dto.PaperOrderReservationStatus;
+import io.omnnu.finbot.application.trading.dto.PlannedOrder;
 import io.omnnu.finbot.application.configuration.dto.AiProviderProfile;
 import io.omnnu.finbot.domain.operations.WorkerId;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
@@ -26,8 +29,10 @@ import io.omnnu.finbot.domain.operations.BackgroundTaskId;
 import io.omnnu.finbot.domain.operations.BackgroundTaskType;
 import io.omnnu.finbot.domain.operations.BackgroundTaskStatus;
 import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.infrastructure.exchange.persistence.JdbcExchangeAccountControlRepository;
 import io.omnnu.finbot.infrastructure.chat.persistence.JdbcAnalysisChatStore;
+import io.omnnu.finbot.infrastructure.trading.persistence.JdbcTradeAutomationStore;
 import io.omnnu.finbot.infrastructure.catalog.persistence.JdbcProductCatalogSyncStore;
 import io.omnnu.finbot.infrastructure.ingestion.persistence.JdbcIngestionRepository;
 import io.omnnu.finbot.infrastructure.ai.persistence.JdbcAiRuntimeProfileResolver;
@@ -55,6 +60,16 @@ import io.omnnu.finbot.application.catalog.dto.CatalogSyncScope;
 import io.omnnu.finbot.application.setup.dto.SetupProfileId;
 import io.omnnu.finbot.domain.catalog.CatalogStatus;
 import io.omnnu.finbot.domain.catalog.ExchangeVenue;
+import io.omnnu.finbot.domain.catalog.InstrumentId;
+import io.omnnu.finbot.domain.market.InstrumentSymbol;
+import io.omnnu.finbot.domain.market.Price;
+import io.omnnu.finbot.domain.market.Quantity;
+import io.omnnu.finbot.domain.oms.OrderId;
+import io.omnnu.finbot.domain.risk.RiskAssessmentId;
+import io.omnnu.finbot.domain.trading.ApprovedTradeIntent;
+import io.omnnu.finbot.domain.trading.ApprovedTradeIntentId;
+import io.omnnu.finbot.domain.trading.DirectionalAction;
+import io.omnnu.finbot.domain.trading.TradeProposalId;
 import io.omnnu.finbot.domain.catalog.MarketType;
 import io.omnnu.finbot.domain.ingestion.SourceId;
 import io.omnnu.finbot.domain.ingestion.CollectionRunId;
@@ -466,6 +481,236 @@ class LiquibasePostgresIntegrationTest {
                 now.plusSeconds(4), now.plusSeconds(4)));
         assertEquals(secondId, store.list(null, "", 50).getFirst().chatId());
         assertEquals(firstId, store.list(secondId, "分析", 50).getFirst().chatId());
+    }
+
+    @Test
+    void paperExecutionCandidatesRequireTheScopedInstrumentAndFreshMarketPrice() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcTemplate = new JdbcTemplate(dataSource);
+        var store = new JdbcTradeAutomationStore(JdbcClient.create(dataSource), new ObjectMapper());
+        var now = Instant.parse("2026-09-28T08:00:00Z");
+        var transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+
+        transactions.executeWithoutResult(transaction -> {
+            jdbcTemplate.update("""
+                    update venue_instrument set execution_enabled = true
+                    where instrument_id = 'instrument_gate_btc_usdt'
+                    """);
+            jdbcTemplate.update("""
+                    insert into market_candle_fact (
+                      instrument_id, exchange, environment, symbol, interval_seconds,
+                      open_time, open_price, high_price, low_price, close_price,
+                      volume, source_endpoint, observed_at
+                    ) values (
+                      'instrument_gate_btc_usdt', 'GATE', 'TESTNET', 'BTC_USDT', 3600,
+                      ?, 60000, 61000, 59000, 60000, 100, 'integration-test', ?
+                    ) on conflict (instrument_id, environment, interval_seconds, open_time)
+                    do update set observed_at = excluded.observed_at
+                    """, java.sql.Timestamp.from(now.minusSeconds(3600)), java.sql.Timestamp.from(now));
+            var scope = new ResearchMarketScope(
+                    new InstrumentId("instrument_gate_btc_usdt"), ExchangeVenue.GATE,
+                    ExchangeEnvironment.TESTNET, "BTC_USDT", 3600, 86400,
+                    new BigDecimal("60000"));
+            var candidate = store.executionCandidates(
+                    scope, now.minusSeconds(900), now.minusSeconds(7200), now);
+
+            assertEquals(1, candidate.size());
+            assertEquals(scope.instrumentId(), candidate.getFirst().instrumentId());
+            assertEquals(ExchangeEnvironment.TESTNET, candidate.getFirst().environment());
+            assertTrue(store.executionCandidates(
+                    scope, now.plusSeconds(1), now.minusSeconds(7200), now).isEmpty());
+            assertTrue(store.executionCandidates(new ResearchMarketScope(
+                    new InstrumentId("instrument_bybit_btcusdt"), ExchangeVenue.BYBIT,
+                    ExchangeEnvironment.DEMO, "BTCUSDT", 3600, 86400,
+                    new BigDecimal("60000")), now.minusSeconds(900),
+                    now.minusSeconds(7200), now).isEmpty());
+            assertTrue(store.executionCandidates(
+                    scope, now.minusSeconds(900), now.minusSeconds(1800), now).isEmpty());
+            assertTrue(store.executionCandidates(
+                    scope, now.minusSeconds(900), now.minusSeconds(7200),
+                    now.minusSeconds(1)).isEmpty());
+            transaction.setRollbackOnly();
+        });
+    }
+
+    @Test
+    void paperOrderReservationCountsPendingOrdersAndRejectsDuplicateSymbols() throws Exception {
+        updateSchema();
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var jdbcTemplate = new JdbcTemplate(dataSource);
+        var store = new JdbcTradeAutomationStore(JdbcClient.create(dataSource), new ObjectMapper());
+        var transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        var suffix = UUID.randomUUID().toString().replace("-", "");
+        var now = Instant.parse("2026-09-28T08:00:00Z");
+        var accountId = new ExchangeAccountId("account_gate_testnet_default");
+        var instrumentId = new InstrumentId("instrument_gate_btc_usdt");
+        var symbol = new InstrumentSymbol("BTC_USDT");
+        var proposalId = new TradeProposalId("proposal_" + suffix);
+        var assessmentId = new RiskAssessmentId("assessment_" + suffix);
+        var intentId = new ApprovedTradeIntentId("intent_" + suffix);
+        var orderId = new OrderId("order_" + suffix);
+
+        transactions.executeWithoutResult(transaction -> {
+            jdbcTemplate.update("""
+                    insert into workflow_run (
+                      run_id, idempotency_key, workflow_type, status, trigger_type, request_summary,
+                      accepted_at, created_at, updated_at
+                    ) values (?, ?, 'INSTANT_RESEARCH', 'COMPLETED', 'MANUAL', 'paper reservation test', ?, ?, ?)
+                    """, "run_" + suffix, "paper-reservation:" + suffix, java.sql.Timestamp.from(now),
+                    java.sql.Timestamp.from(now), java.sql.Timestamp.from(now));
+            jdbcTemplate.update("""
+                    insert into trade_automation_run (
+                      automation_run_id, workflow_run_id, status, started_at
+                    ) values (?, ?, 'STARTED', ?)
+                    """, "automation_" + suffix, "run_" + suffix, java.sql.Timestamp.from(now));
+            jdbcTemplate.update("""
+                    insert into trade_decision (
+                      decision_id, workflow_run_id, symbol, decision_kind, action,
+                      confidence, entry_reference, target_price, invalidation_price,
+                      rationale, created_at
+                    ) values (?, ?, 'BTC_USDT', 'DIRECTIONAL', 'BUY',
+                      0.8, 60000, 65000, 57000, '["test"]'::jsonb, ?)
+                    """, "decision_" + suffix, "run_" + suffix, java.sql.Timestamp.from(now));
+            jdbcTemplate.update("""
+                    insert into trade_proposal (
+                      proposal_id, decision_id, symbol, action, status,
+                      entry_reference, target_price, invalidation_price, created_at
+                    ) values (?, ?, 'BTC_USDT', 'BUY', 'GENERATED',
+                      60000, 65000, 57000, ?)
+                    """, proposalId.value(), "decision_" + suffix, java.sql.Timestamp.from(now));
+            jdbcTemplate.update("""
+                    insert into risk_assessment (
+                      assessment_id, automation_run_id, workflow_run_id, proposal_id,
+                      account_id, instrument_id, exchange, environment, policy_version,
+                      status, reasons, quantity, notional_usdt, leverage,
+                      initial_margin_usdt, estimated_max_loss_usdt,
+                      approximate_liquidation_price, assessed_at
+                    ) values (?, ?, ?, ?, ?, ?, 'GATE', 'TESTNET', 'paper-default-v1',
+                      'APPROVED', '["test"]'::jsonb, 1, 6, 2, 3, 1, 30000, ?)
+                    """, assessmentId.value(), "automation_" + suffix, "run_" + suffix,
+                    proposalId.value(), accountId.value(), instrumentId.value(),
+                    java.sql.Timestamp.from(now));
+            var intent = new ApprovedTradeIntent(
+                    intentId, proposalId, accountId, instrumentId, ExchangeVenue.GATE,
+                    ExchangeEnvironment.TESTNET, assessmentId, symbol, DirectionalAction.BUY,
+                    Quantity.positive(BigDecimal.ONE), new BigDecimal("2"),
+                    new Price(new BigDecimal("60000")), new Price(new BigDecimal("65000")),
+                    new Price(new BigDecimal("57000")), "paper-default-v1", now);
+            var order = new PlannedOrder(
+                    orderId, intentId, "paper-order:" + orderId.value(), ExchangeVenue.GATE,
+                    ExchangeEnvironment.TESTNET, accountId, instrumentId, symbol,
+                    DirectionalAction.BUY, BigDecimal.ONE, new BigDecimal("2"),
+                    "finbot-" + suffix.substring(0, 20), now);
+
+            assertEquals(PaperOrderReservationStatus.RESERVED,
+                    store.reserveApprovedIntentAndOrder(intent, order, 1));
+            assertEquals(PaperOrderReservationStatus.SYMBOL_ALREADY_EXPOSED,
+                    store.reserveApprovedIntentAndOrder(intent, order, 1));
+            var otherSymbol = new InstrumentSymbol("ETH_USDT");
+            var otherIntent = new ApprovedTradeIntent(
+                    new ApprovedTradeIntentId("intent_other_" + suffix), proposalId,
+                    accountId, new InstrumentId("instrument_gate_eth_usdt"),
+                    ExchangeVenue.GATE, ExchangeEnvironment.TESTNET, assessmentId,
+                    otherSymbol, DirectionalAction.BUY, Quantity.positive(BigDecimal.ONE),
+                    new BigDecimal("2"), new Price(new BigDecimal("3000")),
+                    new Price(new BigDecimal("3200")), new Price(new BigDecimal("2900")),
+                    "paper-default-v1", now);
+            var otherOrder = new PlannedOrder(
+                    new OrderId("order_other_" + suffix), otherIntent.id(),
+                    "paper-order:other-" + suffix, ExchangeVenue.GATE,
+                    ExchangeEnvironment.TESTNET, accountId, otherIntent.instrumentId(),
+                    otherSymbol, DirectionalAction.BUY, BigDecimal.ONE,
+                    new BigDecimal("2"), "finbot-other-" + suffix.substring(0, 14), now);
+            assertEquals(PaperOrderReservationStatus.POSITION_LIMIT_REACHED,
+                    store.reserveApprovedIntentAndOrder(otherIntent, otherOrder, 1));
+            jdbcTemplate.update("""
+                    update oms_order set status = 'FILLED', filled_quantity = 1,
+                      average_fill_price = 60000, terminal_at = ?, updated_at = ?
+                    where order_id = ?
+                    """, java.sql.Timestamp.from(now.plusSeconds(1)),
+                    java.sql.Timestamp.from(now.plusSeconds(1)), orderId.value());
+            assertEquals(PaperOrderReservationStatus.SYMBOL_ALREADY_EXPOSED,
+                    store.reserveApprovedIntentAndOrder(intent, order, 1));
+            assertEquals(1, jdbcTemplate.queryForObject(
+                    "select count(*) from oms_order where order_id = ?", Integer.class, orderId.value()));
+            jdbcTemplate.update("""
+                    insert into exchange_position_snapshot (
+                      snapshot_id, account_id, source_event_id, symbol, side, quantity,
+                      leverage, unrealized_pnl, margin, occurred_at, received_at
+                    ) values (?, ?, ?, 'BTC_USDT', 'FLAT', 0, 1, 0, 0, ?, ?)
+                    """, "position_flat_" + suffix, accountId.value(), "paper-flat:" + suffix,
+                    java.sql.Timestamp.from(now.plusSeconds(2)),
+                    java.sql.Timestamp.from(now.plusSeconds(2)));
+            var releasedProposalId = "proposal_released_" + suffix;
+            var releasedAssessmentId = "assessment_released_" + suffix;
+            jdbcTemplate.update("""
+                    insert into trade_decision (
+                      decision_id, workflow_run_id, symbol, decision_kind, action,
+                      confidence, entry_reference, target_price, invalidation_price,
+                      rationale, created_at
+                    ) values (?, ?, 'BTC_USDT', 'DIRECTIONAL', 'BUY',
+                      0.8, 60000, 65000, 57000, '["test"]'::jsonb, ?)
+                    """, "decision_released_" + suffix, "run_" + suffix,
+                    java.sql.Timestamp.from(now.plusSeconds(2)));
+            jdbcTemplate.update("""
+                    insert into trade_proposal (
+                      proposal_id, decision_id, symbol, action, status,
+                      entry_reference, target_price, invalidation_price, created_at
+                    ) values (?, ?, 'BTC_USDT', 'BUY', 'GENERATED',
+                      60000, 65000, 57000, ?)
+                    """, releasedProposalId, "decision_released_" + suffix,
+                    java.sql.Timestamp.from(now.plusSeconds(2)));
+            jdbcTemplate.update("""
+                    insert into risk_assessment (
+                      assessment_id, automation_run_id, workflow_run_id, proposal_id,
+                      account_id, instrument_id, exchange, environment, policy_version,
+                      status, reasons, quantity, notional_usdt, leverage,
+                      initial_margin_usdt, estimated_max_loss_usdt,
+                      approximate_liquidation_price, assessed_at
+                    ) values (?, ?, ?, ?, ?, ?, 'GATE', 'TESTNET', 'paper-default-v1',
+                      'APPROVED', '["test"]'::jsonb, 1, 6, 2, 3, 1, 30000, ?)
+                    """, releasedAssessmentId, "automation_" + suffix, "run_" + suffix,
+                    releasedProposalId, accountId.value(), instrumentId.value(),
+                    java.sql.Timestamp.from(now.plusSeconds(2)));
+            var releasedIntent = new ApprovedTradeIntent(
+                    new ApprovedTradeIntentId("intent_released_" + suffix),
+                    new TradeProposalId(releasedProposalId), accountId, instrumentId,
+                    ExchangeVenue.GATE, ExchangeEnvironment.TESTNET,
+                    new RiskAssessmentId(releasedAssessmentId), symbol, DirectionalAction.BUY,
+                    Quantity.positive(BigDecimal.ONE), new BigDecimal("2"),
+                    new Price(new BigDecimal("60000")), new Price(new BigDecimal("65000")),
+                    new Price(new BigDecimal("57000")), "paper-default-v1", now.plusSeconds(2));
+            var releasedOrder = new PlannedOrder(
+                    new OrderId("order_released_" + suffix), releasedIntent.id(),
+                    "paper-order:released-" + suffix, ExchangeVenue.GATE,
+                    ExchangeEnvironment.TESTNET, accountId, instrumentId, symbol,
+                    DirectionalAction.BUY, BigDecimal.ONE, new BigDecimal("2"),
+                    "finbot-released-" + suffix.substring(0, 14), now.plusSeconds(2));
+            assertEquals(PaperOrderReservationStatus.RESERVED,
+                    store.reserveApprovedIntentAndOrder(releasedIntent, releasedOrder, 1));
+            assertTrue(store.recoverDurableOrders(new WorkflowRunId("run_" + suffix), now.plusSeconds(3)));
+            assertEquals("ORDER_PLANNED", store.findTerminal(new WorkflowRunId("run_" + suffix))
+                    .orElseThrow().status().name());
+            jdbcTemplate.update("""
+                    update oms_order set status = 'SUBMITTED', submitted_at = ?, updated_at = ?
+                    where order_id = ?
+                    """, java.sql.Timestamp.from(now.plusSeconds(4)),
+                    java.sql.Timestamp.from(now.plusSeconds(4)), releasedOrder.orderId().value());
+            assertTrue(store.recoverDurableOrders(new WorkflowRunId("run_" + suffix), now.plusSeconds(4)));
+            assertEquals("SUBMITTED", store.findTerminal(new WorkflowRunId("run_" + suffix))
+                    .orElseThrow().status().name());
+            jdbcTemplate.update("""
+                    update trade_automation_run set status = 'FAILED'
+                    where automation_run_id = ?
+                    """, "automation_" + suffix);
+            assertTrue(store.recoverDurableOrders(new WorkflowRunId("run_" + suffix), now.plusSeconds(5)));
+            assertEquals("SUBMITTED", store.findTerminal(new WorkflowRunId("run_" + suffix))
+                    .orElseThrow().status().name());
+            transaction.setRollbackOnly();
+        });
     }
 
     @Test

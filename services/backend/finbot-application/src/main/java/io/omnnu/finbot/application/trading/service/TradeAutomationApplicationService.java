@@ -1,6 +1,7 @@
 package io.omnnu.finbot.application.trading.service;
 
 import io.omnnu.finbot.application.trading.dto.PlannedOrder;
+import io.omnnu.finbot.application.trading.dto.PaperOrderReservationStatus;
 import io.omnnu.finbot.application.trading.dto.StoredEstimatedTradeProjection;
 import io.omnnu.finbot.application.trading.dto.StoredExecutionAiReview;
 import io.omnnu.finbot.application.trading.dto.StoredRiskAssessment;
@@ -18,6 +19,7 @@ import io.omnnu.finbot.application.ai.dto.AiInvocationResult;
 import io.omnnu.finbot.application.ai.service.AiExecutionFailure;
 import io.omnnu.finbot.application.ai.service.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.operations.service.TaskCancellationContext;
+import io.omnnu.finbot.application.market.dto.ResearchMarketScope;
 import io.omnnu.finbot.application.exchange.dto.ExchangeSubmissionStatus;
 import io.omnnu.finbot.application.exchange.port.in.PaperOrderExecutionUseCase;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
@@ -27,6 +29,7 @@ import io.omnnu.finbot.domain.debate.DebateProtocol;
 import io.omnnu.finbot.domain.debate.DecisionPanelKey;
 import io.omnnu.finbot.domain.market.InstrumentSymbol;
 import io.omnnu.finbot.domain.market.Quantity;
+import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
 import io.omnnu.finbot.domain.research.ForecastDirection;
 import io.omnnu.finbot.domain.oms.OrderId;
 import io.omnnu.finbot.domain.risk.MarginRiskEngine;
@@ -65,6 +68,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -79,6 +83,7 @@ import java.util.function.Function;
 
 public final class TradeAutomationApplicationService implements TradeAutomationUseCase {
     private static final int MAXIMUM_PROMPT_CHARACTERS = 180_000;
+    private static final Duration MAXIMUM_MARKET_PRICE_AGE = Duration.ofMinutes(15);
 
     private final WorkflowExecutionStore workflowStore;
     private final AiExecutionPolicyExecutor aiExecution;
@@ -125,6 +130,13 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
 
     private TradeAutomationResult executeSynchronously(WorkflowRunId workflowRunId) {
         var existing = store.findTerminal(workflowRunId);
+        var existingStatus = existing.map(TradeAutomationResult::status).orElse(null);
+        if (existingStatus == null || existingStatus == TradeAutomationStatus.FAILED
+                || existingStatus == TradeAutomationStatus.ORDER_PLANNED) {
+            if (store.recoverDurableOrders(workflowRunId, clock.instant())) {
+                existing = store.findTerminal(workflowRunId);
+            }
+        }
         if (existing.isPresent()) {
             var result = existing.orElseThrow();
             if (result.status() == TradeAutomationStatus.ORDER_PLANNED) {
@@ -141,6 +153,13 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         }
         try {
             var workflow = completedWorkflow(workflowRunId);
+            var marketScope = workflow.marketScope();
+            if (marketScope == null || (marketScope.environment() != ExchangeEnvironment.TESTNET
+                    && marketScope.environment() != ExchangeEnvironment.DEMO)) {
+                return blockWithoutDecision(
+                        automationRunId,
+                        "模拟交易要求已持久化的单产品模拟盘研究范围");
+            }
             var chair = decisionMessage(workflowRunId);
             if (!isExecutableDecision(workflow, chair)) {
                 return completeNonExecutableConsensus(
@@ -228,6 +247,9 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             var decision = toDecision(workflowRunId, finalDraft);
             TaskCancellationContext.throwIfCancelled();
             store.saveDecision(workflowRunId, decision);
+            if (!matchesResearchScope(decision, marketScope)) {
+                return blockDecision(automationRunId, decision, "AI 决策标的与本次研究标的不一致");
+            }
             if (!(decision instanceof DirectionalTradeDecision directional)) {
                 var reasons = decision.rationale();
                 TaskCancellationContext.throwIfCancelled();
@@ -242,13 +264,20 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                         clock.instant());
                 return result(automationRunId, TradeAutomationStatus.NO_ACTION, decision, List.of(), reasons);
             }
-            return submitPlanned(planOrders(automationRunId, workflowRunId, directional, principalReview));
+            return submitPlanned(planOrders(
+                    automationRunId, workflowRunId, directional, marketScope, principalReview));
         } catch (RuntimeException exception) {
-            store.fail(
-                    automationRunId,
-                    "TRADE_AUTOMATION_FAILED",
-                    failureMessage(exception),
-                    clock.instant());
+            try {
+                if (!store.recoverDurableOrders(workflowRunId, clock.instant())) {
+                    store.fail(
+                            automationRunId,
+                            "TRADE_AUTOMATION_FAILED",
+                            failureMessage(exception),
+                            clock.instant());
+                }
+            } catch (RuntimeException recoveryFailure) {
+                exception.addSuppressed(recoveryFailure);
+            }
             throw exception;
         }
     }
@@ -286,10 +315,11 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 reasons);
     }
 
-    private TradeAutomationResult planOrders(
+    TradeAutomationResult planOrders(
             String automationRunId,
             WorkflowRunId workflowRunId,
             DirectionalTradeDecision decision,
+            ResearchMarketScope marketScope,
             io.omnnu.finbot.application.workflow.dto.PrincipalReviewResult principalReview) {
         var proposal = TradeProposal.from(
                 new TradeProposalId(deterministicId("proposal_", decision.id().value())),
@@ -315,37 +345,45 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     policy.slippageRate(),
                     policy.liquidationBufferRate());
         }
-        var normalizedSymbol = normalizeSymbol(decision.symbol().value());
-        var candidates = store.executionCandidates(normalizedSymbol);
+        var checkedAt = clock.instant();
+        var candidates = store.executionCandidates(
+                marketScope,
+                checkedAt.minus(MAXIMUM_MARKET_PRICE_AGE),
+                checkedAt.minusSeconds(2L * marketScope.intervalSeconds()),
+                checkedAt);
         if (candidates.isEmpty()) {
-            return estimateTrade(automationRunId, workflowRunId, decision, proposal, policy, normalizedSymbol);
+            return estimateTrade(automationRunId, workflowRunId, decision, proposal, policy, marketScope);
+        }
+        if (candidates.size() != 1) {
+            return blockProposal(
+                    automationRunId, decision, proposal,
+                    "研究标的对应多个启用的模拟账户，请先明确唯一执行账户");
         }
 
-        var assessments = new ArrayList<StoredRiskAssessment>();
         var orders = new ArrayList<PlannedOrder>();
-        for (var candidate : candidates) {
-            var assessmentId = new RiskAssessmentId(deterministicId(
-                    "assessment_",
-                    proposal.id().value() + ':' + candidate.accountId().value()));
-            var plan = riskEngine.assess(proposal, decision.confidence(), candidate, policy);
-            var assessment = new StoredRiskAssessment(
-                    assessmentId,
-                    automationRunId,
-                    workflowRunId,
-                    proposal.id(),
-                    candidate.accountId(),
-                    candidate.instrumentId(),
-                    candidate.exchange(),
-                    candidate.environment(),
-                    policy.version(),
-                    plan,
-                    clock.instant());
-            TaskCancellationContext.throwIfCancelled();
-            store.saveRiskAssessment(assessment);
-            assessments.add(assessment);
-            if (plan.status() == RiskAssessmentStatus.BLOCKED) {
-                continue;
-            }
+        var reasons = new ArrayList<String>();
+        var candidate = candidates.getFirst();
+        var assessmentId = new RiskAssessmentId(deterministicId(
+                "assessment_",
+                proposal.id().value() + ':' + candidate.accountId().value()));
+        var plan = riskEngine.assess(proposal, decision.confidence(), candidate, policy);
+        var assessment = new StoredRiskAssessment(
+                assessmentId,
+                automationRunId,
+                workflowRunId,
+                proposal.id(),
+                candidate.accountId(),
+                candidate.instrumentId(),
+                candidate.exchange(),
+                candidate.environment(),
+                policy.version(),
+                plan,
+                clock.instant());
+        TaskCancellationContext.throwIfCancelled();
+        store.saveRiskAssessment(assessment);
+        if (plan.status() == RiskAssessmentStatus.BLOCKED) {
+            reasons.addAll(plan.reasons());
+        } else {
             var intent = ApprovedTradeIntent.approve(
                     new ApprovedTradeIntentId(deterministicId(
                             "intent_",
@@ -379,13 +417,15 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     clientOrderId(orderId),
                     clock.instant());
             TaskCancellationContext.throwIfCancelled();
-            store.saveApprovedIntentAndOrder(intent, order);
-            orders.add(order);
+            var reservation = store.reserveApprovedIntentAndOrder(
+                    intent, order, policy.maximumOpenPositions());
+            if (reservation == PaperOrderReservationStatus.RESERVED) {
+                orders.add(order);
+                reasons.addAll(plan.reasons());
+            } else {
+                reasons.add(reservationReason(reservation));
+            }
         }
-        var reasons = assessments.stream()
-                .flatMap(assessment -> assessment.plan().reasons().stream()
-                        .map(reason -> assessment.accountId().value() + ": " + reason))
-                .toList();
         var status = orders.isEmpty()
                 ? TradeAutomationStatus.BLOCKED
                 : TradeAutomationStatus.ORDER_PLANNED;
@@ -395,7 +435,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 status,
                 decision,
                 proposal,
-                assessments,
+                List.of(assessment),
                 orders,
                 reasons,
                 clock.instant());
@@ -413,10 +453,10 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             DirectionalTradeDecision decision,
             TradeProposal proposal,
             RiskPolicy policy,
-            String normalizedSymbol) {
-        var candidates = store.projectionCandidates(normalizedSymbol);
+            ResearchMarketScope marketScope) {
+        var candidates = store.projectionCandidates(marketScope);
         if (candidates.isEmpty()) {
-            var reasons = List.of("没有与决策标的匹配的可执行或仅研究产品");
+            var reasons = List.of("研究范围内没有可用的模拟执行候选或仅研究产品");
             TaskCancellationContext.throwIfCancelled();
             store.complete(
                     automationRunId,
@@ -473,6 +513,48 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                 reasons,
                 clock.instant());
         return result(automationRunId, status, decision, List.of(), reasons);
+    }
+
+    private TradeAutomationResult blockWithoutDecision(String automationRunId, String reason) {
+        TaskCancellationContext.throwIfCancelled();
+        store.complete(
+                automationRunId, TradeAutomationStatus.BLOCKED, null, null,
+                List.of(), List.of(), List.of(reason), clock.instant());
+        return new TradeAutomationResult(
+                automationRunId, TradeAutomationStatus.BLOCKED, null, List.of(), List.of(reason));
+    }
+
+    private TradeAutomationResult blockDecision(
+            String automationRunId, TradeDecision decision, String reason) {
+        TaskCancellationContext.throwIfCancelled();
+        store.complete(
+                automationRunId, TradeAutomationStatus.BLOCKED, decision, null,
+                List.of(), List.of(), List.of(reason), clock.instant());
+        return result(automationRunId, TradeAutomationStatus.BLOCKED, decision, List.of(), List.of(reason));
+    }
+
+    private TradeAutomationResult blockProposal(
+            String automationRunId, DirectionalTradeDecision decision,
+            TradeProposal proposal, String reason) {
+        TaskCancellationContext.throwIfCancelled();
+        store.complete(
+                automationRunId, TradeAutomationStatus.BLOCKED, decision, proposal,
+                List.of(), List.of(), List.of(reason), clock.instant());
+        return result(automationRunId, TradeAutomationStatus.BLOCKED, decision, List.of(), List.of(reason));
+    }
+
+    private static String reservationReason(PaperOrderReservationStatus reservation) {
+        return switch (reservation) {
+            case RESERVED -> throw new IllegalArgumentException("Reserved order has no blocking reason");
+            case ACCOUNT_UNAVAILABLE -> "模拟账户已停用或与研究环境不匹配";
+            case SYMBOL_ALREADY_EXPOSED -> "模拟账户对该标的已有持仓、待处理订单或未对账成交";
+            case POSITION_LIMIT_REACHED -> "模拟账户的持仓、待处理订单及未对账成交已达到策略上限";
+        };
+    }
+
+    static boolean matchesResearchScope(TradeDecision decision, ResearchMarketScope marketScope) {
+        return normalizeSymbol(decision.symbol().value())
+                .equals(normalizeSymbol(marketScope.symbol()));
     }
 
     private <T> ParsedAiStage<T> invokeAndParse(

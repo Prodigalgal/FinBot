@@ -1,6 +1,7 @@
 package io.omnnu.finbot.application.trading.port.out;
 
 import io.omnnu.finbot.application.trading.dto.PlannedOrder;
+import io.omnnu.finbot.application.trading.dto.PaperOrderReservationStatus;
 import io.omnnu.finbot.application.trading.dto.StoredEstimatedTradeProjection;
 import io.omnnu.finbot.application.trading.dto.StoredExecutionAiReview;
 import io.omnnu.finbot.application.trading.dto.StoredRiskAssessment;
@@ -16,6 +17,7 @@ import io.omnnu.finbot.domain.trading.ApprovedTradeIntent;
 import io.omnnu.finbot.domain.trading.TradeDecision;
 import io.omnnu.finbot.domain.trading.TradeProposal;
 import io.omnnu.finbot.domain.workflow.WorkflowRunId;
+import io.omnnu.finbot.application.market.dto.ResearchMarketScope;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -24,15 +26,18 @@ import io.omnnu.finbot.application.exchange.dto.PaperOrderExecutionResult;
 public interface TradeAutomationStore {
     Optional<TradeAutomationResult> findTerminal(WorkflowRunId workflowRunId);
 
+    boolean recoverDurableOrders(WorkflowRunId workflowRunId, Instant recoveredAt);
+
     boolean start(String automationRunId, WorkflowRunId workflowRunId, Instant startedAt);
 
     List<TradeExecutionAiStageConfig> executionAiStages();
 
     RiskPolicy activeRiskPolicy();
 
-    List<RiskInstrumentSpec> executionCandidates(String normalizedSymbol);
+    List<RiskInstrumentSpec> executionCandidates(
+            ResearchMarketScope marketScope, Instant observedAfter, Instant openedAfter, Instant checkedAt);
 
-    List<ProjectionInstrumentSpec> projectionCandidates(String normalizedSymbol);
+    List<ProjectionInstrumentSpec> projectionCandidates(ResearchMarketScope marketScope);
 
     void saveExecutionAiReview(StoredExecutionAiReview review);
 
@@ -53,7 +58,10 @@ public interface TradeAutomationStore {
 
     void saveEstimatedTradeProjection(StoredEstimatedTradeProjection projection);
 
-    void saveApprovedIntentAndOrder(ApprovedTradeIntent intent, PlannedOrder order);
+    PaperOrderReservationStatus reserveApprovedIntentAndOrder(
+            ApprovedTradeIntent intent,
+            PlannedOrder order,
+            int maximumOpenPositions);
 
     void complete(
             String automationRunId,

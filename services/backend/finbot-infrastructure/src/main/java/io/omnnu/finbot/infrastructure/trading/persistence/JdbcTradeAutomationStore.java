@@ -5,6 +5,8 @@ import static io.omnnu.finbot.infrastructure.jdbc.persistence.PostgresJdbcParame
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.omnnu.finbot.application.trading.dto.PlannedOrder;
+import io.omnnu.finbot.application.trading.dto.PaperOrderReservationStatus;
+import io.omnnu.finbot.application.market.dto.ResearchMarketScope;
 import io.omnnu.finbot.application.trading.dto.StoredExecutionAiReview;
 import io.omnnu.finbot.application.trading.dto.StoredEstimatedTradeProjection;
 import io.omnnu.finbot.application.trading.dto.StoredRiskAssessment;
@@ -94,6 +96,47 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 value.decisionId() == null ? null : new TradeDecisionId(value.decisionId()),
                 orders,
                 value.errorMessage() == null ? List.of() : List.of(value.errorMessage())));
+    }
+
+    @Override
+    @Transactional
+    public boolean recoverDurableOrders(WorkflowRunId workflowRunId, Instant recoveredAt) {
+        return jdbcClient.sql("""
+                with durable_orders as (
+                  select decision.workflow_run_id,
+                         bool_or(order_record.status in ('PLANNED', 'SUBMITTING')) as needs_submission,
+                         bool_or(order_record.status in (
+                           'SUBMITTED', 'PARTIALLY_FILLED', 'FILLED', 'RECONCILED'
+                         )) as accepted
+                  from oms_order order_record
+                  join approved_trade_intent intent on intent.intent_id = order_record.intent_id
+                  join trade_proposal proposal on proposal.proposal_id = intent.proposal_id
+                  join trade_decision decision on decision.decision_id = proposal.decision_id
+                  where decision.workflow_run_id = :workflowRunId
+                  group by decision.workflow_run_id
+                )
+                update trade_automation_run automation
+                set status = case
+                      when durable_orders.needs_submission then 'ORDER_PLANNED'
+                      when durable_orders.accepted then 'SUBMITTED'
+                      else 'BLOCKED'
+                    end,
+                    completed_at = greatest(:recoveredAt, automation.started_at),
+                    error_code = null,
+                    error_message = case
+                      when durable_orders.needs_submission then '已恢复持久化的模拟订单，等待幂等提交'
+                      when durable_orders.accepted then '已恢复交易所接受的模拟订单'
+                      else '已恢复交易所终止的模拟订单'
+                    end
+                from durable_orders
+                where automation.workflow_run_id = :workflowRunId
+                  and automation.status in ('STARTED', 'FAILED', 'ORDER_PLANNED')
+                  and (automation.status <> 'ORDER_PLANNED' or not durable_orders.needs_submission)
+                  and durable_orders.workflow_run_id = automation.workflow_run_id
+                """)
+                .param("workflowRunId", workflowRunId.value())
+                .param("recoveredAt", timestamp(recoveredAt))
+                .update() == 1;
     }
 
     @Override
@@ -189,7 +232,8 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
 
     @Override
     @Transactional(readOnly = true)
-    public List<RiskInstrumentSpec> executionCandidates(String normalizedSymbol) {
+    public List<RiskInstrumentSpec> executionCandidates(
+            ResearchMarketScope marketScope, Instant observedAfter, Instant openedAfter, Instant checkedAt) {
         return jdbcClient.sql("""
                 select instrument.instrument_id, account.account_id, instrument.exchange,
                        account.environment, instrument.symbol, instrument.contract_size,
@@ -204,6 +248,11 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                   from market_candle_fact candle
                   where candle.instrument_id = instrument.instrument_id
                     and candle.environment = account.environment
+                    and candle.interval_seconds = :intervalSeconds
+                    and candle.observed_at >= :observedAfter
+                    and candle.observed_at <= :checkedAt
+                    and candle.open_time >= :openedAfter
+                    and candle.open_time <= :checkedAt
                   order by candle.open_time desc, candle.id desc
                   limit 1
                 ) latest on true
@@ -219,10 +268,20 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 ) open_positions on true
                 where instrument.status = 'ACTIVE'
                   and instrument.execution_enabled = true
-                  and replace(replace(upper(instrument.symbol), '_', ''), '-', '') = :normalizedSymbol
+                  and instrument.instrument_id = :instrumentId
+                  and instrument.exchange = :exchange
+                  and instrument.symbol = :symbol
+                  and account.environment = :environment
                 order by instrument.exchange, account.account_id, instrument.instrument_id
                 """)
-                .param("normalizedSymbol", normalizedSymbol)
+                .param("instrumentId", marketScope.instrumentId().value())
+                .param("exchange", marketScope.exchange().name())
+                .param("symbol", marketScope.symbol())
+                .param("environment", marketScope.environment().name())
+                .param("intervalSeconds", marketScope.intervalSeconds())
+                .param("observedAfter", timestamp(observedAfter))
+                .param("openedAfter", timestamp(openedAfter))
+                .param("checkedAt", timestamp(checkedAt))
                 .query((resultSet, rowNumber) -> new RiskInstrumentSpec(
                         new InstrumentId(resultSet.getString("instrument_id")),
                         new ExchangeAccountId(resultSet.getString("account_id")),
@@ -240,7 +299,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ProjectionInstrumentSpec> projectionCandidates(String normalizedSymbol) {
+    public List<ProjectionInstrumentSpec> projectionCandidates(ResearchMarketScope marketScope) {
         return jdbcClient.sql("""
                 select instrument.instrument_id, instrument.exchange, instrument.symbol,
                        instrument.contract_size, instrument.quantity_step,
@@ -257,10 +316,14 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 ) latest on true
                 where instrument.status = 'ACTIVE'
                   and instrument.execution_enabled = false
-                  and replace(replace(upper(instrument.symbol), '_', ''), '-', '') = :normalizedSymbol
+                  and instrument.instrument_id = :instrumentId
+                  and instrument.exchange = :exchange
+                  and instrument.symbol = :symbol
                 order by instrument.exchange, instrument.instrument_id
                 """)
-                .param("normalizedSymbol", normalizedSymbol)
+                .param("instrumentId", marketScope.instrumentId().value())
+                .param("exchange", marketScope.exchange().name())
+                .param("symbol", marketScope.symbol())
                 .query((resultSet, rowNumber) -> new ProjectionInstrumentSpec(
                         new InstrumentId(resultSet.getString("instrument_id")),
                         ExchangeVenue.valueOf(resultSet.getString("exchange")),
@@ -481,7 +544,53 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
 
     @Override
     @Transactional
-    public void saveApprovedIntentAndOrder(ApprovedTradeIntent intent, PlannedOrder order) {
+    public PaperOrderReservationStatus reserveApprovedIntentAndOrder(
+            ApprovedTradeIntent intent, PlannedOrder order, int maximumOpenPositions) {
+        var account = jdbcClient.sql("""
+                select account_id from exchange_account
+                where account_id = :accountId and exchange = :exchange
+                  and environment = :environment and enabled = true
+                for update
+                """)
+                .param("accountId", intent.accountId().value())
+                .param("exchange", intent.exchange().name())
+                .param("environment", intent.environment().name())
+                .query(String.class)
+                .optional();
+        if (account.isEmpty()) {
+            return PaperOrderReservationStatus.ACCOUNT_UNAVAILABLE;
+        }
+        var exposedSymbols = jdbcClient.sql("""
+                with latest_positions as (
+                  select distinct on (position.symbol)
+                         position.symbol, position.quantity, position.occurred_at
+                  from exchange_position_snapshot position
+                  where position.account_id = :accountId
+                  order by position.symbol, position.occurred_at desc, position.id desc
+                )
+                select symbol from latest_positions where quantity > 0
+                union
+                select order_record.symbol from oms_order order_record
+                where order_record.account_ref = :accountId
+                  and (
+                    order_record.status in ('PLANNED', 'SUBMITTING', 'SUBMITTED', 'PARTIALLY_FILLED')
+                    or (order_record.filled_quantity > 0 and not exists (
+                      select 1 from latest_positions position
+                      where position.symbol = order_record.symbol
+                        and position.quantity = 0
+                        and position.occurred_at > order_record.terminal_at
+                    ))
+                  )
+                """)
+                .param("accountId", intent.accountId().value())
+                .query(String.class)
+                .list();
+        if (exposedSymbols.contains(intent.symbol().value())) {
+            return PaperOrderReservationStatus.SYMBOL_ALREADY_EXPOSED;
+        }
+        if (exposedSymbols.size() >= maximumOpenPositions) {
+            return PaperOrderReservationStatus.POSITION_LIMIT_REACHED;
+        }
         jdbcClient.sql("""
                 insert into approved_trade_intent (
                   intent_id, proposal_id, account_id, risk_assessment_id, symbol, action,
@@ -491,7 +600,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                   :intentId, :proposalId, :accountId, :riskAssessmentId, :symbol, :action,
                   :instrumentId, :exchange, :environment, :quantity, :leverage, :entryReference, :targetPrice, :invalidationPrice,
                   :policyVersion, :approvedAt
-                ) on conflict (proposal_id, account_id) do nothing
+                )
                 """)
                 .param("intentId", intent.id().value())
                 .param("proposalId", intent.proposalId().value())
@@ -510,7 +619,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 .param("policyVersion", intent.policyVersion())
                 .param("approvedAt", timestamp(intent.approvedAt()))
                 .update();
-        var inserted = jdbcClient.sql("""
+        jdbcClient.sql("""
                 insert into oms_order (
                   order_id, intent_id, idempotency_key, exchange, environment,
                   account_ref, instrument_id, symbol, side, status, requested_quantity,
@@ -519,7 +628,7 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                   :orderId, :intentId, :idempotencyKey, :exchange, :environment,
                   :accountRef, :instrumentId, :symbol, :side, 'PLANNED', :requestedQuantity,
                   0, :leverage, :clientOrderId, :createdAt, :createdAt
-                ) on conflict (idempotency_key) do nothing
+                )
                 """)
                 .param("orderId", order.orderId().value())
                 .param("intentId", order.intentId().value())
@@ -535,21 +644,20 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                 .param("clientOrderId", order.clientOrderId())
                 .param("createdAt", timestamp(order.createdAt()))
                 .update();
-        if (inserted == 1) {
-            jdbcClient.sql("""
-                    insert into oms_order_event (
-                      event_id, order_id, sequence, event_type, from_status,
-                      to_status, payload, occurred_at
-                    ) values (
-                      :eventId, :orderId, 1, 'OrderPlanned', null,
-                      'PLANNED', '{}'::jsonb, :occurredAt
-                    )
-                    """)
-                    .param("eventId", "event_" + order.orderId().value().substring("order_".length()))
-                    .param("orderId", order.orderId().value())
-                    .param("occurredAt", timestamp(order.createdAt()))
-                    .update();
-        }
+        jdbcClient.sql("""
+                insert into oms_order_event (
+                  event_id, order_id, sequence, event_type, from_status,
+                  to_status, payload, occurred_at
+                ) values (
+                  :eventId, :orderId, 1, 'OrderPlanned', null,
+                  'PLANNED', '{}'::jsonb, :occurredAt
+                )
+                """)
+                .param("eventId", "event_" + order.orderId().value().substring("order_".length()))
+                .param("orderId", order.orderId().value())
+                .param("occurredAt", timestamp(order.createdAt()))
+                .update();
+        return PaperOrderReservationStatus.RESERVED;
     }
 
     @Override

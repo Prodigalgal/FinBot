@@ -1,6 +1,8 @@
 package io.omnnu.finbot.application.trading.service;
 
 import io.omnnu.finbot.application.trading.dto.StoredEstimatedTradeProjection;
+import io.omnnu.finbot.application.trading.dto.PaperOrderReservationStatus;
+import io.omnnu.finbot.application.trading.dto.PlannedOrder;
 import io.omnnu.finbot.application.trading.dto.TradeAutomationResult;
 import io.omnnu.finbot.application.trading.dto.TradeAutomationStatus;
 import io.omnnu.finbot.application.trading.dto.TradeExecutionAiStage;
@@ -21,6 +23,8 @@ import io.omnnu.finbot.application.ai.port.out.AiInvocationAuditStore;
 import io.omnnu.finbot.application.ai.port.out.AiRuntimeBindingResolver;
 import io.omnnu.finbot.application.ai.service.WorkflowAiInvoker;
 import io.omnnu.finbot.application.exchange.port.in.PaperOrderExecutionUseCase;
+import io.omnnu.finbot.application.exchange.dto.ExchangeSubmissionStatus;
+import io.omnnu.finbot.application.exchange.dto.PaperOrderExecutionResult;
 import io.omnnu.finbot.application.market.dto.ResearchMarketScope;
 import io.omnnu.finbot.application.shared.port.out.SortableIdGenerator;
 import io.omnnu.finbot.application.workflow.dto.DebateSession;
@@ -39,11 +43,14 @@ import io.omnnu.finbot.domain.debate.CritiqueAssignmentPolicy;
 import io.omnnu.finbot.domain.debate.DebateProtocol;
 import io.omnnu.finbot.domain.debate.DebateProtocolConfiguration;
 import io.omnnu.finbot.domain.ledger.ExchangeEnvironment;
+import io.omnnu.finbot.domain.ledger.ExchangeAccountId;
 import io.omnnu.finbot.domain.market.InstrumentSymbol;
 import io.omnnu.finbot.domain.market.Price;
+import io.omnnu.finbot.domain.oms.OrderId;
 import io.omnnu.finbot.domain.research.ForecastDirection;
 import io.omnnu.finbot.domain.research.ForecastSignal;
 import io.omnnu.finbot.domain.risk.ProjectionInstrumentSpec;
+import io.omnnu.finbot.domain.risk.RiskInstrumentSpec;
 import io.omnnu.finbot.domain.risk.RiskPolicy;
 import io.omnnu.finbot.domain.risk.MarginRiskEngine;
 import io.omnnu.finbot.domain.risk.EstimatedTradeEngine;
@@ -92,6 +99,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -142,6 +150,159 @@ class TradeAutomationApplicationServiceTest {
     }
 
     @Test
+    void unscopedWorkflowBlocksBeforeReadingDecisionOrCallingAi() {
+        assertResearchScopeBlocksBeforeDecision(null);
+    }
+
+    @Test
+    void liveResearchScopeCannotTriggerPaperTrading() {
+        assertResearchScopeBlocksBeforeDecision(new ResearchMarketScope(
+                demoScope().instrumentId(), ExchangeVenue.BYBIT, ExchangeEnvironment.LIVE,
+                "AAPLUSDT", 3600, 86400, new BigDecimal("100")));
+    }
+
+    private static void assertResearchScopeBlocksBeforeDecision(ResearchMarketScope marketScope) {
+        var completedStatus = new AtomicReference<TradeAutomationStatus>();
+        var tradeStore = proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
+            case "findTerminal" -> Optional.empty();
+            case "recoverDurableOrders" -> false;
+            case "start" -> true;
+            case "complete" -> {
+                completedStatus.set((TradeAutomationStatus) arguments[1]);
+                yield null;
+            }
+            case "fail" -> null;
+            default -> throw new AssertionError("Unscoped workflow must not plan an order: " + method.getName());
+        });
+        var workflow = new WorkflowExecutionContext(
+                RUN_ID, WorkflowRunStatus.COMPLETED, "Analyze BTCUSDT", "{}", sdbVersion(), marketScope);
+        var workflowStore = proxy(WorkflowExecutionStore.class, (ignored, method, arguments) -> {
+            if (method.getName().equals("load")) {
+                return Optional.of(workflow);
+            }
+            throw new AssertionError("Unscoped workflow must not read a trading decision");
+        });
+
+        var result = service(tradeStore, workflowStore).execute(RUN_ID).toCompletableFuture().join();
+
+        assertEquals(TradeAutomationStatus.BLOCKED, result.status());
+        assertEquals(TradeAutomationStatus.BLOCKED, completedStatus.get());
+        assertEquals(List.of(), result.plannedOrderIds());
+        assertTrue(result.reasons().getFirst().contains("单产品"));
+    }
+
+    @Test
+    void decisionMustMatchThePersistedResearchSymbol() {
+        assertTrue(TradeAutomationApplicationService.matchesResearchScope(
+                directionalDecision(), demoScope()));
+        var otherScope = new ResearchMarketScope(
+                new InstrumentId("instrument_bybit_btc_test"), ExchangeVenue.BYBIT,
+                ExchangeEnvironment.DEMO, "BTCUSDT", 3600, 86400,
+                new BigDecimal("60000"));
+        assertEquals(false, TradeAutomationApplicationService.matchesResearchScope(
+                directionalDecision(), otherScope));
+    }
+
+    @Test
+    void oneScopedAccountProducesOnePlannedOrder() {
+        var planned = new AtomicReference<PlannedOrder>();
+        var store = planningStore(List.of(executionInstrument("account_bybit_demo_first")),
+                PaperOrderReservationStatus.RESERVED, planned);
+
+        var result = service(store).planOrders(
+                "automation_single_scoped_test", RUN_ID, directionalDecision(), demoScope(), null);
+
+        assertEquals(TradeAutomationStatus.ORDER_PLANNED, result.status());
+        assertEquals(1, result.plannedOrderIds().size());
+        assertEquals(demoScope().instrumentId(), planned.get().instrumentId());
+        assertEquals(ExchangeEnvironment.DEMO, planned.get().environment());
+    }
+
+    @Test
+    void multipleEnabledAccountsBlockBeforeRiskAssessment() {
+        var store = planningStore(List.of(
+                executionInstrument("account_bybit_demo_first"),
+                executionInstrument("account_bybit_demo_second")),
+                PaperOrderReservationStatus.RESERVED, new AtomicReference<>());
+
+        var result = service(store).planOrders(
+                "automation_ambiguous_account_test", RUN_ID, directionalDecision(), demoScope(), null);
+
+        assertEquals(TradeAutomationStatus.BLOCKED, result.status());
+        assertEquals(List.of(), result.plannedOrderIds());
+        assertTrue(result.reasons().getFirst().contains("多个启用的模拟账户"));
+    }
+
+    @Test
+    void occupiedSymbolBlocksAfterRiskAssessmentWithoutAnOrder() {
+        var planned = new AtomicReference<PlannedOrder>();
+        var store = planningStore(List.of(executionInstrument("account_bybit_demo_first")),
+                PaperOrderReservationStatus.SYMBOL_ALREADY_EXPOSED, planned);
+
+        var result = service(store).planOrders(
+                "automation_occupied_symbol_test", RUN_ID, directionalDecision(), demoScope(), null);
+
+        assertEquals(TradeAutomationStatus.BLOCKED, result.status());
+        assertEquals(List.of(), result.plannedOrderIds());
+        assertTrue(result.reasons().getFirst().contains("已有持仓"));
+        assertNotNull(planned.get());
+    }
+
+    @Test
+    void interruptedPlanningResumesItsDurableOrderWithoutStartingAgain() {
+        var orderId = new OrderId("order_recovered_paper_test");
+        var lookupCount = new AtomicInteger();
+        var submitted = new AtomicReference<List<OrderId>>();
+        var planned = new TradeAutomationResult(
+                "automation_recovered_paper_test", TradeAutomationStatus.ORDER_PLANNED,
+                new TradeDecisionId("decision_recovered_paper_test"),
+                List.of(orderId), List.of("recovered"));
+        var store = proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
+            case "findTerminal" -> lookupCount.incrementAndGet() == 1
+                    ? Optional.empty() : Optional.of(planned);
+            case "recoverDurableOrders" -> true;
+            case "recordExecutionResults" -> null;
+            default -> throw new AssertionError("Recovered order must not restart AI: " + method.getName());
+        });
+        PaperOrderExecutionUseCase orderExecution = orderIds -> {
+            submitted.set(orderIds);
+            return CompletableFuture.completedFuture(List.of(new PaperOrderExecutionResult(
+                    orderId, ExchangeSubmissionStatus.ACKNOWLEDGED, "exchange-order", "accepted")));
+        };
+
+        var result = service(store, orderExecution).execute(RUN_ID).toCompletableFuture().join();
+
+        assertEquals(TradeAutomationStatus.SUBMITTED, result.status());
+        assertEquals(List.of(orderId), submitted.get());
+        assertEquals(2, lookupCount.get());
+    }
+
+    @Test
+    void recoveredSubmittedOrderDoesNotSubmitAgain() {
+        var orderId = new OrderId("order_already_submitted_test");
+        var planned = new TradeAutomationResult(
+                "automation_already_submitted_test", TradeAutomationStatus.ORDER_PLANNED,
+                new TradeDecisionId("decision_already_submitted_test"),
+                List.of(orderId), List.of("planned"));
+        var submitted = new TradeAutomationResult(
+                "automation_already_submitted_test", TradeAutomationStatus.SUBMITTED,
+                new TradeDecisionId("decision_already_submitted_test"),
+                List.of(orderId), List.of("recovered"));
+        var lookupCount = new AtomicInteger();
+        var store = proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
+            case "findTerminal" -> lookupCount.incrementAndGet() == 1
+                    ? Optional.of(planned) : Optional.of(submitted);
+            case "recoverDurableOrders" -> true;
+            default -> throw new AssertionError("Submitted order must not be sent again: " + method.getName());
+        });
+
+        var result = service(store).execute(RUN_ID).toCompletableFuture().join();
+
+        assertEquals(TradeAutomationStatus.SUBMITTED, result.status());
+        assertEquals(2, lookupCount.get());
+    }
+
+    @Test
     void estimatesResearchOnlyInstrumentWithoutCreatingAnOmsOrder() {
         var storedProjection = new AtomicReference<StoredEstimatedTradeProjection>();
         var completedStatus = new AtomicReference<TradeAutomationStatus>();
@@ -160,6 +321,14 @@ class TradeAutomationApplicationServiceTest {
         });
         var service = service(store);
         var decision = directionalDecision();
+        var marketScope = new ResearchMarketScope(
+                projectionInstrument().instrumentId(),
+                ExchangeVenue.BYBIT,
+                ExchangeEnvironment.DEMO,
+                "AAPLUSDT",
+                3600,
+                86400,
+                new BigDecimal("100"));
         var proposal = TradeProposal.from(
                 new TradeProposalId("proposal_projection_service_test"),
                 decision,
@@ -171,7 +340,7 @@ class TradeAutomationApplicationServiceTest {
                 decision,
                 proposal,
                 riskPolicy(),
-                "AAPLUSDT");
+                marketScope);
 
         assertEquals(TradeAutomationStatus.ESTIMATED, result.status());
         assertEquals(List.of(), result.plannedOrderIds());
@@ -187,6 +356,7 @@ class TradeAutomationApplicationServiceTest {
         var completedStatus = new AtomicReference<TradeAutomationStatus>();
         var tradeStore = proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
             case "findTerminal" -> Optional.empty();
+            case "recoverDurableOrders" -> false;
             case "start" -> true;
             case "saveDecision" -> {
                 savedDecision.set((TradeDecision) arguments[1]);
@@ -301,6 +471,7 @@ class TradeAutomationApplicationServiceTest {
         var completedStatus = new java.util.concurrent.atomic.AtomicReference<TradeAutomationStatus>();
         var tradeStore = proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
             case "findTerminal" -> Optional.empty();
+            case "recoverDurableOrders" -> false;
             case "start" -> true;
             case "saveDecision" -> {
                 savedDecision.set((TradeDecision) arguments[1]);
@@ -448,6 +619,23 @@ class TradeAutomationApplicationServiceTest {
             }
             throw new AssertionError("Unexpected workflow store call: " + method.getName());
         });
+        return service(store, workflowStore, unused(PaperOrderExecutionUseCase.class));
+    }
+
+    private static TradeAutomationApplicationService service(
+            TradeAutomationStore store, WorkflowExecutionStore workflowStore) {
+        return service(store, workflowStore, unused(PaperOrderExecutionUseCase.class));
+    }
+
+    private static TradeAutomationApplicationService service(
+            TradeAutomationStore store, PaperOrderExecutionUseCase orderExecution) {
+        return service(store, unused(WorkflowExecutionStore.class), orderExecution);
+    }
+
+    private static TradeAutomationApplicationService service(
+            TradeAutomationStore store,
+            WorkflowExecutionStore workflowStore,
+            PaperOrderExecutionUseCase orderExecution) {
         var aiInvoker = new WorkflowAiInvoker(
                 unused(AiCompletionGateway.class),
                 unused(AiRuntimeBindingResolver.class),
@@ -461,13 +649,53 @@ class TradeAutomationApplicationServiceTest {
                 new AiExecutionPolicyExecutor(aiInvoker, Clock.fixed(NOW, ZoneOffset.UTC)),
                 unused(TradeDecisionOutputParser.class),
                 store,
-                unused(PaperOrderExecutionUseCase.class),
+                orderExecution,
                 new MarginRiskEngine(),
                 new EstimatedTradeEngine(),
                 unused(PrincipalReviewUseCase.class),
                 unused(ExecutionPanelUseCase.class),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Runnable::run);
+    }
+
+    private static TradeAutomationStore planningStore(
+            List<RiskInstrumentSpec> candidates,
+            PaperOrderReservationStatus reservationStatus,
+            AtomicReference<PlannedOrder> plannedOrder) {
+        return proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
+            case "saveProposal", "saveRiskAssessment" -> null;
+            case "activeRiskPolicy" -> riskPolicy();
+            case "executionCandidates" -> {
+                assertEquals(demoScope(), arguments[0]);
+                assertEquals(NOW.minusSeconds(900), arguments[1]);
+                assertEquals(NOW.minusSeconds(7200), arguments[2]);
+                assertEquals(NOW, arguments[3]);
+                yield candidates;
+            }
+            case "reserveApprovedIntentAndOrder" -> {
+                plannedOrder.set((PlannedOrder) arguments[1]);
+                assertEquals(3, arguments[2]);
+                yield reservationStatus;
+            }
+            case "complete" -> null;
+            default -> throw new AssertionError("Unexpected trade store call: " + method.getName());
+        });
+    }
+
+    private static ResearchMarketScope demoScope() {
+        return new ResearchMarketScope(
+                new InstrumentId("instrument_bybit_aapl_projection"),
+                ExchangeVenue.BYBIT, ExchangeEnvironment.DEMO,
+                "AAPLUSDT", 3600, 86400, new BigDecimal("100"));
+    }
+
+    private static RiskInstrumentSpec executionInstrument(String accountId) {
+        return new RiskInstrumentSpec(
+                demoScope().instrumentId(), new ExchangeAccountId(accountId),
+                ExchangeVenue.BYBIT, ExchangeEnvironment.DEMO,
+                new InstrumentSymbol("AAPLUSDT"), BigDecimal.ONE,
+                new BigDecimal("0.1"), new BigDecimal("0.1"),
+                new BigDecimal("100"), new Price(new BigDecimal("100")), 0);
     }
 
     private static TradeAutomationStore retryStore(AtomicInteger startCalls, boolean restartAllowed) {
@@ -479,6 +707,7 @@ class TradeAutomationApplicationServiceTest {
                 List.of("Temporary execution failure"));
         return proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
             case "findTerminal" -> Optional.of(failed);
+            case "recoverDurableOrders" -> false;
             case "start" -> {
                 startCalls.incrementAndGet();
                 yield restartAllowed;
