@@ -205,7 +205,7 @@ final class SdbScaPhaseExecutor {
                     task.taskId(),
                     task.phaseId(),
                     DebateArtifactStatus.SEALED,
-                    WorkflowExecutionIds.sha256(canonicalJson),
+                    DebateArtifact.contentHashFor(canonicalJson),
                     canonicalJson,
                     clock.instant(),
                     null);

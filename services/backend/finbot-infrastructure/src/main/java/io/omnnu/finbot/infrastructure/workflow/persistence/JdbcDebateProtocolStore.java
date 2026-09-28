@@ -35,14 +35,10 @@ import io.omnnu.finbot.domain.workflow.DebateId;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.HexFormat;
 import java.util.Objects;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -231,9 +227,9 @@ public class JdbcDebateProtocolStore implements DebateProtocolStore {
         if (!task.phaseId().equals(artifact.phaseId())) {
             throw new DebateProtocolConflictException("Artifact phase does not match its debate task");
         }
-        if (!sha256(artifact.content()).equals(artifact.contentHash())) {
+        if (!DebateArtifact.contentHashFor(artifact.content()).equals(artifact.contentHash())) {
             throw new DebateProtocolConflictException(
-                    "Artifact content hash does not match its canonical content");
+                    "Artifact content hash does not match the artifact content");
         }
         var existingArtifact = jdbcClient.sql("""
                 select artifact_id, content_hash from debate_protocol_artifact where task_id = :taskId
@@ -1018,15 +1014,6 @@ public class JdbcDebateProtocolStore implements DebateProtocolStore {
                 || !Objects.equals(task.leaseOwner(), leaseOwner)) {
             throw new DebateProtocolConflictException(
                     "Debate task completion requires ownership of its active lease");
-        }
-    }
-
-    private static String sha256(String content) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(content.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
     }
 
