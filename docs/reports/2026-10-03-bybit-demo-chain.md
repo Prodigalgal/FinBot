@@ -29,6 +29,8 @@ Demo 域名为 `https://api-demo.bybit.com`，沿用既有签名、出站路由�
 
 首次 CI `37117921679` 的 27 项 PostgreSQL 集成测试通过，发布被 `AiCompletionCollectorTest` 取消订阅断言阻断。竞态发生在注册取消回调后：等待线程先观察到取消、抛异常并移除回调，取消线程便可能无法执行订阅关闭。`AiCompletionCollector.await` 现在在取消异常分支主动关闭流，再释放注册；取消测试重复 20 次覆盖线程交错。后续 CI 和生产账户同步结果待最终验收回写。
 
+第二次 CI `37118206180` 的后端 437 项测试（含 27 项 PostgreSQL 集成测试）全部通过，发布被前端依赖安全门禁阻断。`apps/web/package.json` 和 lockfile 将 Vitest 系列升至 4.1.11、undici 升至 7.30.0，保留既有主版本；Node 22 下 `npm ci`、34 项前端测试、96 路径/114 Controller 操作的契约检查、生产构建通过，`npm audit` 为 0。页面和业务代码未变。
+
 暂未验证开仓、成交和平仓链路；没有创建测试订单，OMS 仍为 0。不以空订单对账完成证明交易执行成功。
 
 ## 回滚
