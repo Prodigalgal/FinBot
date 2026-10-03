@@ -182,6 +182,11 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
         var accountJson = walletRoot.get(0);
         var coins = accountJson.path("coin");
         var usdt = firstCoin(coins, "USDT");
+        var marginMode = "UNIFIED".equals(accountJson.path("accountType").asText())
+                ? requireBybit(bybitRequest("GET", "/v5/account/info", new LinkedHashMap<>(), "", credentials))
+                        .path("result").path("marginMode").asText()
+                : "";
+        var balance = BybitUsdtBalanceMapper.map(accountJson, usdt, marginMode);
         var positionQuery = new LinkedHashMap<String, String>();
         positionQuery.put("category", "linear");
         positionQuery.put("settleCoin", "USDT");
@@ -196,25 +201,14 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
         var pnlPage = bybitHistory(
                 "/v5/position/closed-pnl", credentials, fromInclusive, toExclusive);
         var sourceSnapshotId = "bybit-account:" + receivedAt.toEpochMilli();
-        var equity = firstAvailableDecimal(usdt, accountJson, "equity", "totalEquity")
-                .max(BigDecimal.ZERO);
-        var wallet = firstAvailableDecimal(usdt, accountJson, "walletBalance", "totalWalletBalance")
-                .max(BigDecimal.ZERO);
-        var available = firstAvailableDecimal(
-                usdt,
-                accountJson,
-                "availableToWithdraw",
-                "totalAvailableBalance").max(BigDecimal.ZERO);
-        var margin = decimal(accountJson, "totalInitialMargin", BigDecimal.ZERO).max(BigDecimal.ZERO);
-        var unrealized = firstAvailableDecimal(usdt, accountJson, "unrealisedPnl", "totalPerpUPL");
         var snapshot = new AccountSnapshotFact(
                 id("snapshot_", sourceSnapshotId),
                 account.accountId(),
                 sourceSnapshotId,
-                new Money(equity, "USDT"),
-                new Money(available, "USDT"),
-                new Money(margin, "USDT"),
-                new Money(unrealized, "USDT"),
+                new Money(balance.equity(), "USDT"),
+                new Money(balance.available(), "USDT"),
+                new Money(balance.margin(), "USDT"),
+                new Money(balance.unrealizedPnl(), "USDT"),
                 receivedAt,
                 receivedAt);
         var balances = List.of(new BalanceFact(
@@ -222,8 +216,8 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
                 account.accountId(),
                 sourceSnapshotId,
                 "USDT",
-                wallet,
-                available,
+                balance.wallet(),
+                balance.available(),
                 null,
                 BalanceChangeReason.SNAPSHOT,
                 receivedAt,
@@ -735,22 +729,6 @@ public final class JdkExchangeAccountGateway implements ExchangeAccountGateway {
                 ? Instant.ofEpochMilli(raw.longValue())
                 : Instant.ofEpochSecond(raw.longValue());
         return instant.isAfter(receivedAt) ? receivedAt : instant;
-    }
-
-    private static BigDecimal firstAvailableDecimal(
-            JsonNode primary,
-            JsonNode secondary,
-            String primaryField,
-            String secondaryField) {
-        var first = decimal(primary, primaryField, null);
-        if (first != null) {
-            return first;
-        }
-        var second = decimal(secondary, secondaryField, null);
-        if (second == null) {
-            throw new IllegalStateException("Exchange account response is missing a required balance");
-        }
-        return second;
     }
 
     private static BigDecimal firstDecimal(JsonNode row, String... fields) {

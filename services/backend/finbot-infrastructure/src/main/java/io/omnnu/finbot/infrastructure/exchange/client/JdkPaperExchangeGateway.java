@@ -36,6 +36,7 @@ public final class JdkPaperExchangeGateway implements PaperExchangeGateway {
     private static final URI GATE_BASE = URI.create("https://fx-api-testnet.gateio.ws/api/v4");
     private static final URI BYBIT_BASE = URI.create("https://api-demo.bybit.com");
     private static final int BYBIT_RECEIVE_WINDOW_MILLISECONDS = 5_000;
+    private static final int BYBIT_LEVERAGE_NOT_MODIFIED = 110_043;
     private static final int MAXIMUM_RESPONSE_BYTES = 2 * 1024 * 1024;
 
     private final ExchangeAccountConfigurationRepository accountRepository;
@@ -194,7 +195,7 @@ public final class JdkPaperExchangeGateway implements PaperExchangeGateway {
                 new LinkedHashMap<>(),
                 json(leverageBody),
                 credentials);
-        if (!bybitSuccessful(leverage)) {
+        if (!bybitLeverageAccepted(leverage.statusCode(), leverage.json())) {
             return providerRejected("BYBIT_LEVERAGE_REJECTED", leverage);
         }
         var body = objectMapper.createObjectNode();
@@ -401,6 +402,12 @@ public final class JdkPaperExchangeGateway implements PaperExchangeGateway {
 
     private static boolean bybitSuccessful(HttpExchangeResponse response) {
         return successful(response) && response.json().path("retCode").asInt(-1) == 0;
+    }
+
+    static boolean bybitLeverageAccepted(int httpStatus, JsonNode response) {
+        var code = response.path("retCode").asInt(-1);
+        return httpStatus >= 200 && httpStatus < 300
+                && (code == 0 || code == BYBIT_LEVERAGE_NOT_MODIFIED);
     }
 
     private String responseJson(HttpExchangeResponse response) {
