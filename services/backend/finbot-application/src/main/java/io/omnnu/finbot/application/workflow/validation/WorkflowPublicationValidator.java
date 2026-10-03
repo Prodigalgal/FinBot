@@ -2,6 +2,8 @@ package io.omnnu.finbot.application.workflow.validation;
 
 import io.omnnu.finbot.application.quant.service.QuantAnalysisCapabilities;
 import io.omnnu.finbot.application.research.dto.ResearchWorkflowPlan;
+import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.SdbScaSeatPolicy;
 import io.omnnu.finbot.domain.workflow.WorkflowDefinitionVersion;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeType;
@@ -40,6 +42,9 @@ public final class WorkflowPublicationValidator {
 
     public static void validate(WorkflowDefinitionVersion version) {
         Objects.requireNonNull(version, "version");
+        if (version.debateProtocolConfiguration().protocol() == DebateProtocol.SDB_SCA_V1) {
+            SdbScaSeatPolicy.validate(version.nodes());
+        }
         ResearchWorkflowPlan.from(version);
         var unsupported = version.nodes().stream()
                 .filter(WorkflowNodeDefinition::enabled)

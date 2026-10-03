@@ -18,6 +18,7 @@ import io.omnnu.finbot.domain.debate.DebatePhaseType;
 import io.omnnu.finbot.domain.debate.DebateTask;
 import io.omnnu.finbot.domain.debate.DebateTaskStatus;
 import io.omnnu.finbot.domain.debate.DebateTaskVariant;
+import io.omnnu.finbot.domain.debate.SdbScaSeatPolicy;
 import io.omnnu.finbot.domain.workflow.DebateStatus;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeId;
@@ -86,6 +87,12 @@ public final class DecisionPanelEngine {
                     "SDB_RECOVERY_RESULT_MISSING",
                     "Completed SDB-SCA panel has no persisted consensus result",
                     false);
+        }
+
+        try {
+            SdbScaSeatPolicy.validate(participantNodes);
+        } catch (IllegalArgumentException violation) {
+            throw new SdbScaExecutionException("SDB_SEAT_POLICY_INVALID", violation.getMessage(), false);
         }
 
         var configuredParticipants = participantNodes.stream()

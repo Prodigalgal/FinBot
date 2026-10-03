@@ -4,6 +4,8 @@ import io.omnnu.finbot.application.configuration.dto.AiModelProfile;
 import io.omnnu.finbot.application.configuration.dto.AiProviderProfile;
 import io.omnnu.finbot.application.configuration.port.out.ConfigurationRepository;
 import io.omnnu.finbot.domain.configuration.AiModelBinding;
+import io.omnnu.finbot.domain.debate.DebateProtocol;
+import io.omnnu.finbot.domain.debate.SdbScaSeatPolicy;
 import io.omnnu.finbot.domain.workflow.WorkflowDefinitionVersion;
 import io.omnnu.finbot.domain.workflow.WorkflowNodeDefinition;
 import java.util.HashMap;
@@ -19,6 +21,9 @@ public final class WorkflowAiBindingValidator {
 
     public void validate(WorkflowDefinitionVersion version) {
         Objects.requireNonNull(version, "version");
+        if (version.debateProtocolConfiguration().protocol() == DebateProtocol.SDB_SCA_V1) {
+            SdbScaSeatPolicy.validate(version.nodes());
+        }
         var providers = indexProviders(configuration.listProviders());
         var models = indexModels(configuration.listModels());
         version.nodes().stream()

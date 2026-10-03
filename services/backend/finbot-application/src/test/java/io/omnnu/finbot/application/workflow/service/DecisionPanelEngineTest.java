@@ -2,6 +2,7 @@ package io.omnnu.finbot.application.workflow.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.omnnu.finbot.application.ai.service.AiExecutionPolicyExecutor;
 import io.omnnu.finbot.application.workflow.dto.DebateSession;
@@ -43,6 +44,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -146,12 +148,61 @@ class DecisionPanelEngineTest {
         assertEquals("LOW_QUORUM_RESULT", result);
     }
 
+    @Test
+    void rejectsRepeatedModelWithinRoleBeforeAnyProposalIsExecuted() {
+        var execution = executionContext(new WorkflowRunId("run_duplicate_roles"));
+        var failure = assertThrows(
+                io.omnnu.finbot.application.workflow.exception.SdbScaExecutionException.class,
+                () -> engine.execute(execution, execution.definitionVersion().decisionNode(),
+                        List.of(agent("node_first_seat", "macro_role"),
+                                agent("node_second_seat", "macro_role", "node_first_seat-model")),
+                        new TestDriver(DecisionPanelKey.RESEARCH, DecisionPanelPurpose.RESEARCH)));
+        assertEquals("SDB_SEAT_POLICY_INVALID", failure.errorCode());
+    }
+
+    @Test
+    void rejectsSameModelAtPublicationActivationAndRuntimeWhileHistoryRemainsReadable() {
+        var execution = executionContext(new WorkflowRunId("run_duplicate_models"), true);
+        var version = execution.definitionVersion();
+        assertNotNull(version);
+        assertThrows(IllegalArgumentException.class,
+                () -> io.omnnu.finbot.application.workflow.validation.WorkflowPublicationValidator.validate(version));
+        var configuration = proxy(
+                io.omnnu.finbot.application.configuration.port.out.ConfigurationRepository.class,
+                (p, m, a) -> List.of());
+        var bindings = new io.omnnu.finbot.application.workflow.validation.WorkflowAiBindingValidator(configuration);
+        assertThrows(IllegalArgumentException.class, () -> bindings.validate(version));
+        var failure = assertThrows(
+                io.omnnu.finbot.application.workflow.exception.SdbScaExecutionException.class,
+                () -> engine.execute(execution, version.decisionNode(), version.nodes(),
+                        new TestDriver(DecisionPanelKey.RESEARCH, DecisionPanelPurpose.RESEARCH)));
+        assertEquals("SDB_SEAT_POLICY_INVALID", failure.errorCode());
+    }
+
     private static WorkflowExecutionContext executionContext(WorkflowRunId runId) {
+        return executionContext(runId, false);
+    }
+
+    private static WorkflowExecutionContext executionContext(WorkflowRunId runId, boolean duplicateModels) {
         var input = deterministicNode("node_input", WorkflowNodeType.INPUT);
         var agentA = agent("node_agent_alpha", "macro_role");
-        var agentB = agent("node_agent_beta", "risk_role");
+        var agentB = agent("node_agent_beta", duplicateModels ? "macro_role" : "risk_role",
+                duplicateModels ? "node_agent_alpha-model" : "node_agent_beta-model");
         var decision = deterministicNode("node_decision", WorkflowNodeType.SOCIAL_CHOICE);
         var output = deterministicNode("node_output", WorkflowNodeType.OUTPUT);
+        var nodes = new ArrayList<>(List.of(input, agentA, agentB, decision, output));
+        var edges = new ArrayList<>(List.of(
+                edge("edge_input_alpha", input, agentA),
+                edge("edge_input_beta", input, agentB),
+                edge("edge_alpha_choice", agentA, decision),
+                edge("edge_beta_choice", agentB, decision),
+                edge("edge_choice_output", decision, output)));
+        if (duplicateModels) {
+            var agentC = agent("node_agent_gamma", "risk_role");
+            nodes.add(agentC);
+            edges.add(edge("edge_input_gamma", input, agentC));
+            edges.add(edge("edge_gamma_choice", agentC, decision));
+        }
         var version = new WorkflowDefinitionVersion(
                 new WorkflowVersionId("workflowversion_test_1"),
                 new WorkflowDefinitionId("workflow_test_1"),
@@ -173,13 +224,8 @@ class DecisionPanelEngineTest {
                 NOW,
                 NOW,
                 "tester",
-                List.of(input, agentA, agentB, decision, output),
-                List.of(
-                        edge("edge_input_alpha", input, agentA),
-                        edge("edge_input_beta", input, agentB),
-                        edge("edge_alpha_choice", agentA, decision),
-                        edge("edge_beta_choice", agentB, decision),
-                        edge("edge_choice_output", decision, output)));
+                nodes,
+                edges);
         return new WorkflowExecutionContext(
                 runId,
                 WorkflowRunStatus.RUNNING,
@@ -205,6 +251,10 @@ class DecisionPanelEngineTest {
     }
 
     private static WorkflowNodeDefinition agent(String id, String roleKey) {
+        return agent(id, roleKey, id + "-model");
+    }
+
+    private static WorkflowNodeDefinition agent(String id, String roleKey, String model) {
         return new WorkflowNodeDefinition(
                 new WorkflowNodeId(id),
                 WorkflowNodeType.AGENT,
@@ -214,7 +264,7 @@ class DecisionPanelEngineTest {
                 new LogicalRoleKey(roleKey),
                 new io.omnnu.finbot.domain.configuration.AiModelBinding(
                         new io.omnnu.finbot.domain.configuration.AiProviderProfileId("provider_test"),
-                        "model-test",
+                        model,
                         io.omnnu.finbot.domain.configuration.ReasoningEffort.MAX),
                 null,
                 "System prompt",

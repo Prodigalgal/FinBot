@@ -802,7 +802,7 @@ class PrincipalReviewServiceTest {
                 new LogicalRoleKey(roleKey),
                 new io.omnnu.finbot.domain.configuration.AiModelBinding(
                         new io.omnnu.finbot.domain.configuration.AiProviderProfileId("provider_test"),
-                        "model-test",
+                        id + "-model",
                         io.omnnu.finbot.domain.configuration.ReasoningEffort.MAX),
                 null,
                 "System prompt",
