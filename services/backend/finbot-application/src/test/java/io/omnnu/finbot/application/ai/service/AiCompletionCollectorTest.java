@@ -28,10 +28,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.RepeatedTest;
 
 class AiCompletionCollectorTest {
-    @Test
+    @RepeatedTest(20)
     void taskCancellationCancelsTheStreamAndUnblocksTheInvocation() throws Exception {
         var cancelled = new CountDownLatch(1);
         var awaiting = new CountDownLatch(1);
@@ -77,11 +77,11 @@ class AiCompletionCollectorTest {
                             request.deadline());
             }));
 
-            assertTrue(awaiting.await(1, TimeUnit.SECONDS));
+            assertTrue(awaiting.await(5, TimeUnit.SECONDS));
             token.cancel();
 
-            assertTrue(cancelled.await(1, TimeUnit.SECONDS));
-            var failure = assertThrows(ExecutionException.class, () -> invocation.get(1, TimeUnit.SECONDS));
+            assertTrue(cancelled.await(5, TimeUnit.SECONDS));
+            var failure = assertThrows(ExecutionException.class, () -> invocation.get(5, TimeUnit.SECONDS));
             assertInstanceOf(CancellationException.class, failure.getCause());
         }
     }

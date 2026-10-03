@@ -17,6 +17,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
@@ -122,6 +123,10 @@ final class AiCompletionCollector implements Flow.Subscriber<AiCompletionEvent> 
                     TimeUnit.MILLISECONDS);
             var requestDeadline = minimum(workflowDeadline, clock.instant().plus(timeout));
             return result.get(remainingMilliseconds(requestDeadline), TimeUnit.MILLISECONDS);
+        } catch (CancellationException exception) {
+            // A cancelled token can be observed before its callback runs; close the stream before unregistering.
+            cancel();
+            throw exception;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             cancel();
