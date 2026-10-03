@@ -12,6 +12,8 @@ group = "io.omnnu.finbot"
 version = "2.0.0-SNAPSHOT"
 val postgresqlDriverVersion = "42.7.12"
 val tomcatVersion = "11.0.25"
+val legacyJacksonVersion = "2.21.7"
+val jacksonVersion = "3.1.7"
 
 subprojects {
     apply(plugin = "java-library")
@@ -29,6 +31,10 @@ subprojects {
     dependencies {
         add("implementation", platform("org.springframework.boot:spring-boot-dependencies:4.1.0"))
         add("testImplementation", platform("org.springframework.boot:spring-boot-dependencies:4.1.0"))
+        add("implementation", platform("com.fasterxml.jackson:jackson-bom:$legacyJacksonVersion"))
+        add("testImplementation", platform("com.fasterxml.jackson:jackson-bom:$legacyJacksonVersion"))
+        add("implementation", platform("tools.jackson:jackson-bom:$jacksonVersion"))
+        add("testImplementation", platform("tools.jackson:jackson-bom:$jacksonVersion"))
         add("testImplementation", platform("org.testcontainers:testcontainers-bom:2.0.5"))
         add("testImplementation", "org.junit.jupiter:junit-jupiter")
         add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")

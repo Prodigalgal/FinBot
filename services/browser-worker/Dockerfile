@@ -16,7 +16,9 @@ WORKDIR /app
 
 USER root
 # Patch known HIGH OS CVEs present in the Playwright base image so CI Trivy gates pass.
-RUN apt-get update \
+ARG OS_SECURITY_PATCH_REVISION=2026-10-03
+RUN test -n "$OS_SECURITY_PATCH_REVISION" \
+    && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ca-certificates \
         python3-venv \
