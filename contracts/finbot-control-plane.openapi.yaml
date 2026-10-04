@@ -120,7 +120,7 @@ paths:
     put:
       operationId: putLocalPaperAccount
       parameters:
-        - &a3
+        -
           $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: true
@@ -154,7 +154,7 @@ paths:
             default: 50
         - name: beforeTradeId
           in: query
-          schema: &a1
+          schema:
             type: string
       responses:
         "200":
@@ -172,11 +172,11 @@ paths:
     get:
       operationId: getLocalPaperTrade
       parameters:
-        - &a2
+        -
           name: tradeId
           in: path
           required: true
-          schema: *a1
+          schema: {type: string}
       responses:
         "200":
           description: Persistent local simulation state; public LIVE quotes, no exchange
@@ -193,8 +193,11 @@ paths:
     post:
       operationId: cancelLocalPaperTrade
       parameters:
-        - *a2
-        - *a3
+        - name: tradeId
+          in: path
+          required: true
+          schema: {type: string}
+        - $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: true
         content:
@@ -218,8 +221,11 @@ paths:
     post:
       operationId: closeLocalPaperTrade
       parameters:
-        - *a2
-        - *a3
+        - name: tradeId
+          in: path
+          required: true
+          schema: {type: string}
+        - $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: true
         content:
@@ -9767,7 +9773,7 @@ components:
         - lastCheckedAt
         - version
       properties:
-        accountId: &a2
+        accountId:
           type: string
         currency:
           type: string
@@ -9777,23 +9783,23 @@ components:
           type: string
           enum:
             - LOCAL_PAPER
-        initialBalance: &a1
+        initialBalance:
           type: number
-        cashBalance: *a1
-        equity: *a1
-        availableBalance: *a1
-        reservedMargin: *a1
-        unrealizedPnl: *a1
-        realizedPnl: *a1
-        feesUsdt: *a1
-        fundingUsdt: *a1
+        cashBalance: {type: number}
+        equity: {type: number}
+        availableBalance: {type: number}
+        reservedMargin: {type: number}
+        unrealizedPnl: {type: number}
+        realizedPnl: {type: number}
+        feesUsdt: {type: number}
+        fundingUsdt: {type: number}
         ordersEnabled:
           type: boolean
         pendingCount:
           type: integer
         openCount:
           type: integer
-        acceptProjectionsAfter: &a3
+        acceptProjectionsAfter:
           type: string
           format: date-time
         lastCheckedAt:
@@ -9825,17 +9831,17 @@ components:
           enum:
             - BUY
             - SELL
-        quantity: *a1
-        contractSize: *a1
-        limitPrice: *a1
-        targetPrice: *a1
-        stopPrice: *a1
-        leverage: *a1
-        feeRate: *a1
-        slippageRate: *a1
-        liquidationBufferRate: *a1
-        policyVersion: *a2
-        expiresAt: *a3
+        quantity: {type: number}
+        contractSize: {type: number}
+        limitPrice: {type: number}
+        targetPrice: {type: number}
+        stopPrice: {type: number}
+        leverage: {type: number}
+        feeRate: {type: number}
+        slippageRate: {type: number}
+        liquidationBufferRate: {type: number}
+        policyVersion: {type: string}
+        expiresAt: {type: string, format: date-time}
     PaperTrade:
       type: object
       required:
@@ -9860,10 +9866,10 @@ components:
         - healthCode
         - version
       properties:
-        tradeId: *a2
-        projectionId: *a2
-        instrumentId: *a2
-        symbol: *a2
+        tradeId: {type: string}
+        projectionId: {type: string}
+        instrumentId: {type: string}
+        symbol: {type: string}
         terms:
           $ref: "#/components/schemas/PaperTradeTerms"
         status:
@@ -9874,7 +9880,7 @@ components:
             - CLOSED
             - CANCELLED
             - EXPIRED
-        createdAt: *a3
+        createdAt: {type: string, format: date-time}
         enteredAt:
           type:
             - string
@@ -9893,8 +9899,8 @@ components:
           type:
             - number
             - "null"
-        candleCursor: *a3
-        fundingCursor: *a3
+        candleCursor: {type: string, format: date-time}
+        fundingCursor: {type: string, format: date-time}
         quoteAt:
           type:
             - string
@@ -9904,9 +9910,9 @@ components:
           type:
             - number
             - "null"
-        feesUsdt: *a1
-        fundingUsdt: *a1
-        realizedPnlUsdt: *a1
+        feesUsdt: {type: number}
+        fundingUsdt: {type: number}
+        realizedPnlUsdt: {type: number}
         healthCode:
           type: string
           enum:
@@ -9932,8 +9938,8 @@ components:
         - model
         - sourceEndpoint
       properties:
-        eventId: *a2
-        tradeId: *a2
+        eventId: {type: string}
+        tradeId: {type: string}
         type:
           type: string
           enum:
@@ -9943,15 +9949,15 @@ components:
             - FUNDING
             - CANCELLED
             - EXPIRED
-        occurredAt: *a3
+        occurredAt: {type: string, format: date-time}
         price:
           type:
             - number
             - "null"
-        cashDeltaUsdt: *a1
-        feeUsdt: *a1
-        model: *a2
-        sourceEndpoint: *a2
+        cashDeltaUsdt: {type: number}
+        feeUsdt: {type: number}
+        model: {type: string}
+        sourceEndpoint: {type: string}
     LocalPaperTradePage:
       type: object
       required:
