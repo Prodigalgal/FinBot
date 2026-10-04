@@ -4,9 +4,16 @@
 
 - 需求：[`40-bybit-tradfi-local-paper`](../docs/requirements/40-bybit-tradfi-local-paper.md)、[`41-forward-hypothesis-ledger`](../docs/requirements/41-forward-hypothesis-ledger.md)。
 - 范围：显式自选映射、一次一商品、定时逐品执行、独立虚拟 USDT 账本、条件与反证记录；即时聊天仍为 ANALYSIS_ONLY。
-- 状态：代码与本地相关 Java/API/架构测试、38 项 Web 测试、构建及契约检查通过，等待完整 CI PostgreSQL 与 GitOps、线上认证接口验收。
-- 限制：NAS100.s 元数据已建模，官方明确 MT5 CFD 不支持 V5；后台网页行情路径 403，等待正式 CFD 只读数据源。宏观数据公布值/修订采集、自动条件验证及前瞻有效性统计仍属后续阶段。
+- 状态：`5c23ab6` 已发布；完整 CI `37172515409` 的 484 项 Java 测试、前端与认证浏览器验收通过；GitOps `b628f56` 为 Synced/Healthy，生产管理员 API 与撮合任务已验收。默认 8 个商品使用明确 BYBIT 映射。真实 QQQ 研究仍在首篇证据验证重试，尚未形成终局。
+- 限制：用户改用 QQQUSDT 替代 NAS100.s；NAS 仅保留全局 CFD 元数据，本轮不安装/连接 MT5。宏观数据公布值/修订采集、自动条件验证及前瞻有效性统计仍属后续阶段。
 - 接口调查：[`Bybit 官方接口核对`](../docs/reports/2026-10-04-bybit-official-api-audit.md)。
+- 发布证据：[`发布验收`](../docs/reports/2026-10-04-selected-paper-forward-release.md)。
+
+## P0：研究输入与情报覆盖缺口（2026-10-04 核查）
+
+- 事实：本轮 692 条证据，但深度压缩仅按信源权重选 12 篇；首篇为 USDA，后续多为 SEC 申报索引。约 77 万字符原始证据排在上下文最前，SDB-SCA 只取前 12 万字符，压缩/Quant 结果可能被全部截掉。历史样本已核实该风险。
+- 后续优先级：修复商品相关性和输入预算；限制无进展 AI 等待；补齐指定商品的一手情报、宏观日历及版本；再建立多期限持续验证和效果对照。
+- 本次边界：完成代码与生产数据审计，未修改研究选择算法、提示上下文契约、调度或运行模型配置。详见[`系统能力审计`](../docs/reports/2026-10-04-system-research-capability-audit.md)。
 
 ## P1：Bybit Demo 账户链路修复（2026-10-03）
 
@@ -16,7 +23,7 @@
 - 影响文件：`JdkExchangeAccountGateway`、Bybit 余额映射与测试、运行验收报告。
 - 验收：逐仓账户按逐币种保证金计算可用余额；UNIFIED 不使用已废弃的 `availableToWithdraw`；缺失或非法必填数据明确失败；同步和对账在当前 Demo 账户实际完成。
 - 验证：相关 Gradle 测试与构建、官方 API 契约、生产认证账户同步及数据库事实/任务核对。
-- 状态：进行中。
+- 状态：代码已随 `5c23ab6` 发布；生产 Bybit Demo 的 USDT 账户事实持续更新，账户同步和订单对账任务完成。此证明覆盖读取链路，不等同于已完成新交易执行。
 
 ## P1：SDB-SCA 角色内模型多样性（2026-10-03）
 
@@ -26,7 +33,7 @@
 - 影响文件：`WorkflowPublicationValidator`、`WorkflowAiBindingValidator`、`DecisionPanelEngine`、领域席位校验及测试、SDB-SCA 需求与评估报告；运行配置通过现有管理 API 更新。
 - 验收：同角色跨 Provider 同模型、模型别名或 fallback 冲突被拒绝；多席位与跨角色模型复用可执行；历史记录仍可读取；默认配置五角色十席且每个角色内模型不重复。
 - 验证：领域与应用测试、后端构建、管理 API/数据库配置核对；可用性使用独立分析请求验证，不以共识成功率代替预测效果。
-- 状态：进行中。
+- 状态：校验与默认 v15 已发布；生产五角色、每角色两席位，角色内 primary/fallback 模型集合无重叠已核对。预处理清洗/压缩节点仍复用模型，尚无新版本完整研究终局和有效性样本。
 
 ## P1：分析工作流聊天
 
