@@ -825,6 +825,10 @@ class LiquibasePostgresIntegrationTest {
                         select
                           (select count(*) from system_setting) as setting_count,
                           (select count(*) from canonical_product) as product_count,
+                          (select count(*) from venue_instrument
+                           where instrument_id = 'instrument_bybit_nas100_cfd'
+                             and symbol = 'NAS100.s' and market_type = 'CFD'
+                             and execution_enabled = false) as nas100_cfd_count,
                           (select count(*) from exchange_account) as account_count,
                           (select count(*) from schedule_definition) as schedule_count,
                           (select count(*) from agent_role_template) as role_count,
@@ -1258,9 +1262,10 @@ class LiquibasePostgresIntegrationTest {
             try (var result = statement.executeQuery()) {
                 result.next();
                 assertEquals(15, result.getInt("setting_count"));
-                assertEquals(10, result.getInt("product_count"));
+                assertEquals(11, result.getInt("product_count"));
+                assertEquals(1, result.getInt("nas100_cfd_count"));
                 assertEquals(2, result.getInt("account_count"));
-                assertEquals(10, result.getInt("schedule_count"));
+                assertEquals(11, result.getInt("schedule_count"));
                 assertEquals(9, result.getInt("role_count"));
                 assertEquals(202, result.getInt("node_count"));
                 assertEquals(23, result.getInt("published_node_count"));
@@ -1422,7 +1427,7 @@ class LiquibasePostgresIntegrationTest {
                 try (var result = statement.executeQuery()) {
                     result.next();
                     assertEquals(76, result.getInt("changeset_count"));
-                    assertEquals(10, result.getInt("product_count"));
+                    assertEquals(11, result.getInt("product_count"));
                     assertEquals(7, result.getInt("adopted_product_count"));
                     assertEquals(0, result.getInt("duplicate_seed_product_count"));
                     assertEquals(7, result.getInt("adopted_instrument_count"));
