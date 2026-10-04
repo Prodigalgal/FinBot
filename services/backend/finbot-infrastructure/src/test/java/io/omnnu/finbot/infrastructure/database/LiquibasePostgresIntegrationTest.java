@@ -1332,7 +1332,7 @@ class LiquibasePostgresIntegrationTest {
                 assertEquals(0, new java.math.BigDecimal("20")
                         .compareTo(result.getBigDecimal("maximum_leverage")));
                 assertTrue(result.getBoolean("workflow_active"));
-                assertEquals(7, result.getInt("research_only_instrument_count"));
+                assertEquals(8, result.getInt("research_only_instrument_count"));
                 assertEquals("WEB_CRAWL", result.getString("x_route"));
                 assertEquals("SEARCH_DISCOVERY", result.getString("x_mode"));
                 assertFalse(result.getBoolean("x_enabled"));
