@@ -137,3 +137,9 @@ databaseChangeLog:
       file: db/changelog/releases/068-decision-panel-frozen-input.sql
   - include:
       file: db/changelog/releases/069-analysis-chat.sql
+  - include:
+      file: db/changelog/releases/070-bybit-tradfi-local-paper.sql
+  - include:
+      file: db/changelog/releases/071-bybit-cfd-catalog.sql
+  - include:
+      file: db/changelog/releases/072-forward-hypothesis-ledger.sql

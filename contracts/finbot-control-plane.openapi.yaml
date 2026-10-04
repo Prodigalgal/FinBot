@@ -9,6 +9,236 @@ security:
   - adminSession: []
   - adminApiToken: []
 paths:
+  /research/hypotheses:
+    get:
+      operationId: getResearchHypotheses
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+      responses:
+        '200':
+          description: Forward hypotheses, including unselected proposals; their creation does not authorize execution.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/HypothesisView'}
+        default: {$ref: '#/components/responses/Problem'}
+      x-finbot-java-response-type: List<HypothesisView>
+      x-finbot-web-response-type: HypothesisView[]
+  /research/hypotheses/{hypothesisId}/history:
+    get:
+      operationId: getHypothesisHistory
+      parameters:
+        - name: hypothesisId
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Original hypothesis plus up to 100 recent immutable revisions and lifecycle events.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/HypothesisRevision'}
+        default: {$ref: '#/components/responses/Problem'}
+      x-finbot-java-response-type: List<HypothesisRevision>
+      x-finbot-web-response-type: HypothesisRevision[]
+  /research/hypotheses/{hypothesisId}/status:
+    put:
+      operationId: putHypothesisStatus
+      parameters:
+        - name: hypothesisId
+          in: path
+          required: true
+          schema: {type: string}
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/HypothesisStatusRequest'}
+      responses:
+        '200':
+          description: Version checked lifecycle update with append only reasoning audit; no trading effect.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HypothesisView'}
+        default: {$ref: '#/components/responses/Problem'}
+      x-finbot-java-response-type: HypothesisView
+      x-finbot-web-response-type: HypothesisView
+      x-finbot-java-request-type: StatusRequest
+  /research/scopes:
+    get:
+      operationId: getSelectedResearchScopes
+      responses:
+        '200':
+          description: Explicit active instrument mappings in the administrator default research watchlist.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SelectedResearchScope'
+        default:
+          $ref: '#/components/responses/Problem'
+      x-finbot-java-response-type: List<SelectedResearchScope>
+      x-finbot-web-response-type: SelectedResearchScope[]
+  /trading/local-paper/trades/active:
+    get:
+      operationId: getActiveLocalPaperTrades
+      responses:
+        '200':
+          description: All active paper orders and positions, bounded to 100.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaperTrade'
+        default:
+          $ref: '#/components/responses/Problem'
+      x-finbot-java-response-type: java.util.List<PaperTrade>
+      x-finbot-web-response-type: PaperTrade[]
+  /trading/local-paper/account:
+    get:
+      operationId: getLocalPaperAccount
+      responses:
+        "200":
+          description: Persistent local simulation state; public LIVE quotes, no exchange
+            order submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalPaperAccount"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: LocalPaperAccount
+      x-finbot-java-response-type: LocalPaperAccount
+    put:
+      operationId: putLocalPaperAccount
+      parameters:
+        - &a3
+          $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocalPaperAccountRequest"
+      responses:
+        "200":
+          description: Persistent local simulation state; public LIVE quotes, no exchange
+            order submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalPaperAccount"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: LocalPaperAccount
+      x-finbot-java-response-type: LocalPaperAccount
+      x-finbot-java-request-type: AccountRequest
+  /trading/local-paper/trades:
+    get:
+      operationId: getLocalPaperTrades
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: beforeTradeId
+          in: query
+          schema: &a1
+            type: string
+      responses:
+        "200":
+          description: Persistent local simulation state; public LIVE quotes, no exchange
+            order submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalPaperTradePage"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: LocalPaperTradePage
+      x-finbot-java-response-type: LocalPaperTradePage
+  /trading/local-paper/trades/{tradeId}:
+    get:
+      operationId: getLocalPaperTrade
+      parameters:
+        - &a2
+          name: tradeId
+          in: path
+          required: true
+          schema: *a1
+      responses:
+        "200":
+          description: Persistent local simulation state; public LIVE quotes, no exchange
+            order submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalPaperTradeDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: LocalPaperTradeDetail
+      x-finbot-java-response-type: LocalPaperTradeDetail
+  /trading/local-paper/trades/{tradeId}/cancel:
+    post:
+      operationId: cancelLocalPaperTrade
+      parameters:
+        - *a2
+        - *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocalPaperVersionRequest"
+      responses:
+        "200":
+          description: Persistent local simulation state; public LIVE quotes, no exchange
+            order submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaperTrade"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: PaperTrade
+      x-finbot-java-response-type: PaperTrade
+      x-finbot-java-request-type: VersionRequest
+  /trading/local-paper/trades/{tradeId}/close:
+    post:
+      operationId: closeLocalPaperTrade
+      parameters:
+        - *a2
+        - *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocalPaperVersionRequest"
+      responses:
+        "200":
+          description: Persistent local simulation state; public LIVE quotes, no exchange
+            order submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaperTrade"
+        default:
+          $ref: "#/components/responses/Problem"
+      x-finbot-web-response-type: PaperTrade
+      x-finbot-java-response-type: PaperTrade
+      x-finbot-java-request-type: VersionRequest
   /analysis-chats:
     get:
       operationId: getAnalysisChats
@@ -4142,6 +4372,7 @@ components:
             - LINEAR_PERPETUAL
             - INVERSE_PERPETUAL
             - FUTURE
+            - CFD
         marketDataEnvironments:
           type: array
           uniqueItems: true
@@ -9429,3 +9660,340 @@ components:
         - nodes
         - edges
       type: object
+
+    HypothesisStatus:
+      type: string
+      enum: [PENDING_VALIDATION, WATCHING, CATALYST_NEAR, CONFIRMED, PAPER_VALIDATION, COMPLETED, REFUTED, EXPIRED]
+    OpportunityHypothesis:
+      type: object
+      additionalProperties: false
+      required: [title, causalChain, requiredConditions, catalystWindow, pricedInObservation, alternativeScenario, triggerCondition, invalidationCondition, nextCheck, missingData, horizonHours, exposureGroup]
+      properties:
+        title: {type: string, maxLength: 200}
+        causalChain:
+          type: array
+          minItems: 2
+          maxItems: 8
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, statement, evidenceReferences]
+            properties:
+              kind: {type: string, enum: [OBSERVATION, ESTIMATE, PROXY, INFERENCE]}
+              statement: {type: string, maxLength: 2000}
+              evidenceReferences: {type: array, maxItems: 20, items: {type: string}}
+        requiredConditions: {type: array, minItems: 1, maxItems: 12, items: {type: string}}
+        catalystWindow: {type: string, maxLength: 2000}
+        pricedInObservation: {type: string, maxLength: 2000}
+        alternativeScenario: {type: string, maxLength: 2000}
+        triggerCondition: {type: string, maxLength: 2000}
+        invalidationCondition: {type: string, maxLength: 2000}
+        nextCheck: {type: string, maxLength: 2000}
+        missingData: {type: array, maxItems: 20, items: {type: string}}
+        horizonHours: {type: integer, minimum: 1, maximum: 2160}
+        exposureGroup: {type: string, maxLength: 100}
+    HypothesisView:
+      type: object
+      additionalProperties: false
+      required: [hypothesisId, workflowRunId, instrumentId, symbol, sourceArtifactId, initialHypothesis, hypothesis, initialForecastJson, status, firstSeenAt, informationCutoff, recordedAt, expiresAt, version, consensusStatus, selected]
+      properties:
+        hypothesisId: {type: string}
+        workflowRunId: {type: string}
+        instrumentId: {type: string}
+        symbol: {type: string}
+        sourceArtifactId: {type: string}
+        initialHypothesis: {$ref: '#/components/schemas/OpportunityHypothesis'}
+        hypothesis: {$ref: '#/components/schemas/OpportunityHypothesis'}
+        initialForecastJson: {type: [string, 'null']}
+        status: {$ref: '#/components/schemas/HypothesisStatus'}
+        firstSeenAt: {type: string, format: date-time}
+        informationCutoff: {type: string, format: date-time}
+        recordedAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        version: {type: integer, minimum: 0}
+        consensusStatus: {type: string}
+        selected: {type: boolean}
+    HypothesisRevision:
+      type: object
+      additionalProperties: false
+      required: [version, status, reason, sourceArtifactId, hypothesis, occurredAt]
+      properties:
+        version: {type: integer, minimum: 0}
+        status: {$ref: '#/components/schemas/HypothesisStatus'}
+        reason: {type: string}
+        sourceArtifactId: {type: [string, 'null']}
+        hypothesis:
+          anyOf:
+            - {$ref: '#/components/schemas/OpportunityHypothesis'}
+            - {type: 'null'}
+        occurredAt: {type: string, format: date-time}
+    HypothesisStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, status, reason]
+      properties:
+        expectedVersion: {type: integer, minimum: 0}
+        status: {$ref: '#/components/schemas/HypothesisStatus'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    SelectedResearchScope:
+      type: object
+      additionalProperties: false
+      required: [instrumentId, symbol, exchange, intervalSeconds, forecastHorizonSeconds]
+      properties:
+        instrumentId: {type: string}
+        symbol: {type: string}
+        exchange: {type: string, enum: [GATE, BYBIT]}
+        intervalSeconds: {type: integer, minimum: 60, maximum: 604800}
+        forecastHorizonSeconds: {type: integer, minimum: 60, maximum: 31536000}
+    LocalPaperAccount:
+      type: object
+      required:
+        - accountId
+        - currency
+        - executionMode
+        - initialBalance
+        - cashBalance
+        - equity
+        - availableBalance
+        - reservedMargin
+        - unrealizedPnl
+        - realizedPnl
+        - feesUsdt
+        - fundingUsdt
+        - ordersEnabled
+        - pendingCount
+        - openCount
+        - acceptProjectionsAfter
+        - lastCheckedAt
+        - version
+      properties:
+        accountId: &a2
+          type: string
+        currency:
+          type: string
+          enum:
+            - USDT
+        executionMode:
+          type: string
+          enum:
+            - LOCAL_PAPER
+        initialBalance: &a1
+          type: number
+        cashBalance: *a1
+        equity: *a1
+        availableBalance: *a1
+        reservedMargin: *a1
+        unrealizedPnl: *a1
+        realizedPnl: *a1
+        feesUsdt: *a1
+        fundingUsdt: *a1
+        ordersEnabled:
+          type: boolean
+        pendingCount:
+          type: integer
+        openCount:
+          type: integer
+        acceptProjectionsAfter: &a3
+          type: string
+          format: date-time
+        lastCheckedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        version:
+          type: integer
+          minimum: 0
+    PaperTradeTerms:
+      type: object
+      required:
+        - side
+        - quantity
+        - contractSize
+        - limitPrice
+        - targetPrice
+        - stopPrice
+        - leverage
+        - feeRate
+        - slippageRate
+        - liquidationBufferRate
+        - policyVersion
+        - expiresAt
+      properties:
+        side:
+          type: string
+          enum:
+            - BUY
+            - SELL
+        quantity: *a1
+        contractSize: *a1
+        limitPrice: *a1
+        targetPrice: *a1
+        stopPrice: *a1
+        leverage: *a1
+        feeRate: *a1
+        slippageRate: *a1
+        liquidationBufferRate: *a1
+        policyVersion: *a2
+        expiresAt: *a3
+    PaperTrade:
+      type: object
+      required:
+        - tradeId
+        - projectionId
+        - instrumentId
+        - symbol
+        - terms
+        - status
+        - createdAt
+        - enteredAt
+        - entryPrice
+        - closedAt
+        - exitPrice
+        - candleCursor
+        - fundingCursor
+        - quoteAt
+        - markPrice
+        - feesUsdt
+        - fundingUsdt
+        - realizedPnlUsdt
+        - healthCode
+        - version
+      properties:
+        tradeId: *a2
+        projectionId: *a2
+        instrumentId: *a2
+        symbol: *a2
+        terms:
+          $ref: "#/components/schemas/PaperTradeTerms"
+        status:
+          type: string
+          enum:
+            - PENDING_ENTRY
+            - OPEN
+            - CLOSED
+            - CANCELLED
+            - EXPIRED
+        createdAt: *a3
+        enteredAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        entryPrice:
+          type:
+            - number
+            - "null"
+        closedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        exitPrice:
+          type:
+            - number
+            - "null"
+        candleCursor: *a3
+        fundingCursor: *a3
+        quoteAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        markPrice:
+          type:
+            - number
+            - "null"
+        feesUsdt: *a1
+        fundingUsdt: *a1
+        realizedPnlUsdt: *a1
+        healthCode:
+          type: string
+          enum:
+            - READY
+            - QUOTE_UNAVAILABLE
+            - FUNDING_DATA_PENDING
+            - CANDLE_DATA_GAP
+            - MARKET_UNAVAILABLE
+            - RISK_BLOCKED
+        version:
+          type: integer
+          minimum: 0
+    PaperTradeEvent:
+      type: object
+      required:
+        - eventId
+        - tradeId
+        - type
+        - occurredAt
+        - price
+        - cashDeltaUsdt
+        - feeUsdt
+        - model
+        - sourceEndpoint
+      properties:
+        eventId: *a2
+        tradeId: *a2
+        type:
+          type: string
+          enum:
+            - RESERVED
+            - ENTRY_FILL
+            - EXIT_FILL
+            - FUNDING
+            - CANCELLED
+            - EXPIRED
+        occurredAt: *a3
+        price:
+          type:
+            - number
+            - "null"
+        cashDeltaUsdt: *a1
+        feeUsdt: *a1
+        model: *a2
+        sourceEndpoint: *a2
+    LocalPaperTradePage:
+      type: object
+      required:
+        - trades
+        - nextBeforeTradeId
+      properties:
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaperTrade"
+        nextBeforeTradeId:
+          type:
+            - string
+            - "null"
+    LocalPaperTradeDetail:
+      type: object
+      required:
+        - trade
+        - events
+      properties:
+        trade:
+          $ref: "#/components/schemas/PaperTrade"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaperTradeEvent"
+    LocalPaperAccountRequest:
+      type: object
+      required:
+        - ordersEnabled
+        - expectedVersion
+      properties:
+        ordersEnabled:
+          type: boolean
+        expectedVersion:
+          type: integer
+          minimum: 0
+    LocalPaperVersionRequest:
+      type: object
+      required:
+        - expectedVersion
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 0

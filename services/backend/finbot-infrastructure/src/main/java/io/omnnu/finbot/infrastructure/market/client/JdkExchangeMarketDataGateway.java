@@ -58,6 +58,10 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
             ExchangeEnvironment environment,
             int intervalSeconds,
             int limit) {
+        if (instrument.marketType() == MarketType.CFD) {
+            throw new MarketDataFetchException("BYBIT_CFD_FEED_NOT_CONFIGURED",
+                    "CFD 行情未就绪：需要可用的 Bybit CFD/MT5 只读行情，不能使用 V5 永续报价替代");
+        }
         var safeLimit = Math.max(2, Math.min(limit, 500));
         try {
             return switch (instrument.exchange()) {
@@ -216,6 +220,7 @@ public final class JdkExchangeMarketDataGateway implements MarketDataGateway {
             case SPOT -> "spot";
             case LINEAR_PERPETUAL, FUTURE -> "linear";
             case INVERSE_PERPETUAL -> "inverse";
+            case CFD -> throw new MarketDataFetchException("BYBIT_CFD_FEED_NOT_CONFIGURED", "CFD 不属于 V5 市场");
         };
         for (var base : bases) {
             var endpoint = URI.create(base

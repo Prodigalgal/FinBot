@@ -80,7 +80,7 @@ public final class AutonomousResearchService implements AutonomousResearchUseCas
     @Override
     public BackgroundTask trigger(String idempotencyKey, String requestSummary) {
         var normalizedSummary = requestSummary == null || requestSummary.isBlank()
-                ? "执行手动触发的自动产品研究闭环"
+                ? "逐一研究默认自选列表中用户指定的商品"
                 : requestSummary.strip();
         var operationKey = IdempotencyKeys.scoped("autonomous-research", idempotencyKey);
         return tasks.enqueue(new EnqueueTaskCommand(

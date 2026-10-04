@@ -234,6 +234,21 @@ class TradeAutomationApplicationServiceTest {
     }
 
     @Test
+    void pausedLocalPaperCannotFallBackToExchangeExecutionForLiveResearch() {
+        var store = proxy(TradeAutomationStore.class, (ignored, method, arguments) -> switch (method.getName()) {
+            case "saveProposal", "complete" -> null;
+            case "activeRiskPolicy" -> riskPolicy();
+            default -> throw new AssertionError("Paused LIVE research must not query private execution candidates: " + method.getName());
+        });
+        var live = new ResearchMarketScope(demoScope().instrumentId(), ExchangeVenue.BYBIT, ExchangeEnvironment.LIVE,
+                "AAPLUSDT", 3600, 86400, new BigDecimal("100"));
+        var result = service(store).planOrders("automation_paused_live_test", RUN_ID, directionalDecision(), live, null);
+        assertEquals(TradeAutomationStatus.BLOCKED, result.status());
+        assertEquals(List.of(), result.plannedOrderIds());
+        assertTrue(result.reasons().getFirst().contains("LIVE"));
+    }
+
+    @Test
     void occupiedSymbolBlocksAfterRiskAssessmentWithoutAnOrder() {
         var planned = new AtomicReference<PlannedOrder>();
         var store = planningStore(List.of(executionInstrument("account_bybit_demo_first")),
@@ -449,6 +464,10 @@ class TradeAutomationApplicationServiceTest {
                 unused(TradeDecisionOutputParser.class),
                 tradeStore,
                 unused(PaperOrderExecutionUseCase.class),
+                proxy(io.omnnu.finbot.application.paper.port.in.LocalPaperUseCase.class, (ignored, method, arguments) -> {
+                    if (method.getName().equals("supports")) return false;
+                    throw new AssertionError("Unexpected local paper call: " + method.getName());
+                }),
                 new MarginRiskEngine(),
                 new EstimatedTradeEngine(),
                 unused(PrincipalReviewUseCase.class),
@@ -596,6 +615,10 @@ class TradeAutomationApplicationServiceTest {
                 unused(TradeDecisionOutputParser.class),
                 tradeStore,
                 unused(PaperOrderExecutionUseCase.class),
+                proxy(io.omnnu.finbot.application.paper.port.in.LocalPaperUseCase.class, (ignored, method, arguments) -> {
+                    if (method.getName().equals("supports")) return false;
+                    throw new AssertionError("Unexpected local paper call: " + method.getName());
+                }),
                 new MarginRiskEngine(),
                 new EstimatedTradeEngine(),
                 principalReviewUseCase,
@@ -650,6 +673,10 @@ class TradeAutomationApplicationServiceTest {
                 unused(TradeDecisionOutputParser.class),
                 store,
                 orderExecution,
+                proxy(io.omnnu.finbot.application.paper.port.in.LocalPaperUseCase.class, (ignored, method, arguments) -> {
+                    if (method.getName().equals("supports")) return false;
+                    throw new AssertionError("Unexpected local paper call: " + method.getName());
+                }),
                 new MarginRiskEngine(),
                 new EstimatedTradeEngine(),
                 unused(PrincipalReviewUseCase.class),

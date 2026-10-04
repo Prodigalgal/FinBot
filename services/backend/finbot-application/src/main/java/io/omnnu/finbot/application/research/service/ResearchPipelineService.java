@@ -12,6 +12,7 @@ import io.omnnu.finbot.application.market.port.in.MarketDataUseCase;
 import io.omnnu.finbot.application.operations.dto.ResearchTaskMode;
 import io.omnnu.finbot.application.quant.port.in.QuantResearchUseCase;
 import io.omnnu.finbot.application.trading.port.in.TradeAutomationUseCase;
+import io.omnnu.finbot.application.paper.port.out.LocalPaperEligibility;
 import io.omnnu.finbot.application.shared.service.IdempotencyKeys;
 import io.omnnu.finbot.application.workflow.dto.StartWorkflowResult;
 import io.omnnu.finbot.application.workflow.port.in.StartWorkflowUseCase;
@@ -41,6 +42,7 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
     private final WorkflowRunQuery workflowRuns;
     private final TradeAutomationUseCase tradeAutomation;
     private final ResearchSegmentationService segmentation;
+    private final LocalPaperEligibility localPaperEligibility;
     private final Clock clock;
 
     public ResearchPipelineService(
@@ -55,6 +57,7 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
             WorkflowRunQuery workflowRuns,
             TradeAutomationUseCase tradeAutomation,
             ResearchSegmentationService segmentation,
+            LocalPaperEligibility localPaperEligibility,
             Clock clock) {
         this.startWorkflow = Objects.requireNonNull(startWorkflow, "startWorkflow");
         this.workflowPlans = Objects.requireNonNull(workflowPlans, "workflowPlans");
@@ -67,6 +70,7 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
         this.workflowRuns = Objects.requireNonNull(workflowRuns, "workflowRuns");
         this.tradeAutomation = Objects.requireNonNull(tradeAutomation, "tradeAutomation");
         this.segmentation = Objects.requireNonNull(segmentation, "segmentation");
+        this.localPaperEligibility = Objects.requireNonNull(localPaperEligibility, "localPaperEligibility");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -334,14 +338,15 @@ public final class ResearchPipelineService implements ResearchPipelineUseCase {
         }
     }
 
-    private static io.omnnu.finbot.application.market.dto.MarketAnalysisScope paperScope(
+    private io.omnnu.finbot.application.market.dto.MarketAnalysisScope paperScope(
             io.omnnu.finbot.application.market.dto.MarketAnalysisScope liveScope) {
         if (liveScope == null) {
             return null;
         }
         var environment = switch (liveScope.exchange()) {
             case GATE -> ExchangeEnvironment.TESTNET;
-            case BYBIT -> ExchangeEnvironment.DEMO;
+            case BYBIT -> localPaperEligibility.usesLiveMarket(liveScope.instrumentId())
+                    ? ExchangeEnvironment.LIVE : ExchangeEnvironment.DEMO;
         };
         return new io.omnnu.finbot.application.market.dto.MarketAnalysisScope(
                 liveScope.instrumentId(),

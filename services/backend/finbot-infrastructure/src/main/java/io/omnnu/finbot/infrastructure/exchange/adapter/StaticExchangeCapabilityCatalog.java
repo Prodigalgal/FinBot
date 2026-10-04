@@ -33,7 +33,8 @@ public final class StaticExchangeCapabilityCatalog implements ExchangeCapability
                     BYBIT_MARKET_DATA,
                     Set.of(ExchangeEnvironment.DEMO)),
             capability(ExchangeVenue.BYBIT, MarketType.INVERSE_PERPETUAL, BYBIT_MARKET_DATA, Set.of()),
-            capability(ExchangeVenue.BYBIT, MarketType.FUTURE, BYBIT_MARKET_DATA, Set.of()));
+            capability(ExchangeVenue.BYBIT, MarketType.FUTURE, BYBIT_MARKET_DATA, Set.of()),
+            capability(ExchangeVenue.BYBIT, MarketType.CFD, Set.of(), Set.of()));
 
     @Override
     public List<ExchangeCapability> list() {

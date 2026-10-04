@@ -1,4 +1,6 @@
 import type {
+  SelectedResearchScope, HypothesisView, HypothesisRevision, HypothesisStatus,
+  LocalPaperAccount, LocalPaperTradeDetail, LocalPaperTradePage, PaperTrade,
   AccountsOverview, ActivateRiskPolicyRequest, ActivityPage, AdminApiToken, AgentRole, AgentRoleMutation, AiExperiment, AiExperimentMutation, AiModel, AiProvider, AnalysisChatSession, AnalysisChatTurn, CreateAnalysisChatRequest, SendAnalysisChatMessageRequest, ControlPlaneRequestPath,
   AuthChallenge, AuthStatus, AutonomousStatus, ConfigurationSnapshot, EvidenceDocument,
   CollectSourceRequest, CreateWatchlistRequest, ExecutionAiStage, ExchangeAccountControl, ExchangeAccountSyncResult, IngestionWorkspace, InstantResearchRequest, LoginRequest, NetworkDiagnostic, NetworkWorkspace,
@@ -82,6 +84,17 @@ function idempotency(key: string): HeadersInit {
 }
 
 export const api = {
+  localPaperAccount: () => request<LocalPaperAccount>('/api/v2/trading/local-paper/account'),
+  selectedResearchScopes: () => request<SelectedResearchScope[]>('/api/v2/research/scopes'),
+  researchHypotheses: () => request<HypothesisView[]>('/api/v2/research/hypotheses'),
+  hypothesisHistory: (hypothesisId: string) => request<HypothesisRevision[]>(`/api/v2/research/hypotheses/${encodeURIComponent(hypothesisId)}/history`),
+  updateHypothesisStatus: (hypothesisId: string, expectedVersion: number, status: HypothesisStatus, reason: string) => request<HypothesisView>(`/api/v2/research/hypotheses/${encodeURIComponent(hypothesisId)}/status`, { method: 'PUT', body: JSON.stringify({ expectedVersion, status, reason }) }),
+  activeLocalPaperTrades: () => request<PaperTrade[]>('/api/v2/trading/local-paper/trades/active'),
+  updateLocalPaperAccount: (ordersEnabled: boolean, expectedVersion: number) => request<LocalPaperAccount>('/api/v2/trading/local-paper/account', { method: 'PUT', body: JSON.stringify({ ordersEnabled, expectedVersion }) }),
+  localPaperTrades: (beforeTradeId: string | null = null) => request<LocalPaperTradePage>(`/api/v2/trading/local-paper/trades${query({ limit: 50, beforeTradeId })}`),
+  localPaperTrade: (tradeId: string) => request<LocalPaperTradeDetail>(`/api/v2/trading/local-paper/trades/${encodeURIComponent(tradeId)}`),
+  cancelLocalPaperTrade: (tradeId: string, expectedVersion: number) => request<PaperTrade>(`/api/v2/trading/local-paper/trades/${encodeURIComponent(tradeId)}/cancel`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
+  closeLocalPaperTrade: (tradeId: string, expectedVersion: number) => request<PaperTrade>(`/api/v2/trading/local-paper/trades/${encodeURIComponent(tradeId)}/close`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   authStatus: () => request<AuthStatus>('/api/v2/auth/status'),
   authChallenge: () => request<AuthChallenge>('/api/v2/auth/challenge'),
   login: (body: LoginRequest) =>

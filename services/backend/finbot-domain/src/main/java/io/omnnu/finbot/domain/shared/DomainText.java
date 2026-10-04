@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 
 public final class DomainText {
     private static final Pattern IDENTIFIER = Pattern.compile("[a-z][a-z0-9_-]{7,79}");
-    private static final Pattern SYMBOL = Pattern.compile("[A-Z0-9_-]{2,48}");
+    private static final Pattern SYMBOL = Pattern.compile("(?:[A-Z0-9_-]{2,48}|[A-Z0-9_-]{2,46}\\.s)");
 
     private DomainText() {
     }
@@ -20,7 +20,10 @@ public final class DomainText {
     }
 
     public static String symbol(String value) {
-        var normalized = Objects.requireNonNull(value, "value").strip().toUpperCase(Locale.ROOT);
+        var stripped = Objects.requireNonNull(value, "value").strip();
+        var normalized = stripped.endsWith(".s")
+                ? stripped.substring(0, stripped.length() - 2).toUpperCase(Locale.ROOT) + ".s"
+                : stripped.toUpperCase(Locale.ROOT);
         if (!SYMBOL.matcher(normalized).matches()) {
             throw new IllegalArgumentException("Invalid instrument symbol: " + normalized);
         }

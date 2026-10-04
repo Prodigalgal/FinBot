@@ -79,6 +79,7 @@ public final class JacksonMarketDataArtifactEncoder implements MarketDataArtifac
             case SPOT -> "SPOT";
             case LINEAR_PERPETUAL, INVERSE_PERPETUAL -> "PERPETUAL";
             case FUTURE -> "FUTURE";
+            case CFD -> throw new IllegalArgumentException("CFD 行情适配尚未配置，不能映射为其他市场类型");
         };
     }
 

@@ -23,7 +23,7 @@ class LiquibaseChangelogValidationTest {
         try (var liquibase = new Liquibase(CHANGELOG, resourceAccessor, database)) {
             liquibase.validate();
             var changeSets = liquibase.getDatabaseChangeLog().getChangeSets();
-            assertEquals(73, changeSets.size());
+            assertEquals(76, changeSets.size());
             assertEquals("001-foundation", changeSets.getFirst().getId());
             assertEquals("002-platform-foundation", changeSets.get(1).getId());
             assertEquals("003-background-operations", changeSets.get(2).getId());
@@ -82,7 +82,10 @@ class LiquibaseChangelogValidationTest {
             assertEquals("066-any2api-reasoning-capability", changeSets.get(69).getId());
             assertEquals("067-full-chain-decision-panels", changeSets.get(70).getId());
             assertEquals("068-decision-panel-frozen-input", changeSets.get(71).getId());
-            assertEquals("069-analysis-chat", changeSets.getLast().getId());
+            assertEquals("069-analysis-chat", changeSets.get(72).getId());
+            assertEquals("070-bybit-tradfi-local-paper", changeSets.get(73).getId());
+            assertEquals("071-bybit-cfd-catalog", changeSets.get(74).getId());
+            assertEquals("072-forward-hypothesis-ledger", changeSets.getLast().getId());
             assertTrue(changeSets.getFirst().getChanges().size() >= 1);
         }
     }

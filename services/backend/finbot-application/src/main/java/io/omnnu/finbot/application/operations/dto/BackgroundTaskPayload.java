@@ -7,5 +7,6 @@ public sealed interface BackgroundTaskPayload permits
         MarketDataTaskPayload,
         IngestionTaskPayload,
         CatalogSyncTaskPayload,
-        ForecastEvaluationTaskPayload {
+        ForecastEvaluationTaskPayload,
+        LocalPaperMatchingTaskPayload {
 }

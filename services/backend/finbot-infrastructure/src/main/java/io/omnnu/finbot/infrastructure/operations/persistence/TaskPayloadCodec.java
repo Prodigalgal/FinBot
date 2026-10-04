@@ -3,6 +3,7 @@ package io.omnnu.finbot.infrastructure.operations.persistence;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.omnnu.finbot.application.operations.dto.LocalPaperMatchingTaskPayload;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.omnnu.finbot.application.operations.dto.AccountTaskPayload;
 import io.omnnu.finbot.application.market.dto.MarketAnalysisScope;
@@ -83,6 +84,7 @@ public final class TaskPayloadCodec {
                     .put("exchange", catalog.scope().exchange().name())
                     .put("marketType", catalog.scope().marketType().name());
             case ForecastEvaluationTaskPayload forecast -> node.put("limit", forecast.limit());
+            case LocalPaperMatchingTaskPayload paper -> node.put("limit", paper.limit());
         }
         return write(node);
     }
@@ -173,6 +175,10 @@ public final class TaskPayloadCodec {
             case FORECAST_EVALUATION -> {
                 requireOnlyFields(node, Set.of("limit"));
                 yield new ForecastEvaluationTaskPayload(requiredInteger(node, "limit"));
+            }
+            case LOCAL_PAPER_MATCHING -> {
+                requireOnlyFields(node, Set.of("limit"));
+                yield new LocalPaperMatchingTaskPayload(requiredInteger(node, "limit"));
             }
         };
     }

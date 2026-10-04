@@ -7,10 +7,11 @@ import type { AccountsOverview } from './types';
 import { ErrorBlock, LoadingBlock } from './ui';
 import { TradingAccountOverview } from './TradingAccountOverview';
 import { TradingActivityPanel } from './TradingActivityPanel';
+import { LocalPaperPanel } from './LocalPaperPanel';
 import { replaceWorkspaceLocation, workspaceSubview } from './workspaceLocation';
 
-type TradingView = 'overview' | 'activity';
-const tradingViews: readonly TradingView[] = ['overview', 'activity'];
+type TradingView = 'overview' | 'activity' | 'local-paper';
+const tradingViews: readonly TradingView[] = ['overview', 'activity', 'local-paper'];
 
 export function TradingPage() {
   const [view, setView] = useState<TradingView>(() => workspaceSubview('trading', tradingViews, 'overview'));
@@ -36,8 +37,8 @@ export function TradingPage() {
     replaceWorkspaceLocation('trading', next);
   };
 
-  if (loading && !accounts) return <LoadingBlock label="正在同步模拟账户与永久交易仓库" />;
-  if (error !== null && !accounts) return <ErrorBlock error={error} />;
+  if (view !== 'local-paper' && loading && !accounts) return <LoadingBlock label="正在同步模拟账户与永久交易仓库" />;
+  if (view !== 'local-paper' && error !== null && !accounts) return <ErrorBlock error={error} />;
 
   return <Stack spacing={2}>
     {error !== null && <ErrorBlock error={error} />}
@@ -76,6 +77,7 @@ export function TradingPage() {
       >
         <Tab value="overview" label="账户概览" />
         <Tab value="activity" label="操作历史" />
+        <Tab value="local-paper" label="本地模拟" />
       </Tabs>
       <Button
         size="small"
@@ -94,5 +96,6 @@ export function TradingPage() {
     </Paper>
     {accounts && view === 'overview' && <TradingAccountOverview initialAccounts={accounts} onAccountsChanged={setAccounts} />}
     {accounts && view === 'activity' && <TradingActivityPanel accounts={accounts.accounts} />}
+    {view === 'local-paper' && <LocalPaperPanel />}
   </Stack>;
 }

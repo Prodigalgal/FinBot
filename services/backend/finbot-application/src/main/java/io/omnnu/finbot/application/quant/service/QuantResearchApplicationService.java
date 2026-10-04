@@ -236,6 +236,7 @@ public final class QuantResearchApplicationService implements QuantResearchUseCa
             case SPOT -> QuantMarketType.SPOT;
             case LINEAR_PERPETUAL, INVERSE_PERPETUAL -> QuantMarketType.PERPETUAL;
             case FUTURE -> QuantMarketType.FUTURE;
+            case CFD -> throw new IllegalArgumentException("CFD 量化行情适配尚未配置");
         };
     }
 

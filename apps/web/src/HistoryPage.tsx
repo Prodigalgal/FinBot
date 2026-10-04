@@ -11,6 +11,7 @@ import { TradingExecutionDetail } from './TradingExecutionDetail';
 import { ForecastPanel } from './ForecastPanel';
 import { ResearchCasePanel } from './ResearchCasePanel';
 import { DebateProtocolPanel } from './DebateProtocolPanel';
+import { HypothesisPanel } from './HypothesisPanel';
 import type { ResearchCase, ResearchComparison, ResearchFeedback, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, ResearchSummary, TradeAutomationDetail } from './types';
 import { CopyableText, EmptyBlock, ErrorBlock, LoadingBlock, SectionTitle, StatusBadge, formatTime, statusLabel } from './ui';
 
@@ -83,6 +84,7 @@ export function HistoryPage({ onOpenRun }: { onOpenRun?: (launch: ResearchLaunch
 
   return (
     <Stack spacing={2.5}>
+      <HypothesisPanel />
       {error !== null && <ErrorBlock error={error} />}
       <Paper variant="outlined" sx={{ p: 2.25, borderRadius: '10px' }}>
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}>
@@ -360,4 +362,3 @@ async function optionalForecast(runId: string): Promise<ResearchForecast | null>
 async function optionalResearchCase(runId: string): Promise<ResearchCase | null> {
   try { return await api.researchCase(runId); } catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; }
 }
-

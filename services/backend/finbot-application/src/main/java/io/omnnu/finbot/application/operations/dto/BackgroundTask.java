@@ -53,6 +53,7 @@ public record BackgroundTask(
             case INGESTION -> payload instanceof IngestionTaskPayload;
             case CATALOG_SYNC -> payload instanceof CatalogSyncTaskPayload;
             case FORECAST_EVALUATION -> payload instanceof ForecastEvaluationTaskPayload;
+            case LOCAL_PAPER_MATCHING -> payload instanceof LocalPaperMatchingTaskPayload;
         };
         if (!matches) {
             throw new IllegalArgumentException("Payload type does not match " + type);

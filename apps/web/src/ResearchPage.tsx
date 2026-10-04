@@ -10,16 +10,18 @@ import { TradingExecutionDetail } from './TradingExecutionDetail';
 import { ForecastPanel } from './ForecastPanel';
 import { DebateProtocolPanel } from './DebateProtocolPanel';
 import { ResearchCasePanel } from './ResearchCasePanel';
-import type { ResearchCase, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, TaskRecord, TradeAutomationDetail, WorkflowDefinitionSummary, WorkflowEvent, WorkflowRun } from './types';
+import type { ResearchCase, ResearchForecast, ResearchHistoryDetail, ResearchLaunch, SelectedResearchScope, TaskRecord, TradeAutomationDetail, WorkflowDefinitionSummary, WorkflowEvent, WorkflowRun } from './types';
 import { CopyableText, ErrorBlock, SectionTitle, StatusBadge, formatTime, statusLabel } from './ui';
 
 const eventTypes = ['workflow.accepted', 'workflow.stage.started', 'workflow.progressed', 'workflow.ai.text.delta', 'workflow.agent.message', 'workflow.completed', 'workflow.failed'];
 const previewStages = ['信息收集', 'AI 清洗', '多 Agent 压缩', '多轮辩论', '走势预测', '模拟验证', '生成报告'];
 
-export function ResearchPage({ initialQuestion, initialLaunch }: { initialQuestion?: string; initialLaunch?: ResearchLaunch | null }) {
-  const [question, setQuestion] = useState(initialQuestion || '分析当前默认自选产品的市场方向、主要证据、反方风险和可执行的模拟交易建议');
+export function ResearchPage({ initialQuestion, initialLaunch, initialScope }: { initialQuestion?: string; initialLaunch?: ResearchLaunch | null; initialScope?: SelectedResearchScope | null }) {
+  const [question, setQuestion] = useState(initialQuestion || '研究指定商品的前置驱动、必要条件、催化窗口、反证和模拟交易条件');
   const [workflows, setWorkflows] = useState<WorkflowDefinitionSummary[]>([]);
   const [workflowVersionId, setWorkflowVersionId] = useState('');
+  const [scopes, setScopes] = useState<SelectedResearchScope[]>([]);
+  const [selectedScope, setSelectedScope] = useState<SelectedResearchScope | null>(initialScope || null);
   const [demoWorkflowVersionId, setDemoWorkflowVersionId] = useState('');
   const [launch, setLaunch] = useState<ResearchLaunch | null>(initialLaunch || null);
   const [run, setRun] = useState<WorkflowRun | null>(null);
@@ -39,6 +41,16 @@ export function ResearchPage({ initialQuestion, initialLaunch }: { initialQuesti
 
   useEffect(() => { if (initialQuestion) setQuestion(initialQuestion); }, [initialQuestion]);
   useEffect(() => { if (initialLaunch) setLaunch(initialLaunch); }, [initialLaunch]);
+  useEffect(() => { if (initialScope) setSelectedScope(initialScope); }, [initialScope]);
+  useEffect(() => {
+    let disposed = false;
+    api.selectedResearchScopes().then(selected => {
+      if (disposed) return;
+      setScopes(selected);
+      setSelectedScope(current => current || selected[0] || null);
+    }).catch(cause => { if (!disposed) setError(cause); });
+    return () => { disposed = true; };
+  }, []);
   useEffect(() => {
     api.workflowDefinitions().then((items) => {
       const published = items.filter((item) => item.publishedVersionId !== null);
@@ -50,12 +62,9 @@ export function ResearchPage({ initialQuestion, initialLaunch }: { initialQuesti
   const start = async () => {
     setBusy(true); setError(null); setEvents([]); setDemoEvents([]); setDetail(null); setDemoDetail(null); setResearchCase(null); setAutomation(null); setForecast(null); setDemoForecast(null); setRun(null); setTask(null);
     try {
-      const launched = await api.instantResearch(
-        question.trim(),
-        workflowVersionId || null,
-        demoWorkflowVersionId || null,
-        crypto.randomUUID(),
-      );
+      if (!selectedScope) throw new Error('请先在产品与自选中指定研究商品和交易所映射');
+      const launched = await api.marketAnalysis({ ...selectedScope, question: question.trim(),
+        workflowVersionId: workflowVersionId || null, demoWorkflowVersionId: demoWorkflowVersionId || null }, crypto.randomUUID());
       setLaunch(launched);
     } catch (cause) { setError(cause); } finally { setBusy(false); }
   };
@@ -157,9 +166,10 @@ export function ResearchPage({ initialQuestion, initialLaunch }: { initialQuesti
           </Stack>
           <TextField multiline minRows={3} value={question} onChange={(event) => setQuestion(event.target.value)} label="研究问题" inputProps={{ maxLength: 2000 }} />
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) minmax(0, 1fr) auto' }, gap: 1.5, alignItems: 'stretch' }}>
+            <TextField select size="small" label="指定研究商品" value={selectedScope?.instrumentId || ''} onChange={event => setSelectedScope(scopes.find(scope => scope.instrumentId === event.target.value) || null)} sx={{ minWidth: 180 }}><MenuItem value="">请选择</MenuItem>{[...scopes, ...(selectedScope && !scopes.some(scope => scope.instrumentId === selectedScope.instrumentId) ? [selectedScope] : [])].map(scope => <MenuItem key={scope.instrumentId} value={scope.instrumentId}>{scope.exchange} · {scope.symbol}</MenuItem>)}</TextField>
             <TextField select size="small" label="实盘研究工作流" value={workflowVersionId} onChange={(event) => setWorkflowVersionId(event.target.value)} sx={{ minWidth: 0, '& .MuiOutlinedInput-root': { minHeight: 44 } }}><MenuItem value="">系统默认工作流</MenuItem>{workflows.map((workflow) => <MenuItem key={workflow.definitionId} value={workflow.publishedVersionId || ''}>{workflow.name} · v{workflow.publishedVersionNumber}{workflow.active ? ' · 已激活' : ''}</MenuItem>)}</TextField>
             <TextField select size="small" label="模拟验证工作流" value={demoWorkflowVersionId} onChange={(event) => setDemoWorkflowVersionId(event.target.value)} sx={{ minWidth: 0, '& .MuiOutlinedInput-root': { minHeight: 44 } }}><MenuItem value="">与实盘工作流相同</MenuItem>{workflows.map((workflow) => <MenuItem key={workflow.definitionId} value={workflow.publishedVersionId || ''}>{workflow.name} · v{workflow.publishedVersionNumber}</MenuItem>)}</TextField>
-            <Button variant="contained" startIcon={<PlayArrowIcon />} disabled={busy || question.trim().length === 0} onClick={() => void start()} sx={{ minHeight: 44, px: 3, fontWeight: 700, whiteSpace: 'nowrap' }}>{busy ? '正在受理' : '发起研究'}</Button>
+            <Button variant="contained" startIcon={<PlayArrowIcon />} disabled={busy || !selectedScope || question.trim().length === 0} onClick={() => void start()} sx={{ minHeight: 44, px: 3, fontWeight: 700, whiteSpace: 'nowrap' }}>{busy ? '正在受理' : '发起研究'}</Button>
           </Box>
         </Stack>
       </Paper>

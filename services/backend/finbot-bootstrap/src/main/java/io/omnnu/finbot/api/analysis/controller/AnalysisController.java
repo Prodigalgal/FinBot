@@ -59,7 +59,7 @@ public final class AnalysisController {
                 ? null
                 : new WorkflowVersionId(request.demoWorkflowVersionId());
         var summary = "市场分析：" + request.exchange().toUpperCase(java.util.Locale.ROOT)
-                + ' ' + request.symbol().toUpperCase(java.util.Locale.ROOT)
+                + ' ' + io.omnnu.finbot.domain.shared.DomainText.symbol(request.symbol())
                 + "，K 线周期 " + request.intervalSeconds() + " 秒，预测期限 "
                 + request.forecastHorizonSeconds() + " 秒。"
                 + request.question().strip();
@@ -97,7 +97,7 @@ public final class AnalysisController {
 
     public record MarketAnalysisRequest(
             @NotBlank @Size(max = 80) String instrumentId,
-            @NotBlank @Pattern(regexp = "^[A-Za-z0-9_-]{2,48}$") String symbol,
+            @NotBlank @Pattern(regexp = "^(?:[A-Za-z0-9_-]{2,48}|[A-Za-z0-9_-]{2,46}\\.s)$") String symbol,
             @NotBlank @Pattern(regexp = "(?i)^(GATE|BYBIT)$") String exchange,
             @Min(60) @Max(604800) int intervalSeconds,
             @Min(60) @Max(31536000) int forecastHorizonSeconds,

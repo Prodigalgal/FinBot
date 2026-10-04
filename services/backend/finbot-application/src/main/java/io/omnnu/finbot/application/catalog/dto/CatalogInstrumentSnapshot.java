@@ -23,7 +23,7 @@ public record CatalogInstrumentSnapshot(
     public CatalogInstrumentSnapshot {
         baseAsset = DomainText.required(baseAsset, "baseAsset", 32).toUpperCase(java.util.Locale.ROOT);
         quoteAsset = DomainText.required(quoteAsset, "quoteAsset", 32).toUpperCase(java.util.Locale.ROOT);
-        symbol = DomainText.required(symbol, "symbol", 48).toUpperCase(java.util.Locale.ROOT);
+        symbol = DomainText.symbol(symbol);
         settlementAsset = DomainText.required(settlementAsset, "settlementAsset", 32)
                 .toUpperCase(java.util.Locale.ROOT);
         contractSize = DecimalValue.positive(contractSize, "contractSize");

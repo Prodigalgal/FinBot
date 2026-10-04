@@ -48,7 +48,7 @@ public final class JacksonStructuredAiOutputParser
             "up", "sideways", "down");
     private static final Set<String> SDB_ARTIFACT_FIELDS = Set.of(
             "summary", "argument", "confidence", "claims", "evidence_refs",
-            "challenges", "revision_notes", "forecast");
+            "challenges", "revision_notes", "forecast", "opportunity");
     private static final Set<String> BALLOT_FIELDS = Set.of("preference_tiers");
 
     private final ObjectMapper objectMapper;
@@ -194,6 +194,14 @@ public final class JacksonStructuredAiOutputParser
     private ParsedDebateArtifact parseSdbArtifact(String output, boolean allowForecast) {
         var root = parseObject(output);
         requireAllowedFields(root, SDB_ARTIFACT_FIELDS);
+        var opportunity = io.omnnu.finbot.infrastructure.research.adapter.OpportunityHypothesisCodec.decode(root.path("opportunity"));
+        if (!allowForecast && opportunity != null) throw new IllegalArgumentException("AI critique must not contain a new hypothesis");
+        if (opportunity != null) {
+            var references = new HashSet<>(strings(root.path("evidence_refs")));
+            if (opportunity.causalChain().stream().flatMap(step -> step.evidenceReferences().stream())
+                    .anyMatch(reference -> !references.contains(reference)))
+                throw new IllegalArgumentException("Hypothesis references must appear in artifact evidence_refs");
+        }
         if (!allowForecast && root.has("forecast") && !root.path("forecast").isNull()) {
             throw new IllegalArgumentException("AI critique must not contain a forecast");
         }

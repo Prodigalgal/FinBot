@@ -10,7 +10,7 @@ import { ErrorBlock, LoadingBlock, SectionTitle, formatTime, statusColor, status
 export function AutonomousPage() {
   const [status, setStatus] = useState<AutonomousStatus | null>(null);
   const [operations, setOperations] = useState<OperationsOverview | null>(null);
-  const [summary, setSummary] = useState('执行自动产品研究闭环，筛选当前最值得深入分析的产品');
+  const [summary, setSummary] = useState('逐一分析默认自选列表中我指定的商品，评估证据、方向和风险');
   const [interval, setIntervalValue] = useState(3600);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -54,6 +54,7 @@ export function AutonomousPage() {
   return <Stack spacing={2.5}>
     {error !== null && <ErrorBlock error={error} />}
     {message && <Alert severity="success">{message}</Alert>}
+    <Alert severity="info" action={<Button href="#catalog" size="small">管理指定商品</Button>}>研究范围由默认自选列表确定。每个商品单独研究，AI 输出分析与风险判断；仅关注（MONITOR）的商品不进入定时研究。</Alert>
     {!status.workerOnline && <Alert severity="error">常驻 Worker 当前没有新鲜心跳，排队任务不会被处理。</Alert>}
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25 }}>
       <StatusMetric label="自动循环" value={status.enabled ? '已启用' : '已停用'} status={status.enabled ? 'READY' : 'WARNING'} />

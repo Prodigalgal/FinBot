@@ -104,6 +104,7 @@ final class ResearchPipelineServiceTest {
                 workflowRuns(WorkflowRunStatus.ACCEPTED),
                 tradeAutomation,
                 segmentation(),
+                instrumentId -> false,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var thrown = assertThrows(
@@ -158,6 +159,7 @@ final class ResearchPipelineServiceTest {
                 runId -> CompletableFuture.failedStage(
                         new AssertionError("Trade automation must not start")),
                 segmentation(),
+                instrumentId -> false,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var thrown = assertThrows(
@@ -192,6 +194,7 @@ final class ResearchPipelineServiceTest {
                 workflowRuns(WorkflowRunStatus.FAILED),
                 runId -> CompletableFuture.failedStage(new AssertionError("Trading must not start")),
                 segmentation(),
+                instrumentId -> false,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var thrown = assertThrows(
@@ -243,6 +246,7 @@ final class ResearchPipelineServiceTest {
                 workflowRuns(WorkflowRunStatus.ACCEPTED),
                 runId -> CompletableFuture.failedStage(new AssertionError("Trading must not start")),
                 new ResearchSegmentationService(segmentation),
+                instrumentId -> false,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var result = service.execute(new ResearchPipelineRequest(
@@ -284,6 +288,7 @@ final class ResearchPipelineServiceTest {
                 workflowRuns(WorkflowRunStatus.ACCEPTED),
                 runId -> CompletableFuture.failedStage(new AssertionError("Trading must not start")),
                 new ResearchSegmentationService(segmentation),
+                instrumentId -> false,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var result = service.execute(new ResearchPipelineRequest(
@@ -320,6 +325,7 @@ final class ResearchPipelineServiceTest {
                 workflowRuns(WorkflowRunStatus.ACCEPTED),
                 runId -> CompletableFuture.failedStage(new AssertionError("Trading must not start")),
                 new ResearchSegmentationService(segmentation),
+                instrumentId -> false,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var result = service.execute(new ResearchPipelineRequest(
@@ -379,6 +385,7 @@ final class ResearchPipelineServiceTest {
                 runId -> CompletableFuture.failedStage(
                         new AssertionError("Trade automation must not start")),
                 new ResearchSegmentationService(segmentation),
+                instrumentId -> false,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         var result = service.execute(new ResearchPipelineRequest(

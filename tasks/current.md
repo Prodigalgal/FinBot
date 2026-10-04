@@ -1,5 +1,13 @@
 # 当前任务
 
+## P1：指定商品、本地模拟与前瞻假设（2026-10-04）
+
+- 需求：[`40-bybit-tradfi-local-paper`](../docs/requirements/40-bybit-tradfi-local-paper.md)、[`41-forward-hypothesis-ledger`](../docs/requirements/41-forward-hypothesis-ledger.md)。
+- 范围：显式自选映射、一次一商品、定时逐品执行、独立虚拟 USDT 账本、条件与反证记录；即时聊天仍为 ANALYSIS_ONLY。
+- 状态：代码与本地相关 Java/API/架构测试、38 项 Web 测试、构建及契约检查通过，等待完整 CI PostgreSQL 与 GitOps、线上认证接口验收。
+- 限制：NAS100.s 元数据已建模，官方明确 MT5 CFD 不支持 V5；后台网页行情路径 403，等待正式 CFD 只读数据源。宏观数据公布值/修订采集、自动条件验证及前瞻有效性统计仍属后续阶段。
+- 接口调查：[`Bybit 官方接口核对`](../docs/reports/2026-10-04-bybit-official-api-audit.md)。
+
 ## P1：Bybit Demo 账户链路修复（2026-10-03）
 
 - 目标：修复当前 `ISOLATED_MARGIN` 账户因可用余额缺失而持续同步失败的问题，打通行情、账户事实与订单对账读取。

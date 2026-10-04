@@ -68,6 +68,7 @@ public final class JdbcMarketDataRepository implements MarketDataRepository {
                   from venue_instrument candidate
                   where candidate.product_id = item.product_id
                     and candidate.status = 'ACTIVE'
+                    and candidate.instrument_id = item.preferred_instrument_id
                   order by
                     case when candidate.instrument_id = item.preferred_instrument_id then 0 else 1 end,
                     case candidate.market_type

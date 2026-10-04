@@ -300,6 +300,11 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
     @Override
     @Transactional(readOnly = true)
     public List<ProjectionInstrumentSpec> projectionCandidates(ResearchMarketScope marketScope) {
+        return projectionCandidates(marketScope, Instant.EPOCH);
+    }
+
+    @Override
+    public List<ProjectionInstrumentSpec> projectionCandidates(ResearchMarketScope marketScope, Instant observedAfter) {
         return jdbcClient.sql("""
                 select instrument.instrument_id, instrument.exchange, instrument.symbol,
                        instrument.contract_size, instrument.quantity_step,
@@ -311,17 +316,23 @@ public final class JdbcTradeAutomationStore implements TradeAutomationStore {
                   from market_candle_fact candle
                   where candle.instrument_id = instrument.instrument_id
                     and candle.environment = 'LIVE'
+                    and candle.observed_at >= :observedAfter
                   order by candle.open_time desc, candle.id desc
                   limit 1
                 ) latest on true
                 where instrument.status = 'ACTIVE'
-                  and instrument.execution_enabled = false
+                  and (instrument.execution_enabled = false or (instrument.exchange = 'BYBIT'
+                    and instrument.market_type = 'LINEAR_PERPETUAL' and instrument.settlement_asset = 'USDT'
+                    and exists(select 1 from canonical_product product where product.product_id = instrument.product_id
+                      and product.status = 'ACTIVE')))
+                  and latest.close_price is not null
                   and instrument.instrument_id = :instrumentId
                   and instrument.exchange = :exchange
                   and instrument.symbol = :symbol
                 order by instrument.exchange, instrument.instrument_id
                 """)
                 .param("instrumentId", marketScope.instrumentId().value())
+                .param("observedAfter", timestamp(observedAfter))
                 .param("exchange", marketScope.exchange().name())
                 .param("symbol", marketScope.symbol())
                 .query((resultSet, rowNumber) -> new ProjectionInstrumentSpec(

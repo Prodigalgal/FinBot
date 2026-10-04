@@ -39,6 +39,10 @@ public interface TradeAutomationStore {
 
     List<ProjectionInstrumentSpec> projectionCandidates(ResearchMarketScope marketScope);
 
+    default List<ProjectionInstrumentSpec> projectionCandidates(ResearchMarketScope scope, Instant observedAfter) {
+        return projectionCandidates(scope);
+    }
+
     void saveExecutionAiReview(StoredExecutionAiReview review);
 
     void saveExecutionAiFailure(

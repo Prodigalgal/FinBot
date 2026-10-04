@@ -22,6 +22,7 @@ import io.omnnu.finbot.application.operations.service.TaskCancellationContext;
 import io.omnnu.finbot.application.market.dto.ResearchMarketScope;
 import io.omnnu.finbot.application.exchange.dto.ExchangeSubmissionStatus;
 import io.omnnu.finbot.application.exchange.port.in.PaperOrderExecutionUseCase;
+import io.omnnu.finbot.application.paper.port.in.LocalPaperUseCase;
 import io.omnnu.finbot.application.workflow.dto.WorkflowExecutionContext;
 import io.omnnu.finbot.application.workflow.port.in.PrincipalReviewUseCase;
 import io.omnnu.finbot.application.workflow.port.out.WorkflowExecutionStore;
@@ -90,6 +91,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
     private final TradeDecisionOutputParser outputParser;
     private final TradeAutomationStore store;
     private final PaperOrderExecutionUseCase orderExecution;
+    private final LocalPaperUseCase localPaper;
     private final MarginRiskEngine riskEngine;
     private final EstimatedTradeEngine estimatedTradeEngine;
     private final PrincipalReviewUseCase principalReviewUseCase;
@@ -103,6 +105,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             TradeDecisionOutputParser outputParser,
             TradeAutomationStore store,
             PaperOrderExecutionUseCase orderExecution,
+            LocalPaperUseCase localPaper,
             MarginRiskEngine riskEngine,
             EstimatedTradeEngine estimatedTradeEngine,
             PrincipalReviewUseCase principalReviewUseCase,
@@ -114,6 +117,7 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
         this.outputParser = Objects.requireNonNull(outputParser, "outputParser");
         this.store = Objects.requireNonNull(store, "store");
         this.orderExecution = Objects.requireNonNull(orderExecution, "orderExecution");
+        this.localPaper = Objects.requireNonNull(localPaper, "localPaper");
         this.riskEngine = Objects.requireNonNull(riskEngine, "riskEngine");
         this.estimatedTradeEngine = Objects.requireNonNull(estimatedTradeEngine, "estimatedTradeEngine");
         this.principalReviewUseCase = Objects.requireNonNull(principalReviewUseCase, "principalReviewUseCase");
@@ -155,10 +159,10 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             var workflow = completedWorkflow(workflowRunId);
             var marketScope = workflow.marketScope();
             if (marketScope == null || (marketScope.environment() != ExchangeEnvironment.TESTNET
-                    && marketScope.environment() != ExchangeEnvironment.DEMO)) {
+                    && marketScope.environment() != ExchangeEnvironment.DEMO && !localPaper.supports(marketScope))) {
                 return blockWithoutDecision(
                         automationRunId,
-                        "模拟交易要求已持久化的单产品模拟盘研究范围");
+                        "模拟交易要求已持久化的单产品模拟研究范围及启用的执行方式");
             }
             var chair = decisionMessage(workflowRunId);
             if (!isExecutableDecision(workflow, chair)) {
@@ -346,6 +350,13 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
                     policy.liquidationBufferRate());
         }
         var checkedAt = clock.instant();
+        var localPaperEnabled = localPaper.supports(marketScope);
+        if (marketScope.environment() == ExchangeEnvironment.LIVE && !localPaperEnabled) {
+            return blockProposal(automationRunId, decision, proposal, "本地模拟新单已暂停，LIVE 研究不能转为交易所执行");
+        }
+        if (localPaperEnabled) {
+            return estimateTrade(automationRunId, workflowRunId, decision, proposal, policy, marketScope);
+        }
         var candidates = store.executionCandidates(
                 marketScope,
                 checkedAt.minus(MAXIMUM_MARKET_PRICE_AGE),
@@ -454,7 +465,9 @@ public final class TradeAutomationApplicationService implements TradeAutomationU
             TradeProposal proposal,
             RiskPolicy policy,
             ResearchMarketScope marketScope) {
-        var candidates = store.projectionCandidates(marketScope);
+        var candidates = marketScope.environment() == ExchangeEnvironment.LIVE || localPaper.supports(marketScope)
+                ? store.projectionCandidates(marketScope, clock.instant().minus(MAXIMUM_MARKET_PRICE_AGE))
+                : store.projectionCandidates(marketScope);
         if (candidates.isEmpty()) {
             var reasons = List.of("研究范围内没有可用的模拟执行候选或仅研究产品");
             TaskCancellationContext.throwIfCancelled();

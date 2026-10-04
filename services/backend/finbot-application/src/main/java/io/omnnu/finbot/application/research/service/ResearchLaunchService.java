@@ -24,14 +24,17 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
     private final StartWorkflowUseCase startWorkflow;
     private final BackgroundTaskCoordinator tasks;
     private final WorkflowRunResumeUseCase workflowResume;
+    private final io.omnnu.finbot.application.market.port.out.UserSelectedResearchScopeQuery userScopes;
 
     public ResearchLaunchService(
             StartWorkflowUseCase startWorkflow,
             BackgroundTaskCoordinator tasks,
-            WorkflowRunResumeUseCase workflowResume) {
+            WorkflowRunResumeUseCase workflowResume,
+            io.omnnu.finbot.application.market.port.out.UserSelectedResearchScopeQuery userScopes) {
         this.startWorkflow = Objects.requireNonNull(startWorkflow, "startWorkflow");
         this.tasks = Objects.requireNonNull(tasks, "tasks");
         this.workflowResume = Objects.requireNonNull(workflowResume, "workflowResume");
+        this.userScopes = Objects.requireNonNull(userScopes, "userScopes");
     }
 
     @Override
@@ -81,6 +84,14 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
             ResearchExecutionScope executionScope) {
         Objects.requireNonNull(workflowCommand, "workflowCommand");
         Objects.requireNonNull(taskMode, "taskMode");
+        var selectedScope = marketAnalysisScope;
+        if (selectedScope == null && executionScope == ResearchExecutionScope.FULL
+                && taskMode == ResearchTaskMode.STANDARD) {
+            var scopes = userScopes.scopes();
+            if (scopes.isEmpty()) throw new IllegalArgumentException("请先在默认自选列表中指定研究商品及交易所映射");
+            selectedScope = scopes.getFirst();
+        }
+        var frozenScope = selectedScope;
         return startWorkflow.start(workflowCommand).thenApply(started -> {
             if (taskMode == ResearchTaskMode.RESUME_FAILED) {
                 workflowResume.resumeFailed(started.runId());
@@ -97,7 +108,7 @@ public final class ResearchLaunchService implements ResearchLaunchUseCase {
                             demoWorkflowVersionId,
                             workflowCommand.idempotencyKey(),
                             taskMode,
-                            marketAnalysisScope,
+                            frozenScope,
                             executionScope),
                     RESEARCH_PRIORITY,
                     MAXIMUM_ATTEMPTS,

@@ -12,9 +12,12 @@ import org.springframework.stereotype.Component;
 @Component
 public final class ForecastEvaluationTaskHandler implements BackgroundTaskHandler {
     private final ForecastEvaluationUseCase evaluation;
+    private final io.omnnu.finbot.application.research.port.in.HypothesisUseCase hypotheses;
 
-    public ForecastEvaluationTaskHandler(ForecastEvaluationUseCase evaluation) {
+    public ForecastEvaluationTaskHandler(ForecastEvaluationUseCase evaluation,
+            io.omnnu.finbot.application.research.port.in.HypothesisUseCase hypotheses) {
         this.evaluation = Objects.requireNonNull(evaluation, "evaluation");
+        this.hypotheses = Objects.requireNonNull(hypotheses, "hypotheses");
     }
 
     @Override
@@ -27,6 +30,7 @@ public final class ForecastEvaluationTaskHandler implements BackgroundTaskHandle
         if (!(task.payload() instanceof ForecastEvaluationTaskPayload payload)) {
             throw new IllegalArgumentException("Forecast evaluation task has an invalid payload");
         }
+        hypotheses.captureAndExpire(payload.limit());
         return evaluation.evaluateDue(payload.limit()).thenApply(ignored -> null);
     }
 }

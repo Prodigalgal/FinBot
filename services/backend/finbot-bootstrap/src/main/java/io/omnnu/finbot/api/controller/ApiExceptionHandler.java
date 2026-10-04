@@ -3,6 +3,9 @@ package io.omnnu.finbot.api.controller;
 import io.omnnu.finbot.application.identity.exception.AuthenticationRejectedException;
 import io.omnnu.finbot.application.chat.exception.AnalysisChatConflictException;
 import io.omnnu.finbot.application.chat.exception.AnalysisChatNotFoundException;
+import io.omnnu.finbot.application.paper.exception.LocalPaperConflictException;
+import io.omnnu.finbot.application.paper.exception.LocalPaperNotFoundException;
+import io.omnnu.finbot.application.market.exception.MarketDataFetchException;
 import io.omnnu.finbot.application.identity.exception.AdminApiTokenConflictException;
 import io.omnnu.finbot.application.configuration.exception.ConfigurationConflictException;
 import io.omnnu.finbot.application.catalog.exception.CatalogConflictException;
@@ -35,6 +38,8 @@ public final class ApiExceptionHandler {
         ScheduleConfigurationConflictException.class,
         AdminApiTokenConflictException.class,
         AnalysisChatConflictException.class,
+        LocalPaperConflictException.class,
+        io.omnnu.finbot.application.research.exception.HypothesisConflictException.class,
         DataIntegrityViolationException.class
     })
     ProblemDetail handleCatalogConflict(RuntimeException exception) {
@@ -52,7 +57,9 @@ public final class ApiExceptionHandler {
         ExchangeAccountNotFoundException.class,
         TaskNotFoundException.class,
         WorkflowNotFoundException.class,
-        AnalysisChatNotFoundException.class
+        AnalysisChatNotFoundException.class,
+        LocalPaperNotFoundException.class,
+        io.omnnu.finbot.application.research.exception.HypothesisNotFoundException.class
     })
     ProblemDetail handleResourceNotFound(RuntimeException exception) {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
@@ -92,6 +99,14 @@ public final class ApiExceptionHandler {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
         problem.setTitle("Invalid request");
         problem.setProperty("code", "INVALID_REQUEST");
+        return problem;
+    }
+
+    @ExceptionHandler(MarketDataFetchException.class)
+    ProblemDetail handleMarketUnavailable(MarketDataFetchException exception) {
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, exception.getMessage());
+        problem.setTitle("Market data unavailable");
+        problem.setProperty("code", exception.errorCode());
         return problem;
     }
 }

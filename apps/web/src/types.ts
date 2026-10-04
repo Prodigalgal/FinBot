@@ -1,5 +1,55 @@
 export type ControlPlaneRequestPath = `/api/v2${string}`;
 
+export interface SelectedResearchScope {
+  instrumentId: string; symbol: string; exchange: string; intervalSeconds: number; forecastHorizonSeconds: number;
+}
+
+export type HypothesisStatus = 'PENDING_VALIDATION' | 'WATCHING' | 'CATALYST_NEAR' | 'CONFIRMED' | 'PAPER_VALIDATION' | 'COMPLETED' | 'REFUTED' | 'EXPIRED';
+export interface OpportunityHypothesis {
+  title: string;
+  causalChain: Array<{kind: 'OBSERVATION' | 'ESTIMATE' | 'PROXY' | 'INFERENCE'; statement: string; evidenceReferences: string[]}>;
+  requiredConditions: string[]; catalystWindow: string; pricedInObservation: string; alternativeScenario: string;
+  triggerCondition: string; invalidationCondition: string; nextCheck: string; missingData: string[];
+  horizonHours: number; exposureGroup: string;
+}
+export interface HypothesisView {
+  hypothesisId: string; workflowRunId: string; instrumentId: string; symbol: string; sourceArtifactId: string;
+  initialHypothesis: OpportunityHypothesis; hypothesis: OpportunityHypothesis; initialForecastJson: string | null;
+  status: HypothesisStatus; firstSeenAt: string; informationCutoff: string; recordedAt: string; expiresAt: string;
+  version: number; consensusStatus: string; selected: boolean;
+}
+export interface HypothesisRevision {
+  version: number; status: HypothesisStatus; reason: string; sourceArtifactId: string | null;
+  hypothesis: OpportunityHypothesis | null; occurredAt: string;
+}
+
+export interface LocalPaperAccount {
+  accountId: string; currency: 'USDT'; executionMode: 'LOCAL_PAPER'; initialBalance: number; cashBalance: number;
+  equity: number; availableBalance: number; reservedMargin: number; unrealizedPnl: number; realizedPnl: number;
+  feesUsdt: number; fundingUsdt: number; ordersEnabled: boolean; pendingCount: number; openCount: number;
+  acceptProjectionsAfter: string; lastCheckedAt: string | null; version: number;
+}
+export interface PaperTradeTerms {
+  side: 'BUY' | 'SELL'; quantity: number; contractSize: number; limitPrice: number; targetPrice: number;
+  stopPrice: number; leverage: number; feeRate: number; slippageRate: number; liquidationBufferRate: number;
+  policyVersion: string; expiresAt: string;
+}
+export interface PaperTrade {
+  tradeId: string; projectionId: string; instrumentId: string; symbol: string; terms: PaperTradeTerms;
+  status: 'PENDING_ENTRY' | 'OPEN' | 'CLOSED' | 'CANCELLED' | 'EXPIRED'; createdAt: string;
+  enteredAt: string | null; entryPrice: number | null; closedAt: string | null; exitPrice: number | null;
+  candleCursor: string; fundingCursor: string; quoteAt: string | null; markPrice: number | null;
+  feesUsdt: number; fundingUsdt: number; realizedPnlUsdt: number;
+  healthCode: 'READY' | 'QUOTE_UNAVAILABLE' | 'FUNDING_DATA_PENDING' | 'CANDLE_DATA_GAP' | 'MARKET_UNAVAILABLE' | 'RISK_BLOCKED';
+  version: number;
+}
+export interface PaperTradeEvent {
+  eventId: string; tradeId: string; type: 'RESERVED' | 'ENTRY_FILL' | 'EXIT_FILL' | 'FUNDING' | 'CANCELLED' | 'EXPIRED';
+  occurredAt: string; price: number | null; cashDeltaUsdt: number; feeUsdt: number; model: string; sourceEndpoint: string;
+}
+export interface LocalPaperTradePage { trades: PaperTrade[]; nextBeforeTradeId: string | null }
+export interface LocalPaperTradeDetail { trade: PaperTrade; events: PaperTradeEvent[] }
+
 export type WorkflowRunStatus = 'ACCEPTED' | 'RUNNING' | 'WAITING_HUMAN' | 'PARTIAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type BackgroundTaskStatus = 'PENDING' | 'CLAIMED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type ReasoningEffort = 'PROVIDER_DEFAULT' | 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH' | 'MAX';

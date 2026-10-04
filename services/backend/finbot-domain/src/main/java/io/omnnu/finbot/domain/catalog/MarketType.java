@@ -4,5 +4,6 @@ public enum MarketType {
     SPOT,
     LINEAR_PERPETUAL,
     INVERSE_PERPETUAL,
-    FUTURE
+    FUTURE,
+    CFD
 }

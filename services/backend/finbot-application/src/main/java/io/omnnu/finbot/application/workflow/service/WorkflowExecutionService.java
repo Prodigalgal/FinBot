@@ -512,7 +512,7 @@ public final class WorkflowExecutionService implements WorkflowExecutionUseCase 
             checkpoints.healCompleted(execution.runId(), chair, 0, existing.orElseThrow());
             return existing.orElseThrow();
         }
-        publishStageStarted(execution.runId(), WorkflowStage.PRODUCT_SELECTION, chair.nodeId());
+        publishStageStarted(execution.runId(), WorkflowStage.ANALYZE, chair.nodeId());
         var prompt = promptComposer.composeChair(execution, chair, messages);
         AgentMessageContent content;
         try {

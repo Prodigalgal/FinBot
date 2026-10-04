@@ -159,6 +159,12 @@ import io.omnnu.finbot.infrastructure.ingestion.client.CrawlerRequestHeaderPolic
 import java.net.http.HttpClient;
 import java.security.SecureRandom;
 import java.time.Clock;
+import io.omnnu.finbot.application.paper.port.in.LocalPaperUseCase;
+import io.omnnu.finbot.application.paper.port.out.LocalPaperEligibility;
+import io.omnnu.finbot.application.paper.port.out.LocalPaperStore;
+import io.omnnu.finbot.application.paper.port.out.LocalPaperMarketGateway;
+import io.omnnu.finbot.application.paper.service.LocalPaperService;
+import io.omnnu.finbot.domain.paper.PaperMatchingEngine;
 import java.time.Duration;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -174,6 +180,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 @Configuration(proxyBeanMethods = false)
 public class RuntimeConfiguration {
+    @Bean
+    io.omnnu.finbot.application.research.port.in.HypothesisUseCase hypothesisUseCase(
+            io.omnnu.finbot.application.research.port.out.HypothesisStore store, Clock clock) {
+        return new io.omnnu.finbot.application.research.service.HypothesisService(store, clock);
+    }
     @Bean
     Clock systemClock() {
         return Clock.systemUTC();
@@ -388,6 +399,7 @@ public class RuntimeConfiguration {
             WorkflowRunQuery workflowRuns,
             TradeAutomationUseCase tradeAutomation,
             ResearchSegmentationService segmentation,
+            LocalPaperEligibility localPaperEligibility,
             Clock clock) {
         return new ResearchPipelineService(
                 startWorkflow,
@@ -401,6 +413,7 @@ public class RuntimeConfiguration {
                 workflowRuns,
                 tradeAutomation,
                 segmentation,
+                localPaperEligibility,
                 clock);
     }
 
@@ -408,8 +421,9 @@ public class RuntimeConfiguration {
     ResearchLaunchUseCase researchLaunchUseCase(
             StartWorkflowUseCase startWorkflow,
             BackgroundTaskCoordinator tasks,
-            WorkflowRunResumeUseCase workflowResume) {
-        return new ResearchLaunchService(startWorkflow, tasks, workflowResume);
+            WorkflowRunResumeUseCase workflowResume,
+            io.omnnu.finbot.application.market.port.out.UserSelectedResearchScopeQuery userScopes) {
+        return new ResearchLaunchService(startWorkflow, tasks, workflowResume, userScopes);
     }
 
     @Bean
@@ -727,12 +741,18 @@ public class RuntimeConfiguration {
     }
 
     @Bean
+    LocalPaperUseCase localPaperUseCase(LocalPaperStore store, LocalPaperMarketGateway market, Clock clock) {
+        return new LocalPaperService(store, market, new PaperMatchingEngine(), clock);
+    }
+
+    @Bean
     TradeAutomationUseCase tradeAutomationUseCase(
             WorkflowExecutionStore workflowStore,
             AiExecutionPolicyExecutor aiExecution,
             TradeDecisionOutputParser outputParser,
             TradeAutomationStore store,
             PaperOrderExecutionUseCase orderExecution,
+            LocalPaperUseCase localPaper,
             PrincipalReviewUseCase principalReviewUseCase,
             io.omnnu.finbot.application.workflow.port.in.ExecutionPanelUseCase executionPanelUseCase,
             Clock clock,
@@ -743,6 +763,7 @@ public class RuntimeConfiguration {
                 outputParser,
                 store,
                 orderExecution,
+                localPaper,
                 new MarginRiskEngine(),
                 new EstimatedTradeEngine(),
                 principalReviewUseCase,

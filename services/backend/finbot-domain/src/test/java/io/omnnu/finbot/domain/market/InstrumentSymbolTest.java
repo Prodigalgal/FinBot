@@ -10,11 +10,13 @@ class InstrumentSymbolTest {
     void acceptsNormalizedVenueSymbolsWithDeliveryDates() {
         assertEquals("BTCUSDT-17JUL26", new InstrumentSymbol(" btcusdt-17jul26 ").value());
         assertEquals("BTC_USDT", new InstrumentSymbol("btc_usdt").value());
+        assertEquals("NAS100.s", new InstrumentSymbol(" NAS100.s ").value());
     }
 
     @Test
     void rejectsSymbolsOutsideTheDatabaseContract() {
         assertThrows(IllegalArgumentException.class, () -> new InstrumentSymbol("BTC/USDT"));
+        assertThrows(IllegalArgumentException.class, () -> new InstrumentSymbol("NAS100.S"));
         assertThrows(IllegalArgumentException.class, () -> new InstrumentSymbol("A".repeat(49)));
     }
 }

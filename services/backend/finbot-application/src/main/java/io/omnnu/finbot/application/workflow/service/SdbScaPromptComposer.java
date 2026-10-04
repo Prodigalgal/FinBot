@@ -14,7 +14,7 @@ final class SdbScaPromptComposer {
     private static final String ARTIFACT_SCHEMA = """
 
 只返回一个 JSON 对象，不使用 Markdown 代码块，不输出隐藏思维链，不提及你的厂商、模型、节点、角色名或其他候选身份。结构必须为：
-{"summary":"...","argument":"...","confidence":0.0,"claims":[{"statement":"...","evidence_refs":["..."]}],"evidence_refs":["..."],"challenges":["..."],"revision_notes":["..."],"forecast":null}
+{"summary":"...","argument":"...","confidence":0.0,"claims":[{"statement":"...","evidence_refs":["..."]}],"evidence_refs":["..."],"challenges":["..."],"revision_notes":["..."],"forecast":null,"opportunity":null}
 """;
     private static final String BALLOT_SCHEMA = """
 
@@ -163,7 +163,14 @@ final class SdbScaPromptComposer {
                 + " 秒。direction_probabilities 三项必须覆盖全部方向且总和为 1；"
                 + "非 UNCERTAIN 时 direction 必须是唯一最高概率方向，confidence 必须等于该方向概率，"
                 + "reference_price 必须等于冻结参考价；"
-                + "UNCERTAIN 时所有价格字段必须为 null。";
+                + "UNCERTAIN 时所有价格字段必须为 null。"
+                + """
+
+同时研究价格尚未兑现的前置驱动，区分背景、催化、传导与价格确认。不要新增交易商品，允许引用其他资产和宏观产业观察。证据分析侧重来源和可知时间，看多与看空分别提出条件及反证，市场结构区分观测和仓位代理，风险控制检查期限、费用及重复敞口。
+若有可证伪的前瞻假设，将 opportunity 设为以下对象；证据不足、没有独立增量或只是在复述价格变化时保留 null，不得编造。它只进入待验证记录，不构成交易授权。每个步骤必须标记 OBSERVATION（待核对观测）、ESTIMATE（有来源的估计）、PROXY（代理指标）或 INFERENCE（推断）；非推断步骤必须有 evidence_refs，所有引用也须出现在顶层 evidence_refs，不能把推断写成事实。没有可信来源时间或市场一致预期时写入 missing_data，不用 AI 估计冒充公布值。
+{"title":"可证伪的假设","causal_chain":[{"kind":"OBSERVATION","statement":"已观察的背景变化","evidence_refs":["来源"]},{"kind":"INFERENCE","statement":"在必要条件成立时可能的下游影响","evidence_refs":[]}],"required_conditions":["仍需满足的必要条件"],"catalyst_window":"待核对的催化和时间窗口","priced_in_observation":"已有定价的依据或未知","alternative_scenario":"替代解释","trigger_condition":"可核验的确认条件","invalidation_condition":"可核验的反证条件","next_check":"下一次应核对的数据及时间","missing_data":["目前缺失的数据"],"horizon_hours":24,"exposure_group":"共同风险事件或敞口"}
+causal_chain 为 2 至 8 步，horizon_hours 为 1 至 2160 小时；有效期从首次提出起固定。更多步骤需展示更多不确定性，不承诺固定滞后或必然上涨，不把不同链条的条件概率直接相乘。NAS100.s、QQQUSDT 等相关敞口不能当作独立机会重复计仓。每条推断说明成立条件，触发和反证应能通过未来观测验证。
+""";
     }
 
     private static String expandRoleTemplate(

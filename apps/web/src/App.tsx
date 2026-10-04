@@ -40,7 +40,7 @@ import { useTheme } from '@mui/material/styles';
 
 import { api } from './api';
 import { DashboardPage } from './DashboardPage';
-import type { OperationsOverview, ResearchLaunch } from './types';
+import type { OperationsOverview, ResearchLaunch, SelectedResearchScope } from './types';
 import { LoadingBlock, StatusBadge, formatTime, statusColor } from './ui';
 
 const AutonomousPage = lazy(() => import('./AutonomousPage').then((module) => ({ default: module.AutonomousPage })));
@@ -104,6 +104,7 @@ export function App() {
   const [operations, setOperations] = useState<OperationsOverview | null>(null);
   const [researchQuestion, setResearchQuestion] = useState<string | undefined>();
   const [researchLaunch, setResearchLaunch] = useState<ResearchLaunch | null>(null);
+  const [researchScope, setResearchScope] = useState<SelectedResearchScope | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(navigationGroups.map((group) => [group.key, group.initiallyExpanded])),
@@ -163,14 +164,16 @@ export function App() {
     if (desktop) setMobileNavOpen(false);
   }, [desktop]);
 
-  const openResearch = (question: string) => {
+  const openResearch = (question: string, scope?: SelectedResearchScope) => {
     setResearchQuestion(question);
     setResearchLaunch(null);
+    setResearchScope(scope || null);
     navigate('research');
   };
   const openLaunch = (launch: ResearchLaunch) => {
     setResearchLaunch(launch);
     setResearchQuestion(undefined);
+    setResearchScope(null);
     navigate('research');
   };
   const toggleGroup = (groupKey: string) =>
@@ -181,7 +184,7 @@ export function App() {
       case 'dashboard': return <DashboardPage onNavigate={navigate} />;
       case 'chat': return <AnalysisChatPage />;
       case 'catalog': return <CatalogPage onResearch={openResearch} />;
-      case 'research': return <ResearchPage initialQuestion={researchQuestion} initialLaunch={researchLaunch} />;
+      case 'research': return <ResearchPage initialQuestion={researchQuestion} initialLaunch={researchLaunch} initialScope={researchScope} />;
       case 'autonomous': return <AutonomousPage />;
       case 'review': return <HistoryPage onOpenRun={openLaunch} />;
       case 'market': return <MarketAnalysisPage onOpenRun={openLaunch} />;

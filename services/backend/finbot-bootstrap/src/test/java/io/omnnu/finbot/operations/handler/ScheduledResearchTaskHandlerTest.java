@@ -1,5 +1,7 @@
 package io.omnnu.finbot.operations.handler;
 
+import io.omnnu.finbot.operations.runtime.UserSelectedResearchRunner;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
@@ -33,10 +35,10 @@ class ScheduledResearchTaskHandlerTest {
                     Instant.parse("2026-07-14T08:00:00Z")));
         };
         var handler = new ScheduledResearchTaskHandler(
-                pipeline,
+                new UserSelectedResearchRunner(pipeline),
                 () -> List.of(
                         new WorkflowVersionId("workflowversion_active_01"),
-                        new WorkflowVersionId("workflowversion_active_02")));
+                        new WorkflowVersionId("workflowversion_active_02")), ScheduledResearchTaskHandlerTest::scopes);
 
         handler.handle(task()).toCompletableFuture().join();
 
@@ -57,11 +59,17 @@ class ScheduledResearchTaskHandlerTest {
             invocationCount[0]++;
             return CompletableFuture.failedFuture(new AssertionError("pipeline must not run"));
         };
-        var handler = new ScheduledResearchTaskHandler(pipeline, List::of);
+        var handler = new ScheduledResearchTaskHandler(new UserSelectedResearchRunner(pipeline), List::of, List::of);
 
         handler.handle(task()).toCompletableFuture().join();
 
         assertEquals(0, invocationCount[0]);
+    }
+
+    private static List<io.omnnu.finbot.application.market.dto.MarketAnalysisScope> scopes() {
+        return List.of(new io.omnnu.finbot.application.market.dto.MarketAnalysisScope(
+                new io.omnnu.finbot.domain.catalog.InstrumentId("instrument_bybit_xau_test"), "XAUUSDT",
+                io.omnnu.finbot.domain.catalog.ExchangeVenue.BYBIT, io.omnnu.finbot.domain.ledger.ExchangeEnvironment.LIVE, 3600, 86400));
     }
 
     private static BackgroundTask task() {

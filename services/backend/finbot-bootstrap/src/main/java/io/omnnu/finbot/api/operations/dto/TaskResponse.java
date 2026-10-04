@@ -61,6 +61,7 @@ public record TaskResponse(
             case CatalogSyncTaskPayload payload -> payload.scope().exchange().name()
                     + " / " + payload.scope().marketType().name();
             case ForecastEvaluationTaskPayload payload -> "最多评估 " + payload.limit() + " 条到期预测";
+            case io.omnnu.finbot.application.operations.dto.LocalPaperMatchingTaskPayload payload -> "撮合最多 " + payload.limit() + " 个本地模拟计划";
         };
     }
 }
